@@ -401,6 +401,7 @@ function App() {
         {view === 'progress' && (
           <ProgressView 
             workouts={workoutHistory}
+            isDark={isDark}
             onBack={() => goBack()}
           />
         )}
@@ -1574,8 +1575,9 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
 }
 
 // Progress View
-function ProgressView({ workouts, onBack }: {
+function ProgressView({ workouts, isDark, onBack }: {
   workouts: Workout[];
+  isDark: boolean;
   onBack: () => void;
 }) {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
@@ -1683,21 +1685,21 @@ function ProgressView({ workouts, onBack }: {
     return (
       <div className="space-y-4 animate-fadeIn">
         <div className="flex items-center gap-4">
-          <button onClick={() => setSelectedExercise(null)} className="p-2 -ml-2 text-zinc-400">
+          <button onClick={() => setSelectedExercise(null)} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
             <ChevronLeft className="w-6 h-6" />
           </button>
           <h1 className="text-lg font-bold truncate">{exerciseName}</h1>
         </div>
 
         {/* PR Card */}
-        <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 border border-yellow-500/30 rounded-xl p-4">
+        <div className={`bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 border border-yellow-500/30 rounded-xl p-4 ${!isDark && 'from-yellow-100 to-yellow-50'}`}>
           <div className="flex items-center gap-2 mb-2">
-            <Trophy className="w-5 h-5 text-yellow-400" />
-            <span className="text-sm font-medium text-yellow-400">Personal Record</span>
+            <Trophy className="w-5 h-5 text-yellow-500" />
+            <span className="text-sm font-medium text-yellow-600">Personal Record</span>
           </div>
           <div className="text-3xl font-bold">{exerciseData.pr.weight}kg × {exerciseData.pr.reps}</div>
           {exerciseData.pr.date && (
-            <div className="text-sm text-zinc-400 mt-1">
+            <div className={`text-sm mt-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
               {new Date(exerciseData.pr.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </div>
           )}
@@ -1705,18 +1707,18 @@ function ProgressView({ workouts, onBack }: {
 
         {/* Stats Row */}
         <div className="grid grid-cols-3 gap-2">
-          <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-3 text-center">
+          <div className={`rounded-xl p-3 text-center ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
             <div className="text-lg font-bold">{exerciseData.sessions.length}</div>
-            <div className="text-xs text-zinc-500">Sessions</div>
+            <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Sessions</div>
           </div>
-          <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-3 text-center">
+          <div className={`rounded-xl p-3 text-center ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
             <div className="text-lg font-bold">{(exerciseData.totalVolume / 1000).toFixed(1)}t</div>
-            <div className="text-xs text-zinc-500">Total Volume</div>
+            <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Total Volume</div>
           </div>
           <div className={`border rounded-xl p-3 text-center ${
             exerciseData.trend === 'improving' ? 'bg-emerald-500/10 border-emerald-500/30' :
             exerciseData.trend === 'declining' ? 'bg-red-500/10 border-red-500/30' :
-            'bg-[#1a1a1a] border-[#2e2e2e]'
+            isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'
           }`}>
             <div className={`text-lg font-bold ${
               exerciseData.trend === 'improving' ? 'text-emerald-400' :
@@ -1724,22 +1726,22 @@ function ProgressView({ workouts, onBack }: {
             }`}>
               {exerciseData.trend === 'improving' ? '↑' : exerciseData.trend === 'declining' ? '↓' : '→'}
             </div>
-            <div className="text-xs text-zinc-500">Trend</div>
+            <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Trend</div>
           </div>
         </div>
 
         {/* Volume Chart */}
-        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
           <div className="text-sm font-medium mb-3">Volume per Session</div>
           <div className="flex items-end gap-1 h-32 overflow-x-auto">
             {exerciseData.sessions.slice(-15).map((session, i) => (
               <div key={i} className="flex-shrink-0 w-8 flex flex-col items-center gap-1">
-                <div className="text-[10px] text-zinc-500 mb-1">{Math.round(session.volume)}</div>
+                <div className={`text-[10px] mb-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{Math.round(session.volume)}</div>
                 <div 
                   className="w-full bg-orange-500/70 rounded-t transition-all"
                   style={{ height: `${(session.volume / maxVolume) * 80}%`, minHeight: '4px' }}
                 />
-                <div className="text-[9px] text-zinc-600">
+                <div className={`text-[9px] ${isDark ? 'text-zinc-600' : 'text-gray-400'}`}>
                   {new Date(session.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).replace(' ', '\n')}
                 </div>
               </div>
@@ -1748,20 +1750,20 @@ function ProgressView({ workouts, onBack }: {
         </div>
 
         {/* Recent Sessions */}
-        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
           <div className="text-sm font-medium mb-3">Recent Sessions</div>
           <div className="space-y-3">
             {exerciseData.sessions.slice(-5).reverse().map((session, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-[#2e2e2e] last:border-0">
+              <div key={i} className={`flex items-center justify-between py-2 border-b last:border-0 ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
                 <div>
                   <div className="text-sm">{new Date(session.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
-                  <div className="text-xs text-zinc-500">
+                  <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
                     {session.sets.map(s => `${s.weight}kg×${s.reps}`).join(', ')}
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="font-medium">{session.maxWeight}kg</div>
-                  <div className="text-xs text-zinc-500">{session.volume} vol</div>
+                  <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{session.volume} vol</div>
                 </div>
               </div>
             ))}
@@ -1775,7 +1777,7 @@ function ProgressView({ workouts, onBack }: {
   return (
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+        <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">Progress</h1>
@@ -1783,28 +1785,28 @@ function ProgressView({ workouts, onBack }: {
 
       {/* Stats Summary */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/20 rounded-xl p-4">
+        <div className={`bg-gradient-to-br rounded-xl p-4 ${isDark ? 'from-orange-500/20 to-orange-500/5 border border-orange-500/20' : 'from-orange-100 to-orange-50 border border-orange-200'}`}>
           <div className="text-2xl font-bold">{completedWorkouts.length}</div>
-          <div className="text-sm text-zinc-400">Total Workouts</div>
+          <div className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>Total Workouts</div>
         </div>
-        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+        <div className={`bg-gradient-to-br rounded-xl p-4 ${isDark ? 'from-emerald-500/20 to-emerald-500/5 border border-emerald-500/20' : 'from-emerald-100 to-emerald-50 border border-emerald-200'}`}>
           <div className="text-2xl font-bold">{exerciseList.length}</div>
-          <div className="text-sm text-zinc-400">Exercises Tracked</div>
+          <div className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>Exercises Tracked</div>
         </div>
       </div>
 
       {/* Exercise List - tap to see details */}
-      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-[#2e2e2e]">
+      <div className={`rounded-xl overflow-hidden ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
+        <div className={`px-4 py-3 border-b ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-orange-400" />
             <span className="text-sm font-medium">Exercise Progress</span>
           </div>
-          <div className="text-xs text-zinc-500 mt-1">Tap an exercise to see detailed analysis</div>
+          <div className={`text-xs mt-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Tap an exercise to see detailed analysis</div>
         </div>
-        <div className="divide-y divide-[#2e2e2e]">
+        <div className={`divide-y ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`}>
           {exerciseList.length === 0 ? (
-            <div className="px-4 py-8 text-center text-zinc-500">
+            <div className={`px-4 py-8 text-center ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
               <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <div>Complete workouts to see exercise progress</div>
             </div>
@@ -1813,7 +1815,7 @@ function ProgressView({ workouts, onBack }: {
               <button
                 key={exercise.id}
                 onClick={() => setSelectedExercise(exercise.id)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#252525] transition-colors"
+                className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-50'}`}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
@@ -1822,8 +1824,8 @@ function ProgressView({ workouts, onBack }: {
                   <span className="text-sm">{exercise.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-500">{exercise.sessionCount} sessions</span>
-                  <ChevronRight className="w-4 h-4 text-zinc-500" />
+                  <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{exercise.sessionCount} sessions</span>
+                  <ChevronRight className={`w-4 h-4 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
                 </div>
               </button>
             ))
@@ -1833,7 +1835,7 @@ function ProgressView({ workouts, onBack }: {
 
       {/* Empty State */}
       {completedWorkouts.length === 0 && (
-        <div className="text-center py-8 text-zinc-500">
+        <div className={`text-center py-8 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
           <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
           <p>Complete some workouts to see your progress!</p>
         </div>
