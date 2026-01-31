@@ -4,7 +4,7 @@ import {
   Check, Clock, Flame, Trophy,
   ChevronLeft, X, Trash2, Timer, Target,
   Settings, Download, Upload, FileSpreadsheet, Copy, CheckCircle2,
-  ClipboardList, Plus, Edit3, Save
+  ClipboardList, Plus, Edit3, Save, Sun, Moon
 } from 'lucide-react';
 import type { Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, UserStats } from './types';
 import * as storage from './storage';
@@ -14,6 +14,30 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 
 type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings';
+type Theme = 'dark' | 'light';
+
+// Splash Screen
+function SplashScreen({ onFinish }: { onFinish: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onFinish, 1500);
+    return () => clearTimeout(timer);
+  }, [onFinish]);
+
+  return (
+    <div className="fixed inset-0 bg-[#0f0f0f] flex flex-col items-center justify-center z-50">
+      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mb-4 animate-pulse shadow-lg shadow-orange-500/20">
+        <Flame className="w-10 h-10 text-white" />
+      </div>
+      <h1 className="text-2xl font-bold text-white mb-2">Zenith Fitness</h1>
+      <p className="text-zinc-500 text-sm">Track. Improve. Dominate.</p>
+      <div className="flex gap-1 mt-6">
+        <div className="w-2 h-2 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+        <div className="w-2 h-2 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+        <div className="w-2 h-2 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [view, setView] = useState<View>('home');
@@ -21,6 +45,11 @@ function App() {
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
+  const [showSplash, setShowSplash] = useState(true);
+  const [theme, setTheme] = useState<Theme>(() => {
+    try { return (localStorage.getItem('zenith_theme') as Theme) || 'dark'; } 
+    catch { return 'dark'; }
+  });
   
   // Navigation history for back button support
   const navigationHistory = useRef<View[]>(['home']);
@@ -53,6 +82,14 @@ function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('zenith_theme', theme); } catch {}
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), []);
 
   // Configure status bar and back button for Android
   useEffect(() => {
@@ -158,17 +195,24 @@ function App() {
     loadData();
   };
 
+  // Show splash screen
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
+  const isDark = theme === 'dark';
+  
   return (
-    <div className="min-h-screen bg-[#0f0f0f] text-white pb-20">
+    <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Update Checker */}
       <UpdateChecker />
       
       {/* Header */}
-      <header className="sticky top-0 bg-[#0f0f0f]/95 backdrop-blur-sm border-b border-[#2e2e2e] px-4 py-3 z-10">
+      <header className={`sticky top-0 backdrop-blur-sm border-b px-4 py-3 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
-              <Flame className="w-5 h-5" />
+              <Flame className="w-5 h-5 text-white" />
             </div>
             <span className="font-bold text-lg">Zenith Fitness</span>
           </div>
@@ -177,12 +221,21 @@ function App() {
               <WorkoutTimer startTime={activeWorkout.startedAt} />
             )}
             {view !== 'active' && (
-              <button 
-                onClick={() => navigateTo('settings')}
-                className="p-2 text-zinc-400 hover:text-white transition-colors"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
+              <>
+                <button 
+                  onClick={toggleTheme}
+                  className={`p-2 transition-colors ${isDark ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                  title={isDark ? 'Light mode' : 'Dark mode'}
+                >
+                  {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
+                <button 
+                  onClick={() => navigateTo('settings')}
+                  className={`p-2 transition-colors ${isDark ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              </>
             )}
           </div>
         </div>
