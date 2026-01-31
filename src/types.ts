@@ -52,7 +52,8 @@ export type WorkoutType =
   | 'pull' 
   | 'arms' 
   | 'custom'
-  | 'rest';
+  | 'rest'
+  | 'imported';
 
 export interface TemplateExercise {
   exerciseId: string;

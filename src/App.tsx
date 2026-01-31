@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   Dumbbell, Calendar, TrendingUp, ChevronRight, 
   Check, Clock, Flame, Trophy,
-  ChevronLeft, X, Trash2, Timer, Target
+  ChevronLeft, X, Trash2, Timer, Target,
+  Settings, Download, Upload, FileSpreadsheet, Copy, CheckCircle2
 } from 'lucide-react';
 import type { Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, UserStats } from './types';
 import * as storage from './storage';
@@ -11,7 +12,7 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings';
 
 function App() {
   const [view, setView] = useState<View>('home');
@@ -170,9 +171,19 @@ function App() {
             </div>
             <span className="font-bold text-lg">Zenith Fitness</span>
           </div>
-          {view === 'active' && activeWorkout?.startedAt && (
-            <WorkoutTimer startTime={activeWorkout.startedAt} />
-          )}
+          <div className="flex items-center gap-2">
+            {view === 'active' && activeWorkout?.startedAt && (
+              <WorkoutTimer startTime={activeWorkout.startedAt} />
+            )}
+            {view !== 'active' && (
+              <button 
+                onClick={() => navigateTo('settings')}
+                className="p-2 text-zinc-400 hover:text-white transition-colors"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -209,6 +220,12 @@ function App() {
           <ProgressView 
             workouts={workoutHistory}
             onBack={() => goBack()}
+          />
+        )}
+        {view === 'settings' && (
+          <SettingsView 
+            onBack={() => goBack()}
+            onDataChange={loadData}
           />
         )}
       </main>
@@ -1015,6 +1032,186 @@ function ProgressView({ workouts, onBack }: {
           <p>Complete some workouts to see your progress!</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// Settings View - Import/Export
+function SettingsView({ onBack, onDataChange }: {
+  onBack: () => void;
+  onDataChange: () => void;
+}) {
+  const [sheetsUrl, setSheetsUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [exportCsv, setExportCsv] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const handleImport = async () => {
+    if (!sheetsUrl.trim()) {
+      setImportResult({ success: false, message: 'Please enter a Google Sheets URL' });
+      return;
+    }
+    
+    setImporting(true);
+    setImportResult(null);
+    
+    try {
+      const result = await storage.importFromGoogleSheetsUrl(sheetsUrl);
+      if (result.success) {
+        setImportResult({ 
+          success: true, 
+          message: `Imported ${result.workoutsImported} workouts with ${result.exercisesFound} unique exercises!` 
+        });
+        onDataChange();
+        setSheetsUrl('');
+      } else {
+        setImportResult({ 
+          success: false, 
+          message: result.errors.join('\n') || 'Import failed' 
+        });
+      }
+    } catch (e) {
+      setImportResult({ success: false, message: 'Import error: ' + (e instanceof Error ? e.message : 'Unknown') });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleExport = () => {
+    const csv = storage.exportToCSV();
+    setExportCsv(csv);
+  };
+
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(exportCsv);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = exportCsv;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="space-y-6 animate-fadeIn">
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <h1 className="text-xl font-bold">Settings</h1>
+      </div>
+
+      {/* Import from Google Sheets */}
+      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <FileSpreadsheet className="w-5 h-5 text-green-400" />
+          <span className="font-medium">Import from Google Sheets</span>
+        </div>
+        
+        <p className="text-sm text-zinc-400 mb-4">
+          Import your existing workout history from Google Sheets. The sheet must be publicly accessible (Anyone with link can view).
+        </p>
+        
+        <p className="text-xs text-zinc-500 mb-4">
+          Expected format: Date, Exercise, Set1 Reps, Set1 Weight, Set2 Reps, Set2 Weight, Set3 Reps, Set3 Weight, Volume
+        </p>
+        
+        <input
+          type="url"
+          value={sheetsUrl}
+          onChange={(e) => setSheetsUrl(e.target.value)}
+          placeholder="https://docs.google.com/spreadsheets/d/..."
+          className="w-full bg-[#252525] border border-[#3e3e3e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-orange-500 mb-3"
+        />
+        
+        <button
+          onClick={handleImport}
+          disabled={importing}
+          className="w-full bg-green-600 hover:bg-green-500 disabled:bg-green-800 disabled:opacity-50 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
+        >
+          {importing ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Importing...
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4" />
+              Import Workouts
+            </>
+          )}
+        </button>
+        
+        {importResult && (
+          <div className={`mt-3 p-3 rounded-lg text-sm ${
+            importResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+          }`}>
+            {importResult.success ? <CheckCircle2 className="w-4 h-4 inline mr-2" /> : <X className="w-4 h-4 inline mr-2" />}
+            {importResult.message}
+          </div>
+        )}
+      </div>
+
+      {/* Export to CSV */}
+      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-4">
+          <Upload className="w-5 h-5 text-blue-400" />
+          <span className="font-medium">Export to CSV</span>
+        </div>
+        
+        <p className="text-sm text-zinc-400 mb-4">
+          Export your workout data as CSV. Copy and paste into Google Sheets to sync your data.
+        </p>
+        
+        {!exportCsv ? (
+          <button
+            onClick={handleExport}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Generate CSV
+          </button>
+        ) : (
+          <div className="space-y-3">
+            <textarea
+              value={exportCsv}
+              readOnly
+              className="w-full h-32 bg-[#252525] border border-[#3e3e3e] rounded-lg px-3 py-2 text-xs font-mono text-zinc-300 resize-none"
+            />
+            <button
+              onClick={copyToClipboard}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-lg flex items-center justify-center gap-2 transition-colors"
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  Copy to Clipboard
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* App Info */}
+      <div className="text-center text-xs text-zinc-500 space-y-1">
+        <p>Zenith Fitness v{__APP_VERSION__}</p>
+        <p>Built with ⚡ by Zenith</p>
+      </div>
     </div>
   );
 }
