@@ -362,6 +362,7 @@ function App() {
             templates={templates}
             lastTemplate={lastTemplateId ? templates.find(t => t.id === lastTemplateId) : null}
             workouts={workoutHistory}
+            isDark={isDark}
             onStartWorkout={startWorkout}
             onLogRest={logRestDay}
             onViewHistory={() => navigateTo('history')}
@@ -411,7 +412,7 @@ function App() {
 
       {/* Bottom Navigation */}
       {view !== 'active' && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a] border-t border-[#2e2e2e] px-4 py-2">
+        <nav className={`fixed bottom-0 left-0 right-0 border-t px-4 py-2 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
           <div className="flex justify-around">
             <NavButton 
               icon={<Dumbbell />} 
@@ -549,11 +550,12 @@ function WeeklyInsightsCard({ workouts }: { workouts: Workout[] }) {
 }
 
 // Home View
-function HomeView({ stats, templates, lastTemplate, workouts, onStartWorkout, onLogRest, onViewHistory }: {
+function HomeView({ stats, templates, lastTemplate, workouts, isDark, onStartWorkout, onLogRest, onViewHistory }: {
   stats: UserStats | null;
   templates: WorkoutTemplate[];
   lastTemplate: WorkoutTemplate | null | undefined;
   workouts: Workout[];
+  isDark: boolean;
   onStartWorkout: (template: WorkoutTemplate) => void;
   onLogRest: () => void;
   onViewHistory: () => void;
@@ -657,10 +659,12 @@ function HomeView({ stats, templates, lastTemplate, workouts, onStartWorkout, on
                 <button
                   key={template.id}
                   onClick={() => onStartWorkout(template)}
-                  className={`w-full bg-[#1a1a1a] border rounded-xl p-4 flex items-center justify-between transition-colors ${
+                  className={`w-full border rounded-xl p-4 flex items-center justify-between transition-colors ${
+                    isDark ? 'bg-[#1a1a1a]' : 'bg-white shadow-sm'
+                  } ${
                     isLastUsed 
                       ? 'border-orange-500/50 ring-1 ring-orange-500/20' 
-                      : 'border-[#2e2e2e] hover:border-orange-500/50'
+                      : isDark ? 'border-[#2e2e2e] hover:border-orange-500/50' : 'border-gray-200 hover:border-orange-500/50'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -694,7 +698,11 @@ function HomeView({ stats, templates, lastTemplate, workouts, onStartWorkout, on
       {/* Rest Day Button */}
       <button
         onClick={onLogRest}
-        className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4 flex items-center justify-center gap-2 text-zinc-400 hover:border-zinc-500/50 transition-colors"
+        className={`w-full border rounded-xl p-4 flex items-center justify-center gap-2 transition-colors ${
+          isDark 
+            ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-400 hover:border-zinc-500/50' 
+            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 shadow-sm'
+        }`}
       >
         <Clock className="w-5 h-5" />
         <span>Log Rest Day</span>
