@@ -667,6 +667,7 @@ function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
 }) {
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
+  const [prAchievement, setPrAchievement] = useState<{exercise: string; weight: number; reps: number} | null>(null);
 
   // Rest timer
   useEffect(() => {
@@ -718,8 +719,17 @@ function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
           updatedSet.weight,
           updatedSet.reps
         );
-        if (isPR && navigator.vibrate) {
-          navigator.vibrate([100, 50, 100, 50, 200]); // Special PR vibration!
+        if (isPR) {
+          setPrAchievement({
+            exercise: exercise.exerciseName,
+            weight: updatedSet.weight,
+            reps: updatedSet.reps,
+          });
+          // Auto-dismiss after 3 seconds
+          setTimeout(() => setPrAchievement(null), 3000);
+          if (navigator.vibrate) {
+            navigator.vibrate([100, 50, 100, 50, 200]); // Special PR vibration!
+          }
         }
       }
     }
@@ -733,6 +743,27 @@ function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
 
   return (
     <div className="space-y-4 animate-fadeIn pb-20">
+      {/* PR Achievement Toast */}
+      {prAchievement && (
+        <div className="fixed top-4 left-4 right-4 z-50 animate-fadeIn">
+          <div className="bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl p-4 shadow-lg shadow-orange-500/30 flex items-center gap-3">
+            <div className="text-3xl">🏆</div>
+            <div className="flex-1 text-white">
+              <div className="font-bold">New Personal Record!</div>
+              <div className="text-sm text-white/90">
+                {prAchievement.exercise}: {prAchievement.weight}kg × {prAchievement.reps}
+              </div>
+            </div>
+            <button 
+              onClick={() => setPrAchievement(null)}
+              className="text-white/70 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="flex items-center justify-between">
         <button onClick={onCancel} className="p-2 -ml-2 text-zinc-400">
