@@ -878,29 +878,47 @@ function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
       </div>
 
       {/* Rest Timer */}
-      {restTimer !== null && (
+      {restTimer !== null ? (
         <div className="bg-orange-500/20 border border-orange-500/30 rounded-xl p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Clock className="w-6 h-6 text-orange-400" />
+            <div className="relative">
+              <Clock className="w-8 h-8 text-orange-400" />
+              <div className="absolute inset-0 animate-ping opacity-30">
+                <Clock className="w-8 h-8 text-orange-400" />
+              </div>
+            </div>
             <div>
               <div className="text-sm text-orange-400">Rest Timer</div>
-              <div className="text-2xl font-bold font-mono">{restTimeLeft}s</div>
+              <div className="text-3xl font-bold font-mono">{restTimeLeft}s</div>
             </div>
           </div>
           <div className="flex gap-2">
             <button 
               onClick={() => setRestTimeLeft(t => t + 30)}
-              className="px-3 py-1 bg-orange-500/30 rounded-lg text-sm"
+              className="px-3 py-2 bg-orange-500/30 rounded-lg text-sm font-medium"
             >
               +30s
             </button>
             <button 
               onClick={() => setRestTimer(null)}
-              className="px-3 py-1 bg-zinc-700 rounded-lg text-sm"
+              className="px-3 py-2 bg-zinc-700 rounded-lg text-sm font-medium"
             >
               Skip
             </button>
           </div>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <span className="text-sm text-zinc-500 self-center">Rest:</span>
+          {[60, 90, 120, 180].map(seconds => (
+            <button
+              key={seconds}
+              onClick={() => startRestTimer(seconds)}
+              className="flex-1 py-2 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg text-sm text-zinc-400 hover:border-orange-500/50 transition-colors"
+            >
+              {seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}
+            </button>
+          ))}
         </div>
       )}
 
