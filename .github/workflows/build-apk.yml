@@ -42,17 +42,30 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/zenith-fitness.keystore
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
-      - name: Build APK
+      - name: Build Release APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file=$PWD/app/zenith-fitness.keystore \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD
 
       - name: Rename APK
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          mv android/app/build/outputs/apk/debug/app-debug.apk zenith-fitness-v${VERSION}.apk
+          mv android/app/build/outputs/apk/release/app-release.apk zenith-fitness-v${VERSION}.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
