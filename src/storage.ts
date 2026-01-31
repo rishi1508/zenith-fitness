@@ -18,8 +18,14 @@ function getItem<T>(key: string, defaultValue: T): T {
   }
 }
 
-function setItem<T>(key: string, value: T): void {
-  localStorage.setItem(key, JSON.stringify(value));
+function setItem<T>(key: string, value: T): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (e) {
+    console.error('[Storage] Failed to save:', key, e);
+    return false;
+  }
 }
 
 // Workouts
@@ -106,9 +112,10 @@ export function checkAndUpdatePR(exerciseId: string, exerciseName: string, weigh
 
 // Stats
 export function calculateStats(): UserStats {
-  const workouts = getWorkouts().filter(w => w.completed && w.type !== 'rest');
+  const allWorkouts = getWorkouts().filter(w => w.completed);
+  const workoutOnly = allWorkouts.filter(w => w.type !== 'rest');
   
-  if (workouts.length === 0) {
+  if (workoutOnly.length === 0) {
     return {
       totalWorkouts: 0,
       currentStreak: 0,
@@ -118,11 +125,11 @@ export function calculateStats(): UserStats {
   }
   
   // Sort by date descending
-  const sorted = [...workouts].sort((a, b) => 
+  const sorted = [...workoutOnly].sort((a, b) => 
     new Date(b.date).getTime() - new Date(a.date).getTime()
   );
   
-  // This week's workouts
+  // This week's workouts (excluding rest days)
   const now = new Date();
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - now.getDay());
@@ -132,19 +139,21 @@ export function calculateStats(): UserStats {
     new Date(w.date) >= weekStart
   ).length;
   
-  // Calculate streaks (workout days, allowing rest days)
+  // Calculate streaks (include rest days for continuity)
   let currentStreak = 0;
   let longestStreak = 0;
   let tempStreak = 0;
   
-  const workoutDates = new Set(sorted.map(w => w.date.split('T')[0]));
+  // Include both workout AND rest days for streak calculation
+  const activeDates = new Set(allWorkouts.map(w => w.date.split('T')[0]));
   const today = new Date().toISOString().split('T')[0];
   
-  // Check current streak
+  // Check current streak with iteration guard (max 1 year)
   let checkDate = new Date();
-  while (true) {
+  let maxIterations = 365;
+  while (maxIterations-- > 0) {
     const dateStr = checkDate.toISOString().split('T')[0];
-    if (workoutDates.has(dateStr)) {
+    if (activeDates.has(dateStr)) {
       currentStreak++;
       checkDate.setDate(checkDate.getDate() - 1);
     } else if (dateStr === today) {
@@ -156,7 +165,7 @@ export function calculateStats(): UserStats {
   }
   
   // Calculate longest streak
-  const allDates = Array.from(workoutDates).sort();
+  const allDates = Array.from(activeDates).sort();
   for (let i = 0; i < allDates.length; i++) {
     if (i === 0) {
       tempStreak = 1;
@@ -175,7 +184,7 @@ export function calculateStats(): UserStats {
   }
   
   return {
-    totalWorkouts: workouts.length,
+    totalWorkouts: workoutOnly.length,
     currentStreak,
     longestStreak,
     thisWeekWorkouts,
