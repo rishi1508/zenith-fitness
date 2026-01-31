@@ -1,23 +1,33 @@
 @import "tailwindcss";
 
-/* Custom styles for dark theme */
+/* Theme CSS Variables */
 :root {
   color-scheme: dark;
-  /* Status bar height fallback for Android */
   --status-bar-height: 24px;
+}
+
+/* Light mode */
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="light"] html,
+[data-theme="light"] body {
+  background-color: #f9fafb;
 }
 
 body {
   @apply bg-[#0f0f0f] text-white min-h-screen;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Safe area handling for mobile (PWA & Capacitor) */
 html {
-  /* Don't pad the html element - let individual elements handle safe areas */
   padding: 0;
   background-color: #0f0f0f;
+  transition: background-color 0.3s ease;
 }
 
 body {
