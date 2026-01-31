@@ -53,6 +53,7 @@ function App() {
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
   const [showSplash, setShowSplash] = useState(true);
+  const [missingDays, setMissingDays] = useState<string[]>([]);
   const [theme, setTheme] = useState<Theme>(() => {
     try { return (localStorage.getItem('zenith_theme') as Theme) || 'dark'; } 
     catch { return 'dark'; }
@@ -84,6 +85,9 @@ function App() {
     setStats(storage.calculateStats());
     setTemplates(storage.getTemplates());
     setWorkoutHistory(storage.getWorkouts());
+    // Check for missing days after splash
+    const missing = storage.getMissingDays();
+    setMissingDays(missing);
   }, []);
 
   useEffect(() => {
@@ -205,6 +209,16 @@ function App() {
     loadData();
   };
 
+  const handleBackfillRestDays = () => {
+    storage.backfillRestDays(missingDays);
+    setMissingDays([]);
+    loadData();
+  };
+
+  const dismissMissingDays = () => {
+    setMissingDays([]);
+  };
+
   // Show splash screen
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
@@ -216,6 +230,49 @@ function App() {
     <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Update Checker */}
       <UpdateChecker />
+      
+      {/* Missing Days Prompt */}
+      {missingDays.length > 0 && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className={`max-w-sm w-full rounded-2xl p-6 space-y-4 ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'}`}>
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-orange-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">Missing Days</h3>
+                <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                  {missingDays.length} day{missingDays.length > 1 ? 's' : ''} without activity
+                </p>
+              </div>
+            </div>
+            
+            <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+              We noticed you have {missingDays.length} day{missingDays.length > 1 ? 's' : ''} with no logged workouts. 
+              Would you like to mark {missingDays.length > 1 ? 'them' : 'it'} as rest day{missingDays.length > 1 ? 's' : ''}?
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={dismissMissingDays}
+                className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+                  isDark 
+                    ? 'bg-zinc-800 hover:bg-zinc-700' 
+                    : 'bg-gray-100 hover:bg-gray-200'
+                }`}
+              >
+                Skip
+              </button>
+              <button
+                onClick={handleBackfillRestDays}
+                className="flex-1 py-3 rounded-xl font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
+              >
+                Log Rest Days
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Header */}
       <header className={`sticky top-0 backdrop-blur-sm border-b px-4 py-3 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`}>

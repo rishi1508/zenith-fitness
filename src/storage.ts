@@ -92,6 +92,58 @@ export function setLastUsedTemplateId(templateId: string): void {
   setItem(STORAGE_KEYS.LAST_TEMPLATE, templateId);
 }
 
+// Missing Days Detection
+export function getMissingDays(): string[] {
+  const workouts = getWorkouts();
+  if (workouts.length === 0) return [];
+  
+  // Find the most recent activity date
+  const sortedDates = workouts
+    .map(w => w.date.split('T')[0])
+    .sort()
+    .reverse();
+  
+  const lastActivityDate = new Date(sortedDates[0]);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Get all logged dates (as YYYY-MM-DD strings)
+  const loggedDates = new Set(sortedDates);
+  
+  // Find missing days between last activity and yesterday (not today - user might workout later)
+  const missingDays: string[] = [];
+  const checkDate = new Date(lastActivityDate);
+  checkDate.setDate(checkDate.getDate() + 1); // Start from day after last activity
+  
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  while (checkDate <= yesterday) {
+    const dateStr = checkDate.toISOString().split('T')[0];
+    if (!loggedDates.has(dateStr)) {
+      missingDays.push(dateStr);
+    }
+    checkDate.setDate(checkDate.getDate() + 1);
+  }
+  
+  return missingDays;
+}
+
+export function backfillRestDays(dates: string[]): void {
+  dates.forEach(dateStr => {
+    const restWorkout: Workout = {
+      id: crypto.randomUUID(),
+      date: new Date(dateStr + 'T12:00:00').toISOString(),
+      name: 'Rest Day',
+      type: 'rest',
+      exercises: [],
+      completed: true,
+      completedAt: new Date(dateStr + 'T12:00:00').toISOString(),
+    };
+    saveWorkout(restWorkout);
+  });
+}
+
 // Exercises
 export function getExercises(): Exercise[] {
   return getItem<Exercise[]>(STORAGE_KEYS.EXERCISES, defaultExercises);
