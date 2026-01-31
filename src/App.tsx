@@ -55,6 +55,8 @@ function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [missingDays, setMissingDays] = useState<string[]>([]);
   const [lastTemplateId, setLastTemplateId] = useState<string | null>(null);
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationData, setCelebrationData] = useState<{name: string; exercises: number; duration?: number} | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     try { return (localStorage.getItem('zenith_theme') as Theme) || 'dark'; } 
     catch { return 'dark'; }
@@ -180,6 +182,15 @@ function App() {
         duration,
       };
       storage.saveWorkout(finished);
+      
+      // Show celebration
+      setCelebrationData({
+        name: activeWorkout.name,
+        exercises: activeWorkout.exercises.length,
+        duration,
+      });
+      setShowCelebration(true);
+      
       setActiveWorkout(null);
       loadData();
       // Reset navigation history since we completed a workout
@@ -272,6 +283,39 @@ function App() {
                 Log Rest Days
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Workout Completion Celebration */}
+      {showCelebration && celebrationData && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className={`max-w-sm w-full rounded-2xl p-6 text-center space-y-4 ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'} animate-fadeIn`}>
+            <div className="text-6xl mb-2">🎉</div>
+            <h2 className="text-2xl font-bold">Workout Complete!</h2>
+            <p className={`${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+              Great job finishing <span className="font-semibold text-orange-400">{celebrationData.name}</span>!
+            </p>
+            
+            <div className={`flex justify-center gap-6 py-4 ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-orange-400">{celebrationData.exercises}</div>
+                <div className="text-xs text-zinc-500">Exercises</div>
+              </div>
+              {celebrationData.duration && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-emerald-400">{celebrationData.duration}m</div>
+                  <div className="text-xs text-zinc-500">Duration</div>
+                </div>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setShowCelebration(false)}
+              className="w-full py-3 rounded-xl font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
+            >
+              Continue
+            </button>
           </div>
         </div>
       )}
