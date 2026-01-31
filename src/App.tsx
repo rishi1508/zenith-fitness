@@ -561,12 +561,31 @@ function HomeView({ stats, templates, lastTemplate, workouts, onStartWorkout, on
   const today = new Date();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   
+  // Daily motivation quotes
+  const quotes = [
+    "The only bad workout is the one that didn't happen.",
+    "Your body can stand almost anything. It's your mind you have to convince.",
+    "Progress, not perfection.",
+    "The pain you feel today will be the strength you feel tomorrow.",
+    "Discipline is choosing between what you want now and what you want most.",
+    "Your future self will thank you.",
+    "Every rep counts. Every set matters.",
+    "Consistency beats intensity.",
+    "Strong mind, strong body.",
+    "You don't have to be great to start, but you have to start to be great.",
+    "Results happen over time, not overnight.",
+    "The gym is my therapy.",
+  ];
+  const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000);
+  const todaysQuote = quotes[dayOfYear % quotes.length];
+  
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Greeting */}
       <div>
         <h1 className="text-2xl font-bold">Hey Rishi! 💪</h1>
         <p className="text-zinc-400">{dayNames[today.getDay()]}, {today.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' })}</p>
+        <p className="text-sm text-orange-400/80 mt-1 italic">"{todaysQuote}"</p>
       </div>
 
       {/* Quick Continue - show if there's a last used template */}
