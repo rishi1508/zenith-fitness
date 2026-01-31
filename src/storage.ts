@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   EXERCISES: 'zenith_exercises',
   RECORDS: 'zenith_records',
   SETTINGS: 'zenith_settings',
+  LAST_TEMPLATE: 'zenith_last_template',
 };
 
 // Generic storage helpers
@@ -80,6 +81,15 @@ export function resetToDefaultTemplates(): void {
 
 export function getDefaultTemplateIds(): string[] {
   return defaultTemplates.map(t => t.id);
+}
+
+// Last Used Template
+export function getLastUsedTemplateId(): string | null {
+  return getItem<string | null>(STORAGE_KEYS.LAST_TEMPLATE, null);
+}
+
+export function setLastUsedTemplateId(templateId: string): void {
+  setItem(STORAGE_KEYS.LAST_TEMPLATE, templateId);
 }
 
 // Exercises
