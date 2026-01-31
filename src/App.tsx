@@ -3,7 +3,8 @@ import {
   Dumbbell, Calendar, TrendingUp, ChevronRight, 
   Check, Clock, Flame, Trophy,
   ChevronLeft, X, Trash2, Timer, Target,
-  Settings, Download, Upload, FileSpreadsheet, Copy, CheckCircle2
+  Settings, Download, Upload, FileSpreadsheet, Copy, CheckCircle2,
+  ClipboardList, Plus, Edit3, Save
 } from 'lucide-react';
 import type { Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, UserStats } from './types';
 import * as storage from './storage';
@@ -216,6 +217,16 @@ function App() {
             }}
           />
         )}
+        {view === 'templates' && (
+          <TemplatesView 
+            templates={templates}
+            onBack={() => goBack()}
+            onStartWorkout={(template) => {
+              startWorkout(template);
+            }}
+            onTemplatesChange={loadData}
+          />
+        )}
         {view === 'progress' && (
           <ProgressView 
             workouts={workoutHistory}
@@ -239,6 +250,12 @@ function App() {
               label="Workout" 
               active={view === 'home'} 
               onClick={() => { navigationHistory.current = ['home']; setView('home'); }} 
+            />
+            <NavButton 
+              icon={<ClipboardList />} 
+              label="Templates" 
+              active={view === 'templates'} 
+              onClick={() => navigateTo('templates')} 
             />
             <NavButton 
               icon={<Calendar />} 
@@ -763,6 +780,352 @@ function HistoryView({ workouts, onBack, onDelete }: {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Templates View - Manage workout templates
+function TemplatesView({ templates, onBack, onStartWorkout, onTemplatesChange }: {
+  templates: WorkoutTemplate[];
+  onBack: () => void;
+  onStartWorkout: (template: WorkoutTemplate) => void;
+  onTemplatesChange: () => void;
+}) {
+  const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const defaultIds = storage.getDefaultTemplateIds();
+  
+  const handleDelete = (template: WorkoutTemplate) => {
+    if (defaultIds.includes(template.id)) {
+      alert('Cannot delete default templates');
+      return;
+    }
+    if (confirm(`Delete "${template.name}"?`)) {
+      storage.deleteTemplate(template.id);
+      onTemplatesChange();
+    }
+  };
+  
+  const handleSave = (template: WorkoutTemplate) => {
+    storage.saveTemplate(template);
+    onTemplatesChange();
+    setEditingTemplate(null);
+    setIsCreating(false);
+  };
+  
+  const handleCancel = () => {
+    setEditingTemplate(null);
+    setIsCreating(false);
+  };
+  
+  const createNewTemplate = () => {
+    const newTemplate: WorkoutTemplate = {
+      id: `custom-${Date.now()}`,
+      name: 'New Workout',
+      type: 'custom',
+      exercises: [],
+    };
+    setEditingTemplate(newTemplate);
+    setIsCreating(true);
+  };
+
+  // Show edit view if editing
+  if (editingTemplate) {
+    return (
+      <EditTemplateView 
+        template={editingTemplate}
+        isNew={isCreating}
+        onSave={handleSave}
+        onCancel={handleCancel}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-xl font-bold">Workout Templates</h1>
+        </div>
+        <button 
+          onClick={createNewTemplate}
+          className="p-2 bg-orange-500 rounded-lg hover:bg-orange-400 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
+
+      <p className="text-sm text-zinc-400">
+        Choose a template to start a workout, or create your own custom routine.
+      </p>
+
+      <div className="space-y-2">
+        {templates.map(template => {
+          const isDefault = defaultIds.includes(template.id);
+          return (
+            <div
+              key={template.id}
+              className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden"
+            >
+              <button
+                onClick={() => onStartWorkout(template)}
+                className="w-full p-4 flex items-center gap-3 hover:bg-[#252525] transition-colors"
+              >
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                  template.type === 'arms' ? 'bg-purple-500/20' :
+                  template.type === 'custom' ? 'bg-blue-500/20' : 'bg-orange-500/20'
+                }`}>
+                  <Dumbbell className={`w-5 h-5 ${
+                    template.type === 'arms' ? 'text-purple-400' :
+                    template.type === 'custom' ? 'text-blue-400' : 'text-orange-400'
+                  }`} />
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="font-medium flex items-center gap-2">
+                    {template.name}
+                    {template.type === 'custom' && (
+                      <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">Custom</span>
+                    )}
+                  </div>
+                  <div className="text-sm text-zinc-500">{template.exercises.length} exercises</div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-zinc-500" />
+              </button>
+              
+              {/* Action buttons for custom templates */}
+              {!isDefault && (
+                <div className="flex border-t border-[#2e2e2e]">
+                  <button
+                    onClick={() => setEditingTemplate(template)}
+                    className="flex-1 py-2 text-sm text-zinc-400 hover:text-white hover:bg-[#252525] flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    Edit
+                  </button>
+                  <div className="w-px bg-[#2e2e2e]" />
+                  <button
+                    onClick={() => handleDelete(template)}
+                    className="flex-1 py-2 text-sm text-zinc-400 hover:text-red-400 hover:bg-[#252525] flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {templates.filter(t => !defaultIds.includes(t.id)).length === 0 && (
+        <div className="text-center py-6 text-zinc-500">
+          <ClipboardList className="w-10 h-10 mx-auto mb-2 opacity-50" />
+          <p>No custom templates yet</p>
+          <p className="text-sm">Tap + to create your first one!</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Edit Template View
+function EditTemplateView({ template, isNew, onSave, onCancel }: {
+  template: WorkoutTemplate;
+  isNew: boolean;
+  onSave: (template: WorkoutTemplate) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(template.name);
+  const [exercises, setExercises] = useState(template.exercises);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const allExercises = storage.getExercises();
+  
+  const addExercise = (exercise: { id: string; name: string }) => {
+    setExercises([...exercises, {
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      defaultSets: 3,
+      defaultReps: 10,
+    }]);
+    setShowExercisePicker(false);
+  };
+  
+  const removeExercise = (index: number) => {
+    setExercises(exercises.filter((_, i) => i !== index));
+  };
+  
+  const updateExercise = (index: number, field: 'defaultSets' | 'defaultReps', value: number) => {
+    const updated = [...exercises];
+    updated[index] = { ...updated[index], [field]: value };
+    setExercises(updated);
+  };
+  
+  const handleSave = () => {
+    if (!name.trim()) {
+      alert('Please enter a template name');
+      return;
+    }
+    if (exercises.length === 0) {
+      alert('Please add at least one exercise');
+      return;
+    }
+    
+    onSave({
+      ...template,
+      name: name.trim(),
+      exercises,
+    });
+  };
+  
+  // Group exercises by muscle group for picker
+  const exercisesByGroup = allExercises.reduce((acc, ex) => {
+    if (!acc[ex.muscleGroup]) acc[ex.muscleGroup] = [];
+    acc[ex.muscleGroup].push(ex);
+    return acc;
+  }, {} as Record<string, typeof allExercises>);
+
+  if (showExercisePicker) {
+    return (
+      <div className="space-y-4 animate-fadeIn">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setShowExercisePicker(false)} className="p-2 -ml-2 text-zinc-400">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-xl font-bold">Add Exercise</h1>
+        </div>
+        
+        {Object.entries(exercisesByGroup).map(([group, groupExercises]) => (
+          <div key={group} className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
+            <div className="px-4 py-2 border-b border-[#2e2e2e] bg-[#252525]">
+              <span className="text-sm font-medium capitalize">{group}</span>
+            </div>
+            <div className="divide-y divide-[#2e2e2e]">
+              {groupExercises.map(ex => {
+                const alreadyAdded = exercises.some(e => e.exerciseId === ex.id);
+                return (
+                  <button
+                    key={ex.id}
+                    onClick={() => !alreadyAdded && addExercise(ex)}
+                    disabled={alreadyAdded}
+                    className={`w-full px-4 py-3 text-left flex items-center justify-between ${
+                      alreadyAdded ? 'opacity-50' : 'hover:bg-[#252525]'
+                    } transition-colors`}
+                  >
+                    <span className="text-sm">{ex.name}</span>
+                    {alreadyAdded ? (
+                      <Check className="w-4 h-4 text-green-400" />
+                    ) : (
+                      <Plus className="w-4 h-4 text-zinc-500" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button onClick={onCancel} className="p-2 -ml-2 text-zinc-400">
+            <X className="w-6 h-6" />
+          </button>
+          <h1 className="text-xl font-bold">{isNew ? 'New Template' : 'Edit Template'}</h1>
+        </div>
+        <button 
+          onClick={handleSave}
+          className="px-4 py-2 bg-orange-500 rounded-lg hover:bg-orange-400 flex items-center gap-2 transition-colors"
+        >
+          <Save className="w-4 h-4" />
+          Save
+        </button>
+      </div>
+      
+      {/* Template Name */}
+      <div>
+        <label className="text-sm text-zinc-400 mb-1 block">Template Name</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., Upper Body Day"
+          className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
+        />
+      </div>
+      
+      {/* Exercises */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm text-zinc-400">Exercises</label>
+          <button
+            onClick={() => setShowExercisePicker(true)}
+            className="text-sm text-orange-400 flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            Add
+          </button>
+        </div>
+        
+        {exercises.length === 0 ? (
+          <div className="bg-[#1a1a1a] border border-dashed border-[#3e3e3e] rounded-xl p-6 text-center">
+            <Dumbbell className="w-8 h-8 mx-auto mb-2 text-zinc-600" />
+            <p className="text-sm text-zinc-500">No exercises yet</p>
+            <button
+              onClick={() => setShowExercisePicker(true)}
+              className="mt-2 text-sm text-orange-400"
+            >
+              + Add your first exercise
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {exercises.map((ex, i) => (
+              <div key={i} className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-medium">{ex.exerciseName}</span>
+                  <button
+                    onClick={() => removeExercise(i)}
+                    className="text-zinc-500 hover:text-red-400"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex gap-4">
+                  <div className="flex-1">
+                    <label className="text-xs text-zinc-500 mb-1 block">Sets</label>
+                    <input
+                      type="number"
+                      value={ex.defaultSets}
+                      onChange={(e) => updateExercise(i, 'defaultSets', parseInt(e.target.value) || 1)}
+                      min={1}
+                      max={10}
+                      className="w-full bg-[#252525] border border-[#3e3e3e] rounded-lg px-3 py-2 text-center"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-zinc-500 mb-1 block">Reps</label>
+                    <input
+                      type="number"
+                      value={ex.defaultReps}
+                      onChange={(e) => updateExercise(i, 'defaultReps', parseInt(e.target.value) || 1)}
+                      min={1}
+                      max={100}
+                      className="w-full bg-[#252525] border border-[#3e3e3e] rounded-lg px-3 py-2 text-center"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
