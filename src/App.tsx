@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   Dumbbell, Calendar, TrendingUp, ChevronRight, 
   Check, Clock, Flame, Trophy,
@@ -755,80 +755,202 @@ function ProgressView({ workouts, onBack }: {
   workouts: Workout[];
   onBack: () => void;
 }) {
-  const records = storage.getPersonalRecords();
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
   
-  // Calculate total volume lifted
-  const totalVolume = completedWorkouts.reduce((total, workout) => {
-    return total + workout.exercises.reduce((exTotal, exercise) => {
-      return exTotal + exercise.sets.reduce((setTotal, set) => {
-        if (set.completed && set.weight && set.reps) {
-          return setTotal + (set.weight * set.reps);
-        }
-        return setTotal;
-      }, 0);
-    }, 0);
-  }, 0);
-  
-  // Get workout count by week (last 8 weeks)
-  const weeklyStats: { week: string; count: number; volume: number }[] = [];
-  for (let i = 7; i >= 0; i--) {
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 7 * i));
-    weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    
-    const weekWorkouts = completedWorkouts.filter(w => {
-      const date = new Date(w.date);
-      return date >= weekStart && date <= weekEnd;
-    });
-    
-    const weekVolume = weekWorkouts.reduce((total, workout) => {
-      return total + workout.exercises.reduce((exTotal, exercise) => {
-        return exTotal + exercise.sets.reduce((setTotal, set) => {
-          if (set.completed && set.weight && set.reps) {
-            return setTotal + (set.weight * set.reps);
-          }
-          return setTotal;
-        }, 0);
-      }, 0);
-    }, 0);
-    
-    weeklyStats.push({
-      week: `W${8 - i}`,
-      count: weekWorkouts.length,
-      volume: Math.round(weekVolume),
-    });
-  }
-  
-  const maxCount = Math.max(...weeklyStats.map(w => w.count), 5);
-  
-  // Get exercise progress (last weight used for each exercise)
-  const exerciseProgress: { name: string; lastWeight: number; lastReps: number; date: string }[] = [];
-  const exerciseMap = new Map<string, { name: string; lastWeight: number; lastReps: number; date: string }>();
-  
-  // Sort by date ascending to get the most recent
-  [...completedWorkouts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .forEach(workout => {
+  // Get all unique exercises from workout history
+  const exerciseList = useMemo(() => {
+    const exerciseMap = new Map<string, { id: string; name: string; sessionCount: number }>();
+    completedWorkouts.forEach(workout => {
       workout.exercises.forEach(exercise => {
-        const lastCompletedSet = [...exercise.sets].reverse().find(s => s.completed && s.weight > 0);
-        if (lastCompletedSet) {
+        const existing = exerciseMap.get(exercise.exerciseId);
+        if (existing) {
+          existing.sessionCount++;
+        } else {
           exerciseMap.set(exercise.exerciseId, {
+            id: exercise.exerciseId,
             name: exercise.exerciseName,
-            lastWeight: lastCompletedSet.weight,
-            lastReps: lastCompletedSet.reps,
-            date: workout.date,
+            sessionCount: 1,
           });
         }
       });
     });
-  
-  exerciseMap.forEach(value => exerciseProgress.push(value));
-  exerciseProgress.sort((a, b) => b.lastWeight - a.lastWeight);
+    return Array.from(exerciseMap.values()).sort((a, b) => b.sessionCount - a.sessionCount);
+  }, [completedWorkouts]);
 
+  // Get data for selected exercise
+  const exerciseData = useMemo(() => {
+    if (!selectedExercise) return null;
+    
+    const sessions: { date: string; volume: number; maxWeight: number; maxReps: number; sets: { weight: number; reps: number }[] }[] = [];
+    let prWeight = 0;
+    let prReps = 0;
+    let prDate = '';
+    
+    completedWorkouts
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .forEach(workout => {
+        const exercise = workout.exercises.find(e => e.exerciseId === selectedExercise);
+        if (exercise) {
+          let sessionVolume = 0;
+          let sessionMaxWeight = 0;
+          let sessionMaxReps = 0;
+          const completedSets: { weight: number; reps: number }[] = [];
+          
+          exercise.sets.forEach(set => {
+            if (set.completed && set.weight > 0 && set.reps > 0) {
+              const setVolume = set.weight * set.reps;
+              sessionVolume += setVolume;
+              completedSets.push({ weight: set.weight, reps: set.reps });
+              
+              if (set.weight > sessionMaxWeight) {
+                sessionMaxWeight = set.weight;
+                sessionMaxReps = set.reps;
+              }
+              
+              // PR is the highest weight lifted (with any reps)
+              if (set.weight > prWeight) {
+                prWeight = set.weight;
+                prReps = set.reps;
+                prDate = workout.date;
+              }
+            }
+          });
+          
+          if (completedSets.length > 0) {
+            sessions.push({
+              date: workout.date,
+              volume: sessionVolume,
+              maxWeight: sessionMaxWeight,
+              maxReps: sessionMaxReps,
+              sets: completedSets,
+            });
+          }
+        }
+      });
+    
+    // Calculate trend (comparing last 3 sessions average volume to previous 3)
+    let trend: 'improving' | 'declining' | 'stable' = 'stable';
+    if (sessions.length >= 6) {
+      const recent3 = sessions.slice(-3).reduce((sum, s) => sum + s.volume, 0) / 3;
+      const previous3 = sessions.slice(-6, -3).reduce((sum, s) => sum + s.volume, 0) / 3;
+      const change = ((recent3 - previous3) / previous3) * 100;
+      if (change > 5) trend = 'improving';
+      else if (change < -5) trend = 'declining';
+    } else if (sessions.length >= 2) {
+      const last = sessions[sessions.length - 1].volume;
+      const secondLast = sessions[sessions.length - 2].volume;
+      if (last > secondLast * 1.05) trend = 'improving';
+      else if (last < secondLast * 0.95) trend = 'declining';
+    }
+    
+    return {
+      sessions,
+      pr: { weight: prWeight, reps: prReps, date: prDate },
+      trend,
+      totalVolume: sessions.reduce((sum, s) => sum + s.volume, 0),
+    };
+  }, [selectedExercise, completedWorkouts]);
+
+  // If an exercise is selected, show detail view
+  if (selectedExercise && exerciseData) {
+    const exerciseName = exerciseList.find(e => e.id === selectedExercise)?.name || '';
+    const maxVolume = Math.max(...exerciseData.sessions.map(s => s.volume), 1);
+    
+    return (
+      <div className="space-y-4 animate-fadeIn">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setSelectedExercise(null)} className="p-2 -ml-2 text-zinc-400">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-lg font-bold truncate">{exerciseName}</h1>
+        </div>
+
+        {/* PR Card */}
+        <div className="bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 border border-yellow-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Trophy className="w-5 h-5 text-yellow-400" />
+            <span className="text-sm font-medium text-yellow-400">Personal Record</span>
+          </div>
+          <div className="text-3xl font-bold">{exerciseData.pr.weight}kg × {exerciseData.pr.reps}</div>
+          {exerciseData.pr.date && (
+            <div className="text-sm text-zinc-400 mt-1">
+              {new Date(exerciseData.pr.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </div>
+          )}
+        </div>
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-3 text-center">
+            <div className="text-lg font-bold">{exerciseData.sessions.length}</div>
+            <div className="text-xs text-zinc-500">Sessions</div>
+          </div>
+          <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-3 text-center">
+            <div className="text-lg font-bold">{(exerciseData.totalVolume / 1000).toFixed(1)}t</div>
+            <div className="text-xs text-zinc-500">Total Volume</div>
+          </div>
+          <div className={`border rounded-xl p-3 text-center ${
+            exerciseData.trend === 'improving' ? 'bg-emerald-500/10 border-emerald-500/30' :
+            exerciseData.trend === 'declining' ? 'bg-red-500/10 border-red-500/30' :
+            'bg-[#1a1a1a] border-[#2e2e2e]'
+          }`}>
+            <div className={`text-lg font-bold ${
+              exerciseData.trend === 'improving' ? 'text-emerald-400' :
+              exerciseData.trend === 'declining' ? 'text-red-400' : ''
+            }`}>
+              {exerciseData.trend === 'improving' ? '↑' : exerciseData.trend === 'declining' ? '↓' : '→'}
+            </div>
+            <div className="text-xs text-zinc-500">Trend</div>
+          </div>
+        </div>
+
+        {/* Volume Chart */}
+        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+          <div className="text-sm font-medium mb-3">Volume per Session</div>
+          <div className="flex items-end gap-1 h-32 overflow-x-auto">
+            {exerciseData.sessions.slice(-15).map((session, i) => (
+              <div key={i} className="flex-shrink-0 w-8 flex flex-col items-center gap-1">
+                <div className="text-[10px] text-zinc-500 mb-1">{Math.round(session.volume)}</div>
+                <div 
+                  className="w-full bg-orange-500/70 rounded-t transition-all"
+                  style={{ height: `${(session.volume / maxVolume) * 80}%`, minHeight: '4px' }}
+                />
+                <div className="text-[9px] text-zinc-600">
+                  {new Date(session.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).replace(' ', '\n')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Recent Sessions */}
+        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+          <div className="text-sm font-medium mb-3">Recent Sessions</div>
+          <div className="space-y-3">
+            {exerciseData.sessions.slice(-5).reverse().map((session, i) => (
+              <div key={i} className="flex items-center justify-between py-2 border-b border-[#2e2e2e] last:border-0">
+                <div>
+                  <div className="text-sm">{new Date(session.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+                  <div className="text-xs text-zinc-500">
+                    {session.sets.map(s => `${s.weight}kg×${s.reps}`).join(', ')}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-medium">{session.maxWeight}kg</div>
+                  <div className="text-xs text-zinc-500">{session.volume} vol</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Main progress view - exercise list
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
           <ChevronLeft className="w-6 h-6" />
@@ -836,87 +958,59 @@ function ProgressView({ workouts, onBack }: {
         <h1 className="text-xl font-bold">Progress</h1>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Summary */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/20 rounded-xl p-4">
           <div className="text-2xl font-bold">{completedWorkouts.length}</div>
           <div className="text-sm text-zinc-400">Total Workouts</div>
         </div>
         <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
-          <div className="text-2xl font-bold">{records.length}</div>
-          <div className="text-sm text-zinc-400">Personal Records</div>
-        </div>
-        <div className="col-span-2 bg-gradient-to-br from-purple-500/20 to-purple-500/5 border border-purple-500/20 rounded-xl p-4">
-          <div className="text-2xl font-bold">{(totalVolume / 1000).toFixed(1)}t</div>
-          <div className="text-sm text-zinc-400">Total Volume Lifted</div>
+          <div className="text-2xl font-bold">{exerciseList.length}</div>
+          <div className="text-sm text-zinc-400">Exercises Tracked</div>
         </div>
       </div>
 
-      {/* Weekly Chart */}
-      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
-        <div className="text-sm font-medium mb-4">Weekly Workouts</div>
-        <div className="flex items-end gap-2 h-24">
-          {weeklyStats.map((week, i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div 
-                className="w-full bg-orange-500/60 rounded-t transition-all"
-                style={{ height: `${(week.count / maxCount) * 100}%`, minHeight: week.count > 0 ? '8px' : '0' }}
-              />
-              <div className="text-xs text-zinc-500">{week.week}</div>
+      {/* Exercise List - tap to see details */}
+      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-[#2e2e2e]">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-orange-400" />
+            <span className="text-sm font-medium">Exercise Progress</span>
+          </div>
+          <div className="text-xs text-zinc-500 mt-1">Tap an exercise to see detailed analysis</div>
+        </div>
+        <div className="divide-y divide-[#2e2e2e]">
+          {exerciseList.length === 0 ? (
+            <div className="px-4 py-8 text-center text-zinc-500">
+              <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <div>Complete workouts to see exercise progress</div>
             </div>
-          ))}
+          ) : (
+            exerciseList.slice(0, 20).map(exercise => (
+              <button
+                key={exercise.id}
+                onClick={() => setSelectedExercise(exercise.id)}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#252525] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                    <Dumbbell className="w-4 h-4 text-orange-400" />
+                  </div>
+                  <span className="text-sm">{exercise.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500">{exercise.sessionCount} sessions</span>
+                  <ChevronRight className="w-4 h-4 text-zinc-500" />
+                </div>
+              </button>
+            ))
+          )}
         </div>
       </div>
-
-      {/* Personal Records */}
-      {records.length > 0 && (
-        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Trophy className="w-5 h-5 text-yellow-400" />
-            <span className="text-sm font-medium">Personal Records</span>
-          </div>
-          <div className="space-y-3">
-            {records.slice(0, 10).map((record, i) => (
-              <div key={record.exerciseId} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded bg-yellow-500/20 flex items-center justify-center text-xs font-bold text-yellow-400">
-                    {i + 1}
-                  </div>
-                  <span className="text-sm">{record.exerciseName}</span>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium">{record.weight}kg × {record.reps}</div>
-                  <div className="text-xs text-zinc-500">
-                    {new Date(record.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Recent Exercise Weights */}
-      {exerciseProgress.length > 0 && (
-        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Target className="w-5 h-5 text-blue-400" />
-            <span className="text-sm font-medium">Recent Exercise Weights</span>
-          </div>
-          <div className="space-y-2">
-            {exerciseProgress.slice(0, 8).map(ex => (
-              <div key={ex.name} className="flex items-center justify-between py-1">
-                <span className="text-sm text-zinc-300">{ex.name}</span>
-                <span className="text-sm font-medium">{ex.lastWeight}kg × {ex.lastReps}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Empty State */}
       {completedWorkouts.length === 0 && (
-        <div className="text-center py-12 text-zinc-500">
+        <div className="text-center py-8 text-zinc-500">
           <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
           <p>Complete some workouts to see your progress!</p>
         </div>
