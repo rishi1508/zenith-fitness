@@ -58,10 +58,16 @@ function App() {
 
   const finishWorkout = () => {
     if (activeWorkout) {
+      const completedAt = new Date().toISOString();
+      const duration = activeWorkout.startedAt 
+        ? Math.floor((Date.now() - new Date(activeWorkout.startedAt).getTime()) / 60000)
+        : undefined;
+      
       const finished = {
         ...activeWorkout,
         completed: true,
-        completedAt: new Date().toISOString(),
+        completedAt,
+        duration,
       };
       storage.saveWorkout(finished);
       setActiveWorkout(null);
@@ -105,8 +111,8 @@ function App() {
             </div>
             <span className="font-bold text-lg">Zenith Fitness</span>
           </div>
-          {view === 'active' && activeWorkout && (
-            <WorkoutTimer startTime={activeWorkout.startedAt!} />
+          {view === 'active' && activeWorkout?.startedAt && (
+            <WorkoutTimer startTime={activeWorkout.startedAt} />
           )}
         </div>
       </header>
@@ -383,15 +389,30 @@ function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
     newWorkout.exercises = [...workout.exercises];
     newWorkout.exercises[exerciseIndex] = { ...workout.exercises[exerciseIndex] };
     newWorkout.exercises[exerciseIndex].sets = [...workout.exercises[exerciseIndex].sets];
-    newWorkout.exercises[exerciseIndex].sets[setIndex] = {
+    const updatedSet = {
       ...workout.exercises[exerciseIndex].sets[setIndex],
       ...updates,
     };
+    newWorkout.exercises[exerciseIndex].sets[setIndex] = updatedSet;
     onUpdate(newWorkout);
 
     // Start rest timer when completing a set
     if (updates.completed && !workout.exercises[exerciseIndex].sets[setIndex].completed) {
       startRestTimer(90); // 90 second default rest
+      
+      // Track personal record if weight > 0
+      const exercise = workout.exercises[exerciseIndex];
+      if (updatedSet.weight > 0 && updatedSet.reps > 0) {
+        const isPR = storage.checkAndUpdatePR(
+          exercise.exerciseId,
+          exercise.exerciseName,
+          updatedSet.weight,
+          updatedSet.reps
+        );
+        if (isPR && navigator.vibrate) {
+          navigator.vibrate([100, 50, 100, 50, 200]); // Special PR vibration!
+        }
+      }
     }
   };
 
