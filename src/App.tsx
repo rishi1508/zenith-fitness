@@ -692,6 +692,117 @@ function ExerciseCard({ exercise, onUpdateSet }: {
 }
 
 // History View
+// History Workout Card - expandable to show exercise details
+function HistoryWorkoutCard({ workout, onDelete }: {
+  workout: Workout;
+  onDelete: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const isImported = workout.type === 'imported';
+  const isRest = workout.type === 'rest';
+  
+  const completedSets = workout.exercises.reduce((acc, ex) => 
+    acc + ex.sets.filter(s => s.completed).length, 0
+  );
+
+  // For imported workouts, show exercise names in title
+  const getTitle = () => {
+    if (isImported && workout.exercises.length > 0) {
+      const names = workout.exercises.map(ex => ex.exerciseName).slice(0, 2);
+      const suffix = workout.exercises.length > 2 ? ` +${workout.exercises.length - 2}` : '';
+      return names.join(', ') + suffix;
+    }
+    return workout.name;
+  };
+
+  return (
+    <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
+      <button
+        onClick={() => !isRest && workout.exercises.length > 0 && setExpanded(!expanded)}
+        className={`w-full p-4 text-left ${!isRest && workout.exercises.length > 0 ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              isRest 
+                ? 'bg-zinc-500/20' 
+                : isImported
+                  ? 'bg-green-500/20'
+                  : 'bg-orange-500/20'
+            }`}>
+              {isRest 
+                ? <Clock className="w-5 h-5 text-zinc-400" />
+                : <Dumbbell className={`w-5 h-5 ${isImported ? 'text-green-400' : 'text-orange-400'}`} />
+              }
+            </div>
+            <div>
+              <div className="font-medium flex items-center gap-2 flex-wrap">
+                <span>{getTitle()}</span>
+                {isImported && (
+                  <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">
+                    Imported
+                  </span>
+                )}
+              </div>
+              {!isRest && (
+                <div className="text-sm text-zinc-500">
+                  {workout.exercises.length} exercises • {completedSets} sets
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {!isRest && workout.exercises.length > 0 && (
+              <ChevronRight className={`w-5 h-5 text-zinc-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm('Delete this workout?')) {
+                  onDelete();
+                }
+              }}
+              className="p-2 text-zinc-500 hover:text-red-400"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </button>
+      
+      {/* Expanded exercise details */}
+      {expanded && workout.exercises.length > 0 && (
+        <div className="px-4 pb-4 border-t border-[#2e2e2e] pt-3">
+          <div className="space-y-3">
+            {workout.exercises.map((exercise, i) => {
+              const completedSets = exercise.sets.filter(s => s.completed);
+              return (
+                <div key={i} className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-zinc-300">{exercise.exerciseName}</div>
+                    <div className="text-xs text-zinc-500 mt-0.5">
+                      {completedSets.length > 0 ? (
+                        completedSets.map((set, j) => (
+                          <span key={j}>
+                            {j > 0 && ' • '}
+                            {set.weight}kg × {set.reps}
+                          </span>
+                        ))
+                      ) : (
+                        `${exercise.sets.length} sets`
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HistoryView({ workouts, onBack, onDelete }: {
   workouts: Workout[];
   onBack: () => void;
@@ -734,46 +845,11 @@ function HistoryView({ workouts, onBack, onDelete }: {
               </div>
               <div className="space-y-2">
                 {grouped[date].map(workout => (
-                  <div 
+                  <HistoryWorkoutCard 
                     key={workout.id}
-                    className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          workout.type === 'rest' 
-                            ? 'bg-zinc-500/20' 
-                            : 'bg-orange-500/20'
-                        }`}>
-                          {workout.type === 'rest' 
-                            ? <Clock className="w-5 h-5 text-zinc-400" />
-                            : <Dumbbell className="w-5 h-5 text-orange-400" />
-                          }
-                        </div>
-                        <div>
-                          <div className="font-medium">{workout.name}</div>
-                          {workout.type !== 'rest' && (
-                            <div className="text-sm text-zinc-500">
-                              {workout.exercises.length} exercises • 
-                              {workout.exercises.reduce((acc, ex) => 
-                                acc + ex.sets.filter(s => s.completed).length, 0
-                              )} sets
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (confirm('Delete this workout?')) {
-                            onDelete(workout.id);
-                          }
-                        }}
-                        className="p-2 text-zinc-500 hover:text-red-400"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
+                    workout={workout}
+                    onDelete={() => onDelete(workout.id)}
+                  />
                 ))}
               </div>
             </div>
