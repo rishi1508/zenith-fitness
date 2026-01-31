@@ -379,6 +379,7 @@ function App() {
         {view === 'history' && (
           <HistoryView 
             workouts={workoutHistory}
+            isDark={isDark}
             onBack={() => goBack()}
             onDelete={(id) => {
               storage.deleteWorkout(id);
@@ -1031,8 +1032,9 @@ function ExerciseCard({ exercise, onUpdateSet }: {
 
 // History View
 // History Workout Card - expandable to show exercise details
-function HistoryWorkoutCard({ workout, onDelete }: {
+function HistoryWorkoutCard({ workout, isDark, onDelete }: {
   workout: Workout;
+  isDark: boolean;
   onDelete: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -1054,7 +1056,7 @@ function HistoryWorkoutCard({ workout, onDelete }: {
   };
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
+    <div className={`border rounded-xl overflow-hidden ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200 shadow-sm'}`}>
       <button
         onClick={() => !isRest && workout.exercises.length > 0 && setExpanded(!expanded)}
         className={`w-full p-4 text-left ${!isRest && workout.exercises.length > 0 ? 'cursor-pointer' : 'cursor-default'}`}
@@ -1141,8 +1143,9 @@ function HistoryWorkoutCard({ workout, onDelete }: {
   );
 }
 
-function HistoryView({ workouts, onBack, onDelete }: {
+function HistoryView({ workouts, isDark, onBack, onDelete }: {
   workouts: Workout[];
+  isDark: boolean;
   onBack: () => void;
   onDelete: (id: string) => void;
 }) {
@@ -1186,6 +1189,7 @@ function HistoryView({ workouts, onBack, onDelete }: {
                   <HistoryWorkoutCard 
                     key={workout.id}
                     workout={workout}
+                    isDark={isDark}
                     onDelete={() => onDelete(workout.id)}
                   />
                 ))}
