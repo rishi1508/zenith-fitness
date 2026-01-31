@@ -54,6 +54,7 @@ function App() {
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
   const [showSplash, setShowSplash] = useState(true);
   const [missingDays, setMissingDays] = useState<string[]>([]);
+  const [lastTemplateId, setLastTemplateId] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     try { return (localStorage.getItem('zenith_theme') as Theme) || 'dark'; } 
     catch { return 'dark'; }
@@ -85,6 +86,7 @@ function App() {
     setStats(storage.calculateStats());
     setTemplates(storage.getTemplates());
     setWorkoutHistory(storage.getWorkouts());
+    setLastTemplateId(storage.getLastUsedTemplateId());
     // Check for missing days after splash
     const missing = storage.getMissingDays();
     setMissingDays(missing);
@@ -314,6 +316,7 @@ function App() {
           <HomeView 
             stats={stats} 
             templates={templates}
+            lastTemplate={lastTemplateId ? templates.find(t => t.id === lastTemplateId) : null}
             onStartWorkout={startWorkout}
             onLogRest={logRestDay}
             onViewHistory={() => navigateTo('history')}
@@ -440,9 +443,10 @@ function WorkoutTimer({ startTime }: { startTime: string }) {
 }
 
 // Home View
-function HomeView({ stats, templates, onStartWorkout, onLogRest, onViewHistory }: {
+function HomeView({ stats, templates, lastTemplate, onStartWorkout, onLogRest, onViewHistory }: {
   stats: UserStats | null;
   templates: WorkoutTemplate[];
+  lastTemplate: WorkoutTemplate | null | undefined;
   onStartWorkout: (template: WorkoutTemplate) => void;
   onLogRest: () => void;
   onViewHistory: () => void;
@@ -457,6 +461,25 @@ function HomeView({ stats, templates, onStartWorkout, onLogRest, onViewHistory }
         <h1 className="text-2xl font-bold">Hey Rishi! 💪</h1>
         <p className="text-zinc-400">{dayNames[today.getDay()]}, {today.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' })}</p>
       </div>
+
+      {/* Quick Continue - show if there's a last used template */}
+      {lastTemplate && (
+        <button
+          onClick={() => onStartWorkout(lastTemplate)}
+          className="w-full bg-gradient-to-r from-orange-500 to-red-600 rounded-xl p-4 flex items-center justify-between shadow-lg shadow-orange-500/20"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center">
+              <Flame className="w-6 h-6 text-white" />
+            </div>
+            <div className="text-left">
+              <div className="text-white font-semibold">Continue with {lastTemplate.name}</div>
+              <div className="text-white/70 text-sm">{lastTemplate.exercises.length} exercises</div>
+            </div>
+          </div>
+          <ChevronRight className="w-6 h-6 text-white/70" />
+        </button>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3">
