@@ -8,7 +8,7 @@ import type { Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, UserStats }
 import * as storage from './storage';
 import { UpdateChecker, VersionInfo } from './UpdateChecker';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress';
 
 function App() {
   const [view, setView] = useState<View>('home');
@@ -102,8 +102,8 @@ function App() {
       {/* Update Checker */}
       <UpdateChecker />
       
-      {/* Header */}
-      <header className="sticky top-0 bg-[#0f0f0f]/95 backdrop-blur-sm border-b border-[#2e2e2e] px-4 py-3 z-10">
+      {/* Header - with safe area padding for status bar */}
+      <header className="sticky top-0 bg-[#0f0f0f]/95 backdrop-blur-sm border-b border-[#2e2e2e] px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
@@ -146,6 +146,12 @@ function App() {
             }}
           />
         )}
+        {view === 'progress' && (
+          <ProgressView 
+            workouts={workoutHistory}
+            onBack={() => setView('home')}
+          />
+        )}
       </main>
 
       {/* Bottom Navigation */}
@@ -167,8 +173,8 @@ function App() {
             <NavButton 
               icon={<TrendingUp />} 
               label="Progress" 
-              active={false} 
-              onClick={() => alert('Coming soon!')} 
+              active={view === 'progress'} 
+              onClick={() => setView('progress')} 
             />
           </div>
         </nav>
@@ -679,6 +685,181 @@ function HistoryView({ workouts, onBack, onDelete }: {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Progress View
+function ProgressView({ workouts, onBack }: {
+  workouts: Workout[];
+  onBack: () => void;
+}) {
+  const records = storage.getPersonalRecords();
+  const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
+  
+  // Calculate total volume lifted
+  const totalVolume = completedWorkouts.reduce((total, workout) => {
+    return total + workout.exercises.reduce((exTotal, exercise) => {
+      return exTotal + exercise.sets.reduce((setTotal, set) => {
+        if (set.completed && set.weight && set.reps) {
+          return setTotal + (set.weight * set.reps);
+        }
+        return setTotal;
+      }, 0);
+    }, 0);
+  }, 0);
+  
+  // Get workout count by week (last 8 weeks)
+  const weeklyStats: { week: string; count: number; volume: number }[] = [];
+  for (let i = 7; i >= 0; i--) {
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - (weekStart.getDay() + 7 * i));
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    
+    const weekWorkouts = completedWorkouts.filter(w => {
+      const date = new Date(w.date);
+      return date >= weekStart && date <= weekEnd;
+    });
+    
+    const weekVolume = weekWorkouts.reduce((total, workout) => {
+      return total + workout.exercises.reduce((exTotal, exercise) => {
+        return exTotal + exercise.sets.reduce((setTotal, set) => {
+          if (set.completed && set.weight && set.reps) {
+            return setTotal + (set.weight * set.reps);
+          }
+          return setTotal;
+        }, 0);
+      }, 0);
+    }, 0);
+    
+    weeklyStats.push({
+      week: `W${8 - i}`,
+      count: weekWorkouts.length,
+      volume: Math.round(weekVolume),
+    });
+  }
+  
+  const maxCount = Math.max(...weeklyStats.map(w => w.count), 5);
+  
+  // Get exercise progress (last weight used for each exercise)
+  const exerciseProgress: { name: string; lastWeight: number; lastReps: number; date: string }[] = [];
+  const exerciseMap = new Map<string, { name: string; lastWeight: number; lastReps: number; date: string }>();
+  
+  // Sort by date ascending to get the most recent
+  [...completedWorkouts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .forEach(workout => {
+      workout.exercises.forEach(exercise => {
+        const lastCompletedSet = [...exercise.sets].reverse().find(s => s.completed && s.weight > 0);
+        if (lastCompletedSet) {
+          exerciseMap.set(exercise.exerciseId, {
+            name: exercise.exerciseName,
+            lastWeight: lastCompletedSet.weight,
+            lastReps: lastCompletedSet.reps,
+            date: workout.date,
+          });
+        }
+      });
+    });
+  
+  exerciseMap.forEach(value => exerciseProgress.push(value));
+  exerciseProgress.sort((a, b) => b.lastWeight - a.lastWeight);
+
+  return (
+    <div className="space-y-6 animate-fadeIn">
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <h1 className="text-xl font-bold">Progress</h1>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/20 rounded-xl p-4">
+          <div className="text-2xl font-bold">{completedWorkouts.length}</div>
+          <div className="text-sm text-zinc-400">Total Workouts</div>
+        </div>
+        <div className="bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+          <div className="text-2xl font-bold">{records.length}</div>
+          <div className="text-sm text-zinc-400">Personal Records</div>
+        </div>
+        <div className="col-span-2 bg-gradient-to-br from-purple-500/20 to-purple-500/5 border border-purple-500/20 rounded-xl p-4">
+          <div className="text-2xl font-bold">{(totalVolume / 1000).toFixed(1)}t</div>
+          <div className="text-sm text-zinc-400">Total Volume Lifted</div>
+        </div>
+      </div>
+
+      {/* Weekly Chart */}
+      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+        <div className="text-sm font-medium mb-4">Weekly Workouts</div>
+        <div className="flex items-end gap-2 h-24">
+          {weeklyStats.map((week, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <div 
+                className="w-full bg-orange-500/60 rounded-t transition-all"
+                style={{ height: `${(week.count / maxCount) * 100}%`, minHeight: week.count > 0 ? '8px' : '0' }}
+              />
+              <div className="text-xs text-zinc-500">{week.week}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Personal Records */}
+      {records.length > 0 && (
+        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Trophy className="w-5 h-5 text-yellow-400" />
+            <span className="text-sm font-medium">Personal Records</span>
+          </div>
+          <div className="space-y-3">
+            {records.slice(0, 10).map((record, i) => (
+              <div key={record.exerciseId} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded bg-yellow-500/20 flex items-center justify-center text-xs font-bold text-yellow-400">
+                    {i + 1}
+                  </div>
+                  <span className="text-sm">{record.exerciseName}</span>
+                </div>
+                <div className="text-right">
+                  <div className="font-medium">{record.weight}kg × {record.reps}</div>
+                  <div className="text-xs text-zinc-500">
+                    {new Date(record.date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Exercise Weights */}
+      {exerciseProgress.length > 0 && (
+        <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Target className="w-5 h-5 text-blue-400" />
+            <span className="text-sm font-medium">Recent Exercise Weights</span>
+          </div>
+          <div className="space-y-2">
+            {exerciseProgress.slice(0, 8).map(ex => (
+              <div key={ex.name} className="flex items-center justify-between py-1">
+                <span className="text-sm text-zinc-300">{ex.name}</span>
+                <span className="text-sm font-medium">{ex.lastWeight}kg × {ex.lastReps}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {completedWorkouts.length === 0 && (
+        <div className="text-center py-12 text-zinc-500">
+          <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>Complete some workouts to see your progress!</p>
         </div>
       )}
     </div>

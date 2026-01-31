@@ -11,11 +11,21 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* PWA standalone mode - hide browser UI hints */
-@media (display-mode: standalone) {
-  body {
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+/* Safe area handling for mobile (PWA & Capacitor) */
+html {
+  /* Ensure safe areas are available */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+body {
+  /* Reset padding on body since header handles top */
+  padding-top: 0 !important;
+}
+
+/* Android status bar spacing fallback */
+@supports not (padding: env(safe-area-inset-top)) {
+  header {
+    padding-top: 24px !important; /* Typical Android status bar height */
   }
 }
 
