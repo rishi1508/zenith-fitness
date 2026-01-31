@@ -54,17 +54,20 @@ export type WorkoutType =
   | 'custom'
   | 'rest';
 
+export interface TemplateExercise {
+  exerciseId: string;
+  exerciseName: string;
+  defaultSets: number;
+  defaultReps: number;
+}
+
 export interface WorkoutTemplate {
   id: string;
   name: string;
   type: WorkoutType;
-  exercises: {
-    exerciseId: string;
-    exerciseName: string;
-    defaultSets: number;
-    defaultReps: number;
-  }[];
+  exercises: TemplateExercise[];
   dayOfWeek?: number; // 0-6, Sunday-Saturday
+  isCustom?: boolean; // true for user-created templates
 }
 
 export interface UserStats {

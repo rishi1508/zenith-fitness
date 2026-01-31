@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Dumbbell, Calendar, TrendingUp, ChevronRight, 
   Check, Clock, Flame, Trophy,
@@ -7,6 +7,9 @@ import {
 import type { Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, UserStats } from './types';
 import * as storage from './storage';
 import { UpdateChecker, VersionInfo } from './UpdateChecker';
+import { App as CapApp } from '@capacitor/app';
+import { StatusBar, Style } from '@capacitor/status-bar';
+import { Capacitor } from '@capacitor/core';
 
 type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress';
 
@@ -16,6 +19,28 @@ function App() {
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
+  
+  // Navigation history for back button support
+  const navigationHistory = useRef<View[]>(['home']);
+
+  // Navigate with history tracking
+  const navigateTo = useCallback((newView: View) => {
+    if (newView !== view) {
+      navigationHistory.current.push(newView);
+      setView(newView);
+    }
+  }, [view]);
+
+  // Go back in navigation history
+  const goBack = useCallback(() => {
+    if (navigationHistory.current.length > 1) {
+      navigationHistory.current.pop(); // Remove current
+      const previousView = navigationHistory.current[navigationHistory.current.length - 1];
+      setView(previousView);
+      return true;
+    }
+    return false; // No history, let app close
+  }, []);
 
   const loadData = useCallback(() => {
     setStats(storage.calculateStats());
@@ -26,6 +51,36 @@ function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Configure status bar and back button for Android
+  useEffect(() => {
+    const setupNative = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          // Show status bar with dark background, light icons
+          await StatusBar.setStyle({ style: Style.Dark });
+          await StatusBar.setBackgroundColor({ color: '#0f0f0f' });
+          await StatusBar.show();
+        } catch (e) {
+          console.log('StatusBar setup error:', e);
+        }
+
+        // Handle Android back button
+        const backHandler = await CapApp.addListener('backButton', () => {
+          if (!goBack()) {
+            // No navigation history, minimize app instead of closing
+            CapApp.minimizeApp();
+          }
+        });
+
+        return () => {
+          backHandler.remove();
+        };
+      }
+    };
+
+    setupNative();
+  }, [goBack]);
 
   const startWorkout = (template: WorkoutTemplate) => {
     const workout: Workout = {
@@ -48,7 +103,7 @@ function App() {
       startedAt: new Date().toISOString(),
     };
     setActiveWorkout(workout);
-    setView('active');
+    navigateTo('active');
   };
 
   const saveActiveWorkout = (workout: Workout) => {
@@ -72,6 +127,8 @@ function App() {
       storage.saveWorkout(finished);
       setActiveWorkout(null);
       loadData();
+      // Reset navigation history since we completed a workout
+      navigationHistory.current = ['home'];
       setView('home');
     }
   };
@@ -79,6 +136,8 @@ function App() {
   const cancelWorkout = () => {
     if (activeWorkout && confirm('Discard this workout?')) {
       setActiveWorkout(null);
+      // Reset navigation history since we cancelled
+      navigationHistory.current = ['home'];
       setView('home');
     }
   };
@@ -102,8 +161,8 @@ function App() {
       {/* Update Checker */}
       <UpdateChecker />
       
-      {/* Header - with safe area padding for status bar */}
-      <header className="sticky top-0 bg-[#0f0f0f]/95 backdrop-blur-sm border-b border-[#2e2e2e] px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] z-10">
+      {/* Header */}
+      <header className="sticky top-0 bg-[#0f0f0f]/95 backdrop-blur-sm border-b border-[#2e2e2e] px-4 py-3 z-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
@@ -125,7 +184,7 @@ function App() {
             templates={templates}
             onStartWorkout={startWorkout}
             onLogRest={logRestDay}
-            onViewHistory={() => setView('history')}
+            onViewHistory={() => navigateTo('history')}
           />
         )}
         {view === 'active' && activeWorkout && (
@@ -139,7 +198,7 @@ function App() {
         {view === 'history' && (
           <HistoryView 
             workouts={workoutHistory}
-            onBack={() => setView('home')}
+            onBack={() => goBack()}
             onDelete={(id) => {
               storage.deleteWorkout(id);
               loadData();
@@ -149,7 +208,7 @@ function App() {
         {view === 'progress' && (
           <ProgressView 
             workouts={workoutHistory}
-            onBack={() => setView('home')}
+            onBack={() => goBack()}
           />
         )}
       </main>
@@ -162,19 +221,19 @@ function App() {
               icon={<Dumbbell />} 
               label="Workout" 
               active={view === 'home'} 
-              onClick={() => setView('home')} 
+              onClick={() => { navigationHistory.current = ['home']; setView('home'); }} 
             />
             <NavButton 
               icon={<Calendar />} 
               label="History" 
               active={view === 'history'} 
-              onClick={() => setView('history')} 
+              onClick={() => navigateTo('history')} 
             />
             <NavButton 
               icon={<TrendingUp />} 
               label="Progress" 
               active={view === 'progress'} 
-              onClick={() => setView('progress')} 
+              onClick={() => navigateTo('progress')} 
             />
           </div>
         </nav>

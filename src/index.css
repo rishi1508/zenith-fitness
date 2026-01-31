@@ -3,6 +3,8 @@
 /* Custom styles for dark theme */
 :root {
   color-scheme: dark;
+  /* Status bar height fallback for Android */
+  --status-bar-height: 24px;
 }
 
 body {
@@ -13,20 +15,17 @@ body {
 
 /* Safe area handling for mobile (PWA & Capacitor) */
 html {
-  /* Ensure safe areas are available */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  /* Don't pad the html element - let individual elements handle safe areas */
+  padding: 0;
+  background-color: #0f0f0f;
 }
 
 body {
-  /* Reset padding on body since header handles top */
-  padding-top: 0 !important;
-}
-
-/* Android status bar spacing fallback */
-@supports not (padding: env(safe-area-inset-top)) {
-  header {
-    padding-top: 24px !important; /* Typical Android status bar height */
-  }
+  /* Add padding for status bar on native platforms */
+  /* The 24px is typical Android status bar height */
+  padding-top: env(safe-area-inset-top, 0);
+  /* Bottom safe area for navigation bar */
+  padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 /* Animations */
