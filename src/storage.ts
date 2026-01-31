@@ -1,4 +1,4 @@
-import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats } from './types';
+import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet } from './types';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'zenith_workouts',
@@ -203,6 +203,240 @@ export function calculateStats(): UserStats {
     thisWeekWorkouts,
     lastWorkoutDate: sorted[0]?.date,
   };
+}
+
+// Google Sheets Import
+// Expected format: Date, Exercise, Set1 Reps, Set1 Weight, Set2 Reps, Set2 Weight, Set3 Reps, Set3 Weight, Volume
+// Date format: DD-MMM-YY (e.g., 31-Jan-26)
+
+export interface ImportResult {
+  success: boolean;
+  workoutsImported: number;
+  exercisesFound: number;
+  errors: string[];
+}
+
+export async function importFromGoogleSheetsUrl(url: string): Promise<ImportResult> {
+  const errors: string[] = [];
+  
+  try {
+    // Convert Google Sheets URL to CSV export URL
+    // From: https://docs.google.com/spreadsheets/d/SHEET_ID/edit...
+    // To: https://docs.google.com/spreadsheets/d/SHEET_ID/export?format=csv
+    const sheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (!sheetIdMatch) {
+      return { success: false, workoutsImported: 0, exercisesFound: 0, errors: ['Invalid Google Sheets URL'] };
+    }
+    
+    const sheetId = sheetIdMatch[1];
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+    
+    const response = await fetch(csvUrl);
+    if (!response.ok) {
+      return { success: false, workoutsImported: 0, exercisesFound: 0, errors: ['Failed to fetch sheet. Make sure it\'s publicly accessible (Anyone with link can view).'] };
+    }
+    
+    const csvText = await response.text();
+    return importFromCSV(csvText);
+  } catch (e) {
+    errors.push(`Network error: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    return { success: false, workoutsImported: 0, exercisesFound: 0, errors };
+  }
+}
+
+export function importFromCSV(csvText: string): ImportResult {
+  const errors: string[] = [];
+  const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
+  
+  if (lines.length < 2) {
+    return { success: false, workoutsImported: 0, exercisesFound: 0, errors: ['CSV has no data rows'] };
+  }
+  
+  // Skip header row
+  const dataLines = lines.slice(1);
+  
+  // Group rows by date (multiple exercises per workout)
+  const workoutsByDate = new Map<string, { date: Date; exercises: Map<string, { sets: WorkoutSet[] }> }>();
+  const exercisesFound = new Set<string>();
+  
+  for (const line of dataLines) {
+    // Parse CSV (handle quoted values)
+    const values = parseCSVLine(line);
+    if (values.length < 8) {
+      errors.push(`Skipping malformed row: ${line.substring(0, 50)}...`);
+      continue;
+    }
+    
+    const [dateStr, exerciseName, set1Reps, set1Weight, set2Reps, set2Weight, set3Reps, set3Weight] = values;
+    
+    // Parse date (DD-MMM-YY format like "31-Jan-26")
+    const date = parseDateString(dateStr);
+    if (!date) {
+      errors.push(`Invalid date format: ${dateStr}`);
+      continue;
+    }
+    
+    const dateKey = date.toISOString().split('T')[0];
+    exercisesFound.add(exerciseName);
+    
+    // Create or get workout for this date
+    if (!workoutsByDate.has(dateKey)) {
+      workoutsByDate.set(dateKey, { date, exercises: new Map() });
+    }
+    
+    const workout = workoutsByDate.get(dateKey)!;
+    
+    // Create or get exercise
+    if (!workout.exercises.has(exerciseName)) {
+      workout.exercises.set(exerciseName, { sets: [] });
+    }
+    
+    const exercise = workout.exercises.get(exerciseName)!;
+    
+    // Add sets (only if they have data)
+    const addSet = (repsStr: string, weightStr: string) => {
+      const reps = parseInt(repsStr) || 0;
+      const weight = parseFloat(weightStr) || 0;
+      if (reps > 0 || weight > 0) {
+        exercise.sets.push({
+          id: crypto.randomUUID(),
+          reps,
+          weight,
+          completed: true,
+        });
+      }
+    };
+    
+    addSet(set1Reps, set1Weight);
+    addSet(set2Reps, set2Weight);
+    addSet(set3Reps, set3Weight);
+  }
+  
+  // Convert to Workout objects and save
+  const existingWorkouts = getWorkouts();
+  const existingDates = new Set(existingWorkouts.map(w => w.date.split('T')[0]));
+  let importedCount = 0;
+  
+  for (const [dateKey, workoutData] of workoutsByDate) {
+    // Skip if workout already exists for this date
+    if (existingDates.has(dateKey)) {
+      errors.push(`Skipping ${dateKey}: workout already exists`);
+      continue;
+    }
+    
+    const exercises = Array.from(workoutData.exercises.entries()).map(([name, data]) => ({
+      id: crypto.randomUUID(),
+      exerciseId: name.toLowerCase().replace(/\s+/g, '-'),
+      exerciseName: name,
+      sets: data.sets,
+    }));
+    
+    if (exercises.length === 0) continue;
+    
+    const workout: Workout = {
+      id: crypto.randomUUID(),
+      date: workoutData.date.toISOString(),
+      name: `Imported Workout`,
+      type: 'imported',
+      exercises,
+      completed: true,
+      completedAt: workoutData.date.toISOString(),
+    };
+    
+    saveWorkout(workout);
+    importedCount++;
+    
+    // Update PRs for imported exercises
+    for (const ex of exercises) {
+      for (const set of ex.sets) {
+        if (set.weight > 0 && set.reps > 0) {
+          checkAndUpdatePR(ex.exerciseId, ex.exerciseName, set.weight, set.reps);
+        }
+      }
+    }
+  }
+  
+  return {
+    success: importedCount > 0 || errors.length === 0,
+    workoutsImported: importedCount,
+    exercisesFound: exercisesFound.size,
+    errors,
+  };
+}
+
+function parseCSVLine(line: string): string[] {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  values.push(current.trim());
+  
+  return values;
+}
+
+function parseDateString(dateStr: string): Date | null {
+  // Handle DD-MMM-YY format (e.g., "31-Jan-26")
+  const match = dateStr.match(/^(\d{1,2})-(\w{3})-(\d{2})$/);
+  if (match) {
+    const [, day, monthStr, year] = match;
+    const months: Record<string, number> = {
+      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+      'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+    };
+    const month = months[monthStr];
+    if (month !== undefined) {
+      const fullYear = 2000 + parseInt(year);
+      return new Date(fullYear, month, parseInt(day));
+    }
+  }
+  
+  // Try standard date parsing as fallback
+  const parsed = new Date(dateStr);
+  return isNaN(parsed.getTime()) ? null : parsed;
+}
+
+// Export workouts to CSV (for manual Google Sheets paste)
+export function exportToCSV(): string {
+  const workouts = getWorkouts().filter(w => w.completed && w.type !== 'rest');
+  const rows: string[] = ['Date,Exercise,Set 1 Reps,Set 1 Weight,Set 2 Reps,Set 2 Weight,Set 3 Reps,Set 3 Weight,Volume'];
+  
+  for (const workout of workouts.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())) {
+    for (const exercise of workout.exercises) {
+      const date = new Date(workout.date);
+      const dateStr = `${date.getDate()}-${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][date.getMonth()]}-${String(date.getFullYear()).slice(-2)}`;
+      
+      const sets = exercise.sets.filter(s => s.completed);
+      const volume = sets.reduce((sum, s) => sum + (s.weight * s.reps), 0);
+      
+      const row = [
+        dateStr,
+        exercise.exerciseName,
+        sets[0]?.reps || '',
+        sets[0]?.weight || '',
+        sets[1]?.reps || '',
+        sets[1]?.weight || '',
+        sets[2]?.reps || '',
+        sets[2]?.weight || '',
+        volume || '',
+      ];
+      
+      rows.push(row.join(','));
+    }
+  }
+  
+  return rows.join('\n');
 }
 
 // Default exercises for Rishi's workout style
