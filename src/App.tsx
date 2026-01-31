@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   Dumbbell, Calendar, TrendingUp, ChevronRight, 
-  Check, Clock, Flame, Trophy,
+  Check, Clock, Flame, Trophy, Search,
   ChevronLeft, X, Trash2, Timer, Target,
   Settings, Download, Upload, FileSpreadsheet, Copy, CheckCircle2,
   ClipboardList, Plus, Edit3, Save, Sun, Moon
@@ -933,22 +933,7 @@ function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
         ))}
       </div>
 
-      {/* Quick Rest Buttons */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a] border-t border-[#2e2e2e] p-4">
-        <div className="flex gap-2 justify-center">
-          <span className="text-sm text-zinc-500 mr-2">Rest:</span>
-          {[60, 90, 120, 180].map(secs => (
-            <button
-              key={secs}
-              onClick={() => startRestTimer(secs)}
-              className="px-3 py-2 bg-[#252525] rounded-lg text-sm hover:bg-[#2e2e2e]"
-            >
-              {secs >= 60 ? `${secs / 60}m` : `${secs}s`}
-            </button>
-          ))}
-        </div>
       </div>
-    </div>
   );
 }
 
@@ -1361,6 +1346,7 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
   const [name, setName] = useState(template.name);
   const [exercises, setExercises] = useState(template.exercises);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [exerciseSearch, setExerciseSearch] = useState('');
   const allExercises = storage.getExercises();
   
   const addExercise = (exercise: { id: string; name: string }) => {
@@ -1400,24 +1386,47 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
     });
   };
   
-  // Group exercises by muscle group for picker
-  const exercisesByGroup = allExercises.reduce((acc, ex) => {
-    if (!acc[ex.muscleGroup]) acc[ex.muscleGroup] = [];
-    acc[ex.muscleGroup].push(ex);
-    return acc;
-  }, {} as Record<string, typeof allExercises>);
-
   if (showExercisePicker) {
+    // Filter exercises by search
+    const filteredExercises = exerciseSearch.trim() 
+      ? allExercises.filter(ex => 
+          ex.name.toLowerCase().includes(exerciseSearch.toLowerCase()) ||
+          ex.muscleGroup.toLowerCase().includes(exerciseSearch.toLowerCase())
+        )
+      : allExercises;
+    
+    const filteredByGroup = filteredExercises.reduce((acc, ex) => {
+      if (!acc[ex.muscleGroup]) acc[ex.muscleGroup] = [];
+      acc[ex.muscleGroup].push(ex);
+      return acc;
+    }, {} as Record<string, typeof allExercises>);
+    
     return (
       <div className="space-y-4 animate-fadeIn">
         <div className="flex items-center gap-4">
-          <button onClick={() => setShowExercisePicker(false)} className="p-2 -ml-2 text-zinc-400">
+          <button onClick={() => { setShowExercisePicker(false); setExerciseSearch(''); }} className="p-2 -ml-2 text-zinc-400">
             <ChevronLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-bold">Add Exercise</h1>
         </div>
         
-        {Object.entries(exercisesByGroup).map(([group, groupExercises]) => (
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+          <input
+            type="text"
+            value={exerciseSearch}
+            onChange={(e) => setExerciseSearch(e.target.value)}
+            placeholder="Search exercises..."
+            className="w-full pl-10 pr-4 py-3 bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+          />
+        </div>
+        
+        {Object.keys(filteredByGroup).length === 0 && (
+          <p className="text-center text-zinc-500 py-8">No exercises found</p>
+        )}
+        
+        {Object.entries(filteredByGroup).map(([group, groupExercises]) => (
           <div key={group} className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
             <div className="px-4 py-2 border-b border-[#2e2e2e] bg-[#252525]">
               <span className="text-sm font-medium capitalize">{group}</span>
