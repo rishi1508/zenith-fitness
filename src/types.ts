@@ -77,6 +77,8 @@ export interface UserStats {
   longestStreak: number;
   thisWeekWorkouts: number;
   lastWorkoutDate?: string;
+  totalVolume: number;        // Total weight lifted all time
+  avgVolumePerSession: number; // Average volume per workout
 }
 
 export interface PersonalRecord {

@@ -16,6 +16,13 @@ import { Capacitor } from '@capacitor/core';
 type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings';
 type Theme = 'dark' | 'light';
 
+// Format volume: 1500 -> 1.5k, 1500000 -> 1.5t
+function formatVolume(volume: number): string {
+  if (volume >= 1000000) return (volume / 1000000).toFixed(1) + 't';
+  if (volume >= 1000) return (volume / 1000).toFixed(1) + 'k';
+  return volume.toString();
+}
+
 // Splash Screen
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   useEffect(() => {
@@ -394,9 +401,9 @@ function HomeView({ stats, templates, onStartWorkout, onLogRest, onViewHistory }
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3">
         <StatCard 
-          icon={<Flame className="text-orange-400" />}
-          value={stats?.currentStreak || 0}
-          label="Day Streak"
+          icon={<Dumbbell className="text-orange-400" />}
+          value={formatVolume(stats?.totalVolume || 0)}
+          label="Total Volume"
           color="orange"
         />
         <StatCard 
@@ -407,13 +414,13 @@ function HomeView({ stats, templates, onStartWorkout, onLogRest, onViewHistory }
           color="emerald"
         />
         <StatCard 
-          icon={<Trophy className="text-yellow-400" />}
-          value={stats?.longestStreak || 0}
-          label="Best Streak"
+          icon={<TrendingUp className="text-yellow-400" />}
+          value={formatVolume(stats?.avgVolumePerSession || 0)}
+          label="Avg/Session"
           color="yellow"
         />
         <StatCard 
-          icon={<Dumbbell className="text-indigo-400" />}
+          icon={<Trophy className="text-indigo-400" />}
           value={stats?.totalWorkouts || 0}
           label="Total Workouts"
           color="indigo"
@@ -478,7 +485,7 @@ function HomeView({ stats, templates, onStartWorkout, onLogRest, onViewHistory }
 // Stat Card
 function StatCard({ icon, value, label, suffix, color }: {
   icon: React.ReactNode;
-  value: number;
+  value: number | string;
   label: string;
   suffix?: string;
   color: string;

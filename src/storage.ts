@@ -134,8 +134,24 @@ export function calculateStats(): UserStats {
       currentStreak: 0,
       longestStreak: 0,
       thisWeekWorkouts: 0,
+      totalVolume: 0,
+      avgVolumePerSession: 0,
     };
   }
+  
+  // Calculate total volume
+  const totalVolume = workoutOnly.reduce((total, workout) => {
+    return total + workout.exercises.reduce((exTotal, exercise) => {
+      return exTotal + exercise.sets.reduce((setTotal, set) => {
+        if (set.completed && set.weight > 0 && set.reps > 0) {
+          return setTotal + (set.weight * set.reps);
+        }
+        return setTotal;
+      }, 0);
+    }, 0);
+  }, 0);
+  
+  const avgVolumePerSession = workoutOnly.length > 0 ? Math.round(totalVolume / workoutOnly.length) : 0;
   
   // Sort by date descending
   const sorted = [...workoutOnly].sort((a, b) => 
@@ -202,6 +218,8 @@ export function calculateStats(): UserStats {
     longestStreak,
     thisWeekWorkouts,
     lastWorkoutDate: sorted[0]?.date,
+    totalVolume,
+    avgVolumePerSession,
   };
 }
 
