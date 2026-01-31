@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, X } from 'lucide-react';
 
-const GITHUB_REPO = 'LordZenith/zenith-fitness'; // Will be updated with actual repo
+const GITHUB_REPO = 'rishi1508/zenith-fitness';
 const CURRENT_VERSION = __APP_VERSION__;
 
 interface Release {
