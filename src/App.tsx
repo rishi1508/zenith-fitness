@@ -129,6 +129,9 @@ function App() {
   }, [goBack]);
 
   const startWorkout = (template: WorkoutTemplate) => {
+    // Remember this template as last used
+    storage.setLastUsedTemplateId(template.id);
+    
     const workout: Workout = {
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
@@ -431,28 +434,51 @@ function HomeView({ stats, templates, onStartWorkout, onLogRest, onViewHistory }
       <div className="space-y-3">
         <h2 className="text-lg font-semibold">Start Workout</h2>
         <div className="space-y-2">
-          {templates.map(template => (
-            <button
-              key={template.id}
-              onClick={() => onStartWorkout(template)}
-              className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4 flex items-center justify-between hover:border-orange-500/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  template.type === 'arms' ? 'bg-purple-500/20' : 'bg-orange-500/20'
-                }`}>
-                  <Dumbbell className={`w-5 h-5 ${
-                    template.type === 'arms' ? 'text-purple-400' : 'text-orange-400'
-                  }`} />
-                </div>
-                <div className="text-left">
-                  <div className="font-medium">{template.name}</div>
-                  <div className="text-sm text-zinc-500">{template.exercises.length} exercises</div>
-                </div>
-              </div>
-              <ChevronRight className="w-5 h-5 text-zinc-500" />
-            </button>
-          ))}
+          {(() => {
+            const lastUsedId = storage.getLastUsedTemplateId();
+            // Sort: last used first, then the rest
+            const sortedTemplates = [...templates].sort((a, b) => {
+              if (a.id === lastUsedId) return -1;
+              if (b.id === lastUsedId) return 1;
+              return 0;
+            });
+            return sortedTemplates.map(template => {
+              const isLastUsed = template.id === lastUsedId;
+              return (
+                <button
+                  key={template.id}
+                  onClick={() => onStartWorkout(template)}
+                  className={`w-full bg-[#1a1a1a] border rounded-xl p-4 flex items-center justify-between transition-colors ${
+                    isLastUsed 
+                      ? 'border-orange-500/50 ring-1 ring-orange-500/20' 
+                      : 'border-[#2e2e2e] hover:border-orange-500/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      template.type === 'arms' ? 'bg-purple-500/20' : 'bg-orange-500/20'
+                    }`}>
+                      <Dumbbell className={`w-5 h-5 ${
+                        template.type === 'arms' ? 'text-purple-400' : 'text-orange-400'
+                      }`} />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium flex items-center gap-2">
+                        {template.name}
+                        {isLastUsed && (
+                          <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full">
+                            Last used
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-zinc-500">{template.exercises.length} exercises</div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-zinc-500" />
+                </button>
+              );
+            });
+          })()}
         </div>
       </div>
 
