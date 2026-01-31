@@ -389,6 +389,7 @@ function App() {
         {view === 'templates' && (
           <TemplatesView 
             templates={templates}
+            isDark={isDark}
             onBack={() => goBack()}
             onStartWorkout={(template) => {
               startWorkout(template);
@@ -1198,8 +1199,9 @@ function HistoryView({ workouts, onBack, onDelete }: {
 }
 
 // Templates View - Manage workout templates
-function TemplatesView({ templates, onBack, onStartWorkout, onTemplatesChange }: {
+function TemplatesView({ templates, isDark, onBack, onStartWorkout, onTemplatesChange }: {
   templates: WorkoutTemplate[];
+  isDark: boolean;
   onBack: () => void;
   onStartWorkout: (template: WorkoutTemplate) => void;
   onTemplatesChange: () => void;
@@ -1281,11 +1283,11 @@ function TemplatesView({ templates, onBack, onStartWorkout, onTemplatesChange }:
           return (
             <div
               key={template.id}
-              className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden"
+              className={`border rounded-xl overflow-hidden ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200 shadow-sm'}`}
             >
               <button
                 onClick={() => onStartWorkout(template)}
-                className="w-full p-4 flex items-center gap-3 hover:bg-[#252525] transition-colors"
+                className={`w-full p-4 flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-50'}`}
               >
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                   template.type === 'arms' ? 'bg-purple-500/20' :
@@ -1310,7 +1312,7 @@ function TemplatesView({ templates, onBack, onStartWorkout, onTemplatesChange }:
               
               {/* Action buttons for custom templates */}
               {!isDefault && (
-                <div className="flex border-t border-[#2e2e2e]">
+                <div className={`flex border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
                   <button
                     onClick={() => setEditingTemplate(template)}
                     className="flex-1 py-2 text-sm text-zinc-400 hover:text-white hover:bg-[#252525] flex items-center justify-center gap-1 transition-colors"
