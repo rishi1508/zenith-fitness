@@ -69,6 +69,19 @@ export function saveTemplate(template: WorkoutTemplate): void {
   setItem(STORAGE_KEYS.TEMPLATES, templates);
 }
 
+export function deleteTemplate(id: string): void {
+  const templates = getTemplates().filter(t => t.id !== id);
+  setItem(STORAGE_KEYS.TEMPLATES, templates);
+}
+
+export function resetToDefaultTemplates(): void {
+  setItem(STORAGE_KEYS.TEMPLATES, defaultTemplates);
+}
+
+export function getDefaultTemplateIds(): string[] {
+  return defaultTemplates.map(t => t.id);
+}
+
 // Exercises
 export function getExercises(): Exercise[] {
   return getItem<Exercise[]>(STORAGE_KEYS.EXERCISES, defaultExercises);
