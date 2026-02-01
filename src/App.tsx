@@ -23,6 +23,14 @@ function formatVolume(volume: number): string {
   return volume.toString();
 }
 
+// Calculate estimated 1RM using Epley formula
+// 1RM = weight × (1 + reps / 30)
+function calculateEstimated1RM(weight: number, reps: number): number {
+  if (reps === 1) return weight; // Already a 1RM
+  if (reps === 0 || weight === 0) return 0;
+  return Math.round(weight * (1 + reps / 30));
+}
+
 // Splash Screen - shows immediately, dismissed when data is loaded
 function SplashScreen() {
   return (
@@ -2376,18 +2384,32 @@ function ProgressView({ workouts, isDark, onBack }: {
           <h1 className="text-lg font-bold truncate">{exerciseName}</h1>
         </div>
 
-        {/* PR Card */}
+        {/* PR Card with Estimated 1RM */}
         <div className={`bg-gradient-to-br from-yellow-500/20 to-yellow-500/5 border border-yellow-500/30 rounded-xl p-4 ${!isDark && 'from-yellow-100 to-yellow-50'}`}>
-          <div className="flex items-center gap-2 mb-2">
-            <Trophy className="w-5 h-5 text-yellow-500" />
-            <span className="text-sm font-medium text-yellow-600">Personal Record</span>
-          </div>
-          <div className="text-3xl font-bold">{exerciseData.pr.weight}kg × {exerciseData.pr.reps}</div>
-          {exerciseData.pr.date && (
-            <div className={`text-sm mt-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-              {new Date(exerciseData.pr.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Trophy className="w-5 h-5 text-yellow-500" />
+                <span className="text-sm font-medium text-yellow-600">Personal Record</span>
+              </div>
+              <div className="text-3xl font-bold">{exerciseData.pr.weight}kg × {exerciseData.pr.reps}</div>
+              {exerciseData.pr.date && (
+                <div className={`text-sm mt-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+                  {new Date(exerciseData.pr.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
+              )}
             </div>
-          )}
+            {/* Estimated 1RM */}
+            {exerciseData.pr.weight > 0 && (
+              <div className={`text-right pl-4 border-l ${isDark ? 'border-yellow-500/30' : 'border-yellow-300'}`}>
+                <div className={`text-xs mb-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Est. 1RM</div>
+                <div className="text-2xl font-bold text-yellow-500">
+                  {calculateEstimated1RM(exerciseData.pr.weight, exerciseData.pr.reps)}kg
+                </div>
+                <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>Epley formula</div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Stats Row */}
