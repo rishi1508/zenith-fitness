@@ -33,14 +33,17 @@ Show visual indicators during active workout:
 - [x] Editable in Exercise Library (expandable cards)
 - [x] Use cases: form cues, pain points, RPE tracking
 
-### 🎯 v2.10.0 - Weekly Overview Calendar
+### ✅ v2.10.0 - Weekly Overview Calendar
+**Status:** Completed 2026-02-02  
 **Impact:** High — Big picture view  
 **Complexity:** Medium
 
-- 7-day calendar grid showing active plan
-- Color-coded: completed (green), today (orange), rest (gray), upcoming (outline)
-- Tap any day to jump to that workout
-- Show completion checkmarks
+- [x] 7-day grid showing active plan
+- [x] Color-coded: completed (green), next up (orange), rest (gray with emoji)
+- [x] Tap any day to start that workout
+- [x] Week progress bar showing workouts completed/total
+- [x] Quick stats: workout days vs rest days
+- [x] Replaces "Templates" in bottom nav (Templates moved to Settings)
 
 ---
 
@@ -132,6 +135,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-02 01:15 IST  
-**Current Version:** v2.9.0  
-**Next Target:** v2.10.0 - Weekly Overview Calendar
+**Last Updated:** 2026-02-02 01:30 IST  
+**Current Version:** v2.10.0  
+**Next Target:** v2.11.0 - Superset Support
