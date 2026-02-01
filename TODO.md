@@ -88,13 +88,15 @@ Show visual indicators during active workout:
 
 ## 🌟 Nice to Have
 
-### 🎯 Rest Day Reminders
+### ✅ v2.12.0 - Rest Day Reminders
+**Status:** Completed 2026-02-02  
 **Impact:** Low-Medium — Recovery management  
 **Complexity:** Low
 
-- Smart notification after 3+ consecutive workout days
-- "Consider a rest day" with option to log it
-- Respects active plan's rest days
+- [x] Detects 3+ consecutive workout days
+- [x] Blue banner on home screen suggesting rest
+- [x] One-tap button to log rest day
+- [x] Auto-refresh after logging
 
 ### 🎯 Exercise Video Links
 **Impact:** Low — Form reference  
@@ -138,6 +140,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-02 01:35 IST  
-**Current Version:** v2.11.0  
-**Next Target:** Continue with remaining features autonomously
+**Last Updated:** 2026-02-02 01:40 IST  
+**Current Version:** v2.12.0  
+**Next Target:** Exercise Video Links (quick win)

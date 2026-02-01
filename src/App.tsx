@@ -919,12 +919,79 @@ function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistory }: {
   const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000);
   const todaysQuote = quotes[dayOfYear % quotes.length];
   
+  // Check for consecutive workout days (suggest rest)
+  const getConsecutiveWorkoutDays = () => {
+    const sortedWorkouts = workouts
+      .filter(w => w.completed && w.type !== 'rest')
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    let consecutiveDays = 0;
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    
+    for (const workout of sortedWorkouts) {
+      const workoutDate = new Date(workout.date);
+      workoutDate.setHours(0, 0, 0, 0);
+      
+      const daysDiff = Math.floor((todayDate.getTime() - workoutDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff === consecutiveDays) {
+        consecutiveDays++;
+      } else {
+        break;
+      }
+    }
+    
+    return consecutiveDays;
+  };
+  
+  const consecutiveDays = getConsecutiveWorkoutDays();
+  const shouldSuggestRest = consecutiveDays >= 3;
+  
   return (
     <div className="space-y-6 animate-fadeIn">
+      {/* Rest Day Suggestion */}
+      {shouldSuggestRest && (
+        <div className={`rounded-xl p-4 border ${
+          isDark ? 'bg-blue-500/10 border-blue-500/30' : 'bg-blue-50 border-blue-200'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">💤</div>
+            <div className="flex-1">
+              <div className={`font-medium mb-1 ${isDark ? 'text-blue-300' : 'text-blue-900'}`}>
+                Consider Taking a Rest Day
+              </div>
+              <div className={`text-sm ${isDark ? 'text-blue-400/80' : 'text-blue-700'}`}>
+                You've worked out {consecutiveDays} days in a row. Recovery is when muscles grow!
+              </div>
+              <button
+                onClick={() => {
+                  const workout: Workout = {
+                    id: `rest_${Date.now()}`,
+                    date: new Date().toISOString(),
+                    name: 'Rest Day',
+                    type: 'rest',
+                    exercises: [],
+                    completed: true,
+                  };
+                  storage.saveWorkout(workout);
+                  window.location.reload();
+                }}
+                className={`mt-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isDark ? 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                }`}
+              >
+                Log Rest Day
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Greeting */}
       <div>
         <h1 className="text-2xl font-bold">Hey Rishi! 💪</h1>
-        <p className="text-zinc-400">{dayNames[today.getDay()]}, {today.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' })}</p>
+        <p className={`${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>{dayNames[today.getDay()]}, {today.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' })}</p>
         <p className="text-sm text-orange-400/80 mt-1 italic">"{todaysQuote}"</p>
       </div>
 
