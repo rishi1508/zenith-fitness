@@ -17,10 +17,11 @@
 - [x] Now shows only "This Week" and "Total Workouts"
 - **Why:** Volume metrics are meaningless (legs vs arms comparison)
 
-### 3. ❌ Template Selection Dropdown
-- [ ] Add dropdown/selector to choose which template to start
-- [ ] Currently just lists templates - no way to select one easily
-- **Expected:** User picks template from dropdown → starts workout
+### 3. ✅ Template Selection Dropdown — FIXED
+- [x] Added dropdown selector to choose template
+- [x] Shows exercise preview of selected template
+- [x] Big "Start Workout" button
+- [x] Remembers last used template as default selection
 
 ### 4. ✅ Remove "Log Rest Day" Button — FIXED
 - [x] Deleted the manual rest day button
