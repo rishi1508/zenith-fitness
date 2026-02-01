@@ -4,7 +4,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-1.18.1-orange)
+![Version](https://img.shields.io/badge/version-1.18.2-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -12,6 +12,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 ### Core Tracking
 - **Workout Templates** — Create custom templates or use pre-built 4-day split
+- **Custom Exercises** — Create your own exercises with name and muscle group
 - **Smart Template Selection** — Remembers your last used template, shows it first
 - **Active Workout Mode** — Log weight, reps, mark sets complete in real-time
 - **Rest Timer** — Preset buttons (30s, 60s, 90s, 2m) with vibration alerts
