@@ -3,6 +3,7 @@ export interface Exercise {
   name: string;
   muscleGroup: MuscleGroup;
   isCompound: boolean;
+  notes?: string; // Personal notes: form cues, pain points, RPE targets
 }
 
 export type MuscleGroup = 

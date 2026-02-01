@@ -23,13 +23,15 @@ Show visual indicators during active workout:
 - [x] Display last session stats next to current input fields
 - [x] Automatic comparison per set with matching last workout
 
-### 🎯 v2.9.0 - Exercise Notes
+### ✅ v2.9.0 - Exercise Notes
+**Status:** Completed 2026-02-02  
 **Impact:** High — Personalization & form tracking  
 **Complexity:** Low
 
-- Add notes field to Exercise interface
-- Show notes in workout view (expandable)
-- Use cases: form cues, pain points, RPE tracking
+- [x] Add notes field to Exercise interface
+- [x] Show notes in workout view (expandable with emoji header)
+- [x] Editable in Exercise Library (expandable cards)
+- [x] Use cases: form cues, pain points, RPE tracking
 
 ### 🎯 v2.10.0 - Weekly Overview Calendar
 **Impact:** High — Big picture view  
@@ -130,6 +132,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-02 01:00 IST  
-**Current Version:** v2.8.0  
-**Next Target:** v2.9.0 - Exercise Notes
+**Last Updated:** 2026-02-02 01:15 IST  
+**Current Version:** v2.9.0  
+**Next Target:** v2.10.0 - Weekly Overview Calendar
