@@ -4,9 +4,9 @@ import {
   Check, Clock, Flame, Trophy, Search,
   ChevronLeft, X, Trash2, Timer, Target,
   Settings, Download, Upload, FileSpreadsheet, Copy, CheckCircle2,
-  ClipboardList, Plus, Edit3, Save, Sun, Moon
+  ClipboardList, Plus, Edit3, Sun, Moon
 } from 'lucide-react';
-import type { Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, UserStats } from './types';
+import type { Workout, WorkoutExercise, WorkoutSet, WorkoutTemplate, UserStats, WeeklyPlan, DayPlan, Exercise } from './types';
 import * as storage from './storage';
 import { UpdateChecker, VersionInfo } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
@@ -45,7 +45,7 @@ function App() {
   const [view, setView] = useState<View>('home');
   const [stats, setStats] = useState<UserStats | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
-  const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  const [_templates, _setTemplates] = useState<WorkoutTemplate[]>([]); // LEGACY - kept for backward compat
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
   const [showSplash, setShowSplash] = useState(true);
   const [missingDays, setMissingDays] = useState<string[]>([]);
@@ -80,7 +80,7 @@ function App() {
 
   const loadData = useCallback(() => {
     setStats(storage.calculateStats());
-    setTemplates(storage.getTemplates());
+    _setTemplates(storage.getTemplates()); // LEGACY
     setWorkoutHistory(storage.getWorkouts());
     // Check for missing days after splash
     const missing = storage.getMissingDays();
@@ -405,14 +405,10 @@ function App() {
           />
         )}
         {view === 'templates' && (
-          <TemplatesView 
-            templates={templates}
+          <WeeklyPlansView 
             isDark={isDark}
             onBack={() => goBack()}
-            onStartWorkout={(template) => {
-              startWorkout(template);
-            }}
-            onTemplatesChange={loadData}
+            onPlansChange={loadData}
           />
         )}
         {view === 'progress' && (
@@ -1426,58 +1422,61 @@ function HistoryView({ workouts, isDark, onBack, onDelete }: {
   );
 }
 
-// Templates View - Manage workout templates
-function TemplatesView({ templates, isDark, onBack, onStartWorkout, onTemplatesChange }: {
-  templates: WorkoutTemplate[];
+// Weekly Plans View - Manage weekly workout plans
+function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
   isDark: boolean;
   onBack: () => void;
-  onStartWorkout: (template: WorkoutTemplate) => void;
-  onTemplatesChange: () => void;
+  onPlansChange: () => void;
 }) {
-  const [editingTemplate, setEditingTemplate] = useState<WorkoutTemplate | null>(null);
+  const [plans, setPlans] = useState(() => storage.getWeeklyPlans());
+  const [editingPlan, setEditingPlan] = useState<WeeklyPlan | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const defaultIds = storage.getDefaultTemplateIds();
   
-  const handleDelete = (template: WorkoutTemplate) => {
-    if (defaultIds.includes(template.id)) {
-      alert('Cannot delete default templates');
+  const handleDelete = (plan: WeeklyPlan) => {
+    if (plan.id === 'default_plan') {
+      alert('Cannot delete default plan');
       return;
     }
-    if (confirm(`Delete "${template.name}"?`)) {
-      storage.deleteTemplate(template.id);
-      onTemplatesChange();
+    if (confirm(`Delete "${plan.name}"?\n\nThis will permanently remove this weekly plan.`)) {
+      storage.deleteWeeklyPlan(plan.id);
+      setPlans(storage.getWeeklyPlans());
+      onPlansChange();
     }
   };
   
-  const handleSave = (template: WorkoutTemplate) => {
-    storage.saveTemplate(template);
-    onTemplatesChange();
-    setEditingTemplate(null);
+  const handleSave = (plan: WeeklyPlan) => {
+    storage.saveWeeklyPlan(plan);
+    setPlans(storage.getWeeklyPlans());
+    onPlansChange();
+    setEditingPlan(null);
     setIsCreating(false);
   };
   
   const handleCancel = () => {
-    setEditingTemplate(null);
+    setEditingPlan(null);
     setIsCreating(false);
   };
   
-  const createNewTemplate = () => {
-    const newTemplate: WorkoutTemplate = {
-      id: `custom-${Date.now()}`,
-      name: 'New Workout',
-      type: 'custom',
-      exercises: [],
+  const createNewPlan = () => {
+    const newPlan: WeeklyPlan = {
+      id: `custom_plan_${Date.now()}`,
+      name: 'New Weekly Plan',
+      days: [
+        { dayNumber: 1, name: 'Day 1', exercises: [], isRestDay: false }
+      ],
+      isCustom: true,
     };
-    setEditingTemplate(newTemplate);
+    setEditingPlan(newPlan);
     setIsCreating(true);
   };
 
   // Show edit view if editing
-  if (editingTemplate) {
+  if (editingPlan) {
     return (
-      <EditTemplateView 
-        template={editingTemplate}
+      <EditWeeklyPlanView 
+        plan={editingPlan}
         isNew={isCreating}
+        isDark={isDark}
         onSave={handleSave}
         onCancel={handleCancel}
       />
@@ -1488,60 +1487,81 @@ function TemplatesView({ templates, isDark, onBack, onStartWorkout, onTemplatesC
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+          <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <h1 className="text-xl font-bold">Workout Templates</h1>
+          <h1 className="text-xl font-bold">Weekly Plans</h1>
         </div>
         <button 
-          onClick={createNewTemplate}
+          onClick={createNewPlan}
           className="p-2 bg-orange-500 rounded-lg hover:bg-orange-400 transition-colors"
         >
           <Plus className="w-5 h-5" />
         </button>
       </div>
 
-      <p className="text-sm text-zinc-400">
-        Choose a template to start a workout, or create your own custom routine.
+      <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+        Manage your weekly workout plans. Each plan contains multiple days with their own exercises.
       </p>
 
       <div className="space-y-2">
-        {templates.map(template => {
-          const isDefault = defaultIds.includes(template.id);
+        {plans.map(plan => {
+          const workoutDays = plan.days.filter(d => !d.isRestDay);
+          const activePlanId = storage.getActivePlanId();
+          const isActive = plan.id === activePlanId;
+          
           return (
             <div
-              key={template.id}
-              className={`border rounded-xl overflow-hidden ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200 shadow-sm'}`}
+              key={plan.id}
+              className={`border rounded-xl overflow-hidden ${
+                isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200 shadow-sm'
+              } ${isActive ? 'ring-2 ring-orange-500/50' : ''}`}
             >
-              <button
-                onClick={() => onStartWorkout(template)}
-                className={`w-full p-4 flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-50'}`}
-              >
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  template.type === 'arms' ? 'bg-purple-500/20' :
-                  template.type === 'custom' ? 'bg-blue-500/20' : 'bg-orange-500/20'
-                }`}>
-                  <Dumbbell className={`w-5 h-5 ${
-                    template.type === 'arms' ? 'text-purple-400' :
-                    template.type === 'custom' ? 'text-blue-400' : 'text-orange-400'
-                  }`} />
-                </div>
-                <div className="flex-1 text-left">
-                  <div className="font-medium flex items-center gap-2">
-                    {template.name}
-                    {template.type === 'custom' && (
-                      <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">Custom</span>
-                    )}
+              <div className={`p-4 ${isDark ? '' : 'bg-white'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                      <Calendar className="w-5 h-5 text-orange-400" />
+                    </div>
+                    <div>
+                      <div className="font-medium flex items-center gap-2">
+                        {plan.name}
+                        {isActive && (
+                          <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded">Active</span>
+                        )}
+                        {plan.isImported && (
+                          <span className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>Imported</span>
+                        )}
+                        {plan.isCustom && (
+                          <span className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-600'}`}>Custom</span>
+                        )}
+                      </div>
+                      <div className={`text-sm ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                        {workoutDays.length} workout day{workoutDays.length !== 1 ? 's' : ''} • {plan.days.length - workoutDays.length} rest day{(plan.days.length - workoutDays.length) !== 1 ? 's' : ''}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-sm text-zinc-500">{template.exercises.length} exercises</div>
+                  {!isActive && (
+                    <button
+                      onClick={() => {
+                        storage.setActivePlanId(plan.id);
+                        setPlans([...plans]); // Force re-render
+                        onPlansChange();
+                      }}
+                      className={`text-xs px-3 py-1 rounded-lg transition-colors ${
+                        isDark ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30' : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                      }`}
+                    >
+                      Set Active
+                    </button>
+                  )}
                 </div>
-                <ChevronRight className="w-5 h-5 text-zinc-500" />
-              </button>
+              </div>
               
-              {/* Action buttons - Edit for all, Delete only for custom */}
+              {/* Action buttons */}
               <div className={`flex border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
                 <button
-                  onClick={() => setEditingTemplate(template)}
+                  onClick={() => setEditingPlan(plan)}
                   className={`flex-1 py-2 text-sm flex items-center justify-center gap-1 transition-colors ${
                     isDark ? 'text-zinc-400 hover:text-white hover:bg-[#252525]' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
                   }`}
@@ -1549,11 +1569,11 @@ function TemplatesView({ templates, isDark, onBack, onStartWorkout, onTemplatesC
                   <Edit3 className="w-4 h-4" />
                   Edit
                 </button>
-                {!isDefault && (
+                {plan.id !== 'default_plan' && (
                   <>
                     <div className={`w-px ${isDark ? 'bg-[#2e2e2e]' : 'bg-gray-200'}`} />
                     <button
-                      onClick={() => handleDelete(template)}
+                      onClick={() => handleDelete(plan)}
                       className={`flex-1 py-2 text-sm flex items-center justify-center gap-1 transition-colors ${
                         isDark ? 'text-zinc-400 hover:text-red-400 hover:bg-[#252525]' : 'text-gray-500 hover:text-red-500 hover:bg-gray-100'
                       }`}
@@ -1569,34 +1589,237 @@ function TemplatesView({ templates, isDark, onBack, onStartWorkout, onTemplatesC
         })}
       </div>
 
-      {templates.filter(t => !defaultIds.includes(t.id)).length === 0 && (
-        <div className="text-center py-6 text-zinc-500">
+      {plans.filter(p => p.isCustom).length === 0 && (
+        <div className={`text-center py-6 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
           <ClipboardList className="w-10 h-10 mx-auto mb-2 opacity-50" />
-          <p>No custom templates yet</p>
-          <p className="text-sm">Tap + to create your first one!</p>
+          <p>No custom plans yet</p>
+          <p className="text-sm">Tap + to create your first weekly plan!</p>
         </div>
       )}
     </div>
   );
 }
 
-// Edit Template View
-function EditTemplateView({ template, isNew, onSave, onCancel }: {
-  template: WorkoutTemplate;
+// Edit Weekly Plan View - Per-day input for creating weekly plans
+function EditWeeklyPlanView({ plan, isNew, isDark, onSave, onCancel }: {
+  plan: WeeklyPlan;
   isNew: boolean;
-  onSave: (template: WorkoutTemplate) => void;
+  isDark: boolean;
+  onSave: (plan: WeeklyPlan) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState(template.name);
-  const [exercises, setExercises] = useState(template.exercises);
-  const [showExercisePicker, setShowExercisePicker] = useState(false);
-  const [showCustomExerciseForm, setShowCustomExerciseForm] = useState(false);
-  const [exerciseSearch, setExerciseSearch] = useState('');
-  const [customExerciseName, setCustomExerciseName] = useState('');
-  const [customExerciseGroup, setCustomExerciseGroup] = useState('');
-  const [allExercises, setAllExercises] = useState(storage.getExercises());
+  const [name, setName] = useState(plan.name);
+  const [days, setDays] = useState<DayPlan[]>(plan.days);
+  const [editingDayIndex, setEditingDayIndex] = useState<number | null>(null);
   
-  const addExercise = (exercise: { id: string; name: string }) => {
+  const addDay = () => {
+    const newDay: DayPlan = {
+      dayNumber: days.length + 1,
+      name: `Day ${days.length + 1}`,
+      exercises: [],
+      isRestDay: false,
+    };
+    setDays([...days, newDay]);
+  };
+  
+  const removeDay = (index: number) => {
+    if (days.length <= 1) {
+      alert('Plan must have at least one day');
+      return;
+    }
+    const updated = days.filter((_, i) => i !== index);
+    // Renumber days
+    updated.forEach((d, i) => { d.dayNumber = i + 1; });
+    setDays(updated);
+  };
+  
+  const updateDay = (index: number, updatedDay: DayPlan) => {
+    const updated = [...days];
+    updated[index] = updatedDay;
+    setDays(updated);
+  };
+  
+  const toggleRestDay = (index: number) => {
+    const updated = [...days];
+    updated[index].isRestDay = !updated[index].isRestDay;
+    if (updated[index].isRestDay) {
+      updated[index].exercises = [];
+      updated[index].name = `${updated[index].name.replace(' (Rest)', '')} (Rest)`;
+    } else {
+      updated[index].name = updated[index].name.replace(' (Rest)', '');
+    }
+    setDays(updated);
+  };
+  
+  const handleSave = () => {
+    if (!name.trim()) {
+      alert('Please enter a plan name');
+      return;
+    }
+    if (days.length === 0) {
+      alert('Plan must have at least one day');
+      return;
+    }
+    
+    onSave({
+      ...plan,
+      name: name.trim(),
+      days,
+    });
+  };
+  
+  // If editing a specific day
+  if (editingDayIndex !== null) {
+    return (
+      <DayExerciseEditor
+        day={days[editingDayIndex]}
+        isDark={isDark}
+        onSave={(updatedDay) => {
+          updateDay(editingDayIndex, updatedDay);
+          setEditingDayIndex(null);
+        }}
+        onCancel={() => setEditingDayIndex(null)}
+      />
+    );
+  }
+  
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      <div className="flex items-center gap-4">
+        <button onClick={onCancel} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <h1 className="text-xl font-bold">{isNew ? 'New Weekly Plan' : 'Edit Plan'}</h1>
+      </div>
+      
+      {/* Plan Name */}
+      <div>
+        <label className={`text-sm mb-1 block ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>Plan Name</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., 4 Full Body + 1 Arms"
+          className={`w-full rounded-lg px-4 py-3 border ${
+            isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white' : 'bg-white border-gray-200'
+          } focus:outline-none focus:border-orange-500`}
+        />
+      </div>
+      
+      {/* Days List */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <label className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+            Days ({days.length} total, {days.filter(d => !d.isRestDay).length} workout)
+          </label>
+          <button
+            onClick={addDay}
+            className="text-sm text-orange-400 hover:text-orange-300 flex items-center gap-1"
+          >
+            <Plus className="w-4 h-4" />
+            Add Day
+          </button>
+        </div>
+        
+        <div className="space-y-2">
+          {days.map((day, index) => (
+            <div
+              key={index}
+              className={`rounded-xl p-4 border ${
+                isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium ${
+                  day.isRestDay 
+                    ? isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-gray-200 text-gray-500'
+                    : 'bg-orange-500/20 text-orange-400'
+                }`}>
+                  {day.dayNumber}
+                </div>
+                <div className="flex-1">
+                  <div className="font-medium">{day.name}</div>
+                  <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                    {day.isRestDay ? 'Rest Day' : `${day.exercises.length} exercise${day.exercises.length !== 1 ? 's' : ''}`}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleRestDay(index)}
+                    className={`text-xs px-3 py-1 rounded-lg transition-colors ${
+                      day.isRestDay
+                        ? isDark ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-600'
+                        : isDark ? 'bg-zinc-700 text-zinc-400' : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {day.isRestDay ? 'Make Workout' : 'Make Rest'}
+                  </button>
+                  {!day.isRestDay && (
+                    <button
+                      onClick={() => setEditingDayIndex(index)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-100'
+                      }`}
+                    >
+                      <Edit3 className={`w-4 h-4 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`} />
+                    </button>
+                  )}
+                  {days.length > 1 && (
+                    <button
+                      onClick={() => removeDay(index)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isDark ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-400' : 'hover:bg-red-50 text-gray-400 hover:text-red-500'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Save/Cancel */}
+      <div className="flex gap-3 pt-4">
+        <button
+          onClick={onCancel}
+          className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
+            isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e] text-zinc-400 hover:bg-[#252525]' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          className="flex-1 py-3 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-400 transition-colors"
+        >
+          {isNew ? 'Create Plan' : 'Save Changes'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Day Exercise Editor - Edit exercises for a single day
+function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
+  day: DayPlan;
+  isDark: boolean;
+  onSave: (day: DayPlan) => void;
+  onCancel: () => void;
+}) {
+  const [dayName, setDayName] = useState(day.name);
+  const [exercises, setExercises] = useState(day.exercises);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const allExercises = storage.getExercises();
+  
+  const filteredExercises = allExercises.filter(ex =>
+    ex.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const addExercise = (exercise: Exercise) => {
     setExercises([...exercises, {
       exerciseId: exercise.id,
       exerciseName: exercise.name,
@@ -1604,27 +1827,11 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
       defaultReps: 10,
     }]);
     setShowExercisePicker(false);
+    setSearchQuery('');
   };
   
   const removeExercise = (index: number) => {
     setExercises(exercises.filter((_, i) => i !== index));
-  };
-  
-  const createCustomExercise = () => {
-    if (!customExerciseName.trim()) {
-      alert('Please enter an exercise name');
-      return;
-    }
-    if (!customExerciseGroup.trim()) {
-      alert('Please select a muscle group');
-      return;
-    }
-    const newExercise = storage.addCustomExercise(customExerciseName, customExerciseGroup);
-    setAllExercises(storage.getExercises()); // Refresh list
-    addExercise(newExercise);
-    setCustomExerciseName('');
-    setCustomExerciseGroup('');
-    setShowCustomExerciseForm(false);
   };
   
   const updateExercise = (index: number, field: 'defaultSets' | 'defaultReps', value: number) => {
@@ -1634,241 +1841,154 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
   };
   
   const handleSave = () => {
-    if (!name.trim()) {
-      alert('Please enter a template name');
-      return;
-    }
-    if (exercises.length === 0) {
-      alert('Please add at least one exercise');
+    if (!dayName.trim()) {
+      alert('Please enter a day name');
       return;
     }
     
     onSave({
-      ...template,
-      name: name.trim(),
+      ...day,
+      name: dayName.trim(),
       exercises,
     });
   };
   
-  // Muscle groups for custom exercise dropdown (must match MuscleGroup type)
-  const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body'];
-  
-  if (showCustomExerciseForm) {
-    return (
-      <div className="space-y-4 animate-fadeIn">
-        <div className="flex items-center gap-4">
-          <button onClick={() => setShowCustomExerciseForm(false)} className="p-2 -ml-2 text-zinc-400">
-            <ChevronLeft className="w-6 h-6" />
-          </button>
-          <h1 className="text-xl font-bold">Create Custom Exercise</h1>
-        </div>
-        
-        <div>
-          <label className="text-sm text-zinc-400 mb-1 block">Exercise Name</label>
-          <input
-            type="text"
-            value={customExerciseName}
-            onChange={(e) => setCustomExerciseName(e.target.value)}
-            placeholder="e.g., Cable Flyes"
-            className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
-          />
-        </div>
-        
-        <div>
-          <label className="text-sm text-zinc-400 mb-1 block">Muscle Group</label>
-          <select
-            value={customExerciseGroup}
-            onChange={(e) => setCustomExerciseGroup(e.target.value)}
-            className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500 appearance-none"
-          >
-            <option value="">Select muscle group...</option>
-            {muscleGroups.map(group => (
-              <option key={group} value={group} className="capitalize">{group.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
-            ))}
-          </select>
-        </div>
-        
-        <button
-          onClick={createCustomExercise}
-          className="w-full py-3 bg-orange-500 rounded-lg hover:bg-orange-400 flex items-center justify-center gap-2 transition-colors font-medium"
-        >
-          <Plus className="w-5 h-5" />
-          Create & Add Exercise
-        </button>
-      </div>
-    );
-  }
-  
   if (showExercisePicker) {
-    // Filter exercises by search
-    const filteredExercises = exerciseSearch.trim() 
-      ? allExercises.filter(ex => 
-          ex.name.toLowerCase().includes(exerciseSearch.toLowerCase()) ||
-          ex.muscleGroup.toLowerCase().includes(exerciseSearch.toLowerCase())
-        )
-      : allExercises;
-    
-    const filteredByGroup = filteredExercises.reduce((acc, ex) => {
-      if (!acc[ex.muscleGroup]) acc[ex.muscleGroup] = [];
-      acc[ex.muscleGroup].push(ex);
-      return acc;
-    }, {} as Record<string, typeof allExercises>);
-    
     return (
       <div className="space-y-4 animate-fadeIn">
         <div className="flex items-center gap-4">
-          <button onClick={() => { setShowExercisePicker(false); setExerciseSearch(''); }} className="p-2 -ml-2 text-zinc-400">
+          <button onClick={() => setShowExercisePicker(false)} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
             <ChevronLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-bold">Add Exercise</h1>
         </div>
         
-        {/* Search Input */}
+        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+          <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
           <input
             type="text"
-            value={exerciseSearch}
-            onChange={(e) => setExerciseSearch(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search exercises..."
-            className="w-full pl-10 pr-4 py-3 bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+            className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
+              isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white' : 'bg-white border-gray-200'
+            } focus:outline-none focus:border-orange-500`}
+            autoFocus
           />
         </div>
         
-        {/* Create Custom Exercise Button */}
-        <button
-          onClick={() => setShowCustomExerciseForm(true)}
-          className="w-full py-3 border-2 border-dashed border-orange-500/50 rounded-xl text-orange-400 hover:bg-orange-500/10 flex items-center justify-center gap-2 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Create Custom Exercise
-        </button>
-        
-        {Object.keys(filteredByGroup).length === 0 && (
-          <p className="text-center text-zinc-500 py-8">No exercises found</p>
-        )}
-        
-        {Object.entries(filteredByGroup).map(([group, groupExercises]) => (
-          <div key={group} className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
-            <div className="px-4 py-2 border-b border-[#2e2e2e] bg-[#252525]">
-              <span className="text-sm font-medium capitalize">{group}</span>
-            </div>
-            <div className="divide-y divide-[#2e2e2e]">
-              {groupExercises.map(ex => {
-                const alreadyAdded = exercises.some(e => e.exerciseId === ex.id);
-                return (
-                  <button
-                    key={ex.id}
-                    onClick={() => !alreadyAdded && addExercise(ex)}
-                    disabled={alreadyAdded}
-                    className={`w-full px-4 py-3 text-left flex items-center justify-between ${
-                      alreadyAdded ? 'opacity-50' : 'hover:bg-[#252525]'
-                    } transition-colors`}
-                  >
-                    <span className="text-sm">{ex.name}</span>
-                    {alreadyAdded ? (
-                      <Check className="w-4 h-4 text-green-400" />
-                    ) : (
-                      <Plus className="w-4 h-4 text-zinc-500" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+        {/* Exercise List */}
+        <div className="space-y-2">
+          {filteredExercises.map(exercise => (
+            <button
+              key={exercise.id}
+              onClick={() => addExercise(exercise)}
+              className={`w-full p-4 rounded-xl border text-left transition-colors ${
+                isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] hover:bg-[#252525]' : 'bg-white border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <div className="font-medium">{exercise.name}</div>
+              <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                {exercise.muscleGroup.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                {exercise.isCompound && ' • Compound'}
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
-
+  
   return (
     <div className="space-y-4 animate-fadeIn">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button onClick={onCancel} className="p-2 -ml-2 text-zinc-400">
-            <X className="w-6 h-6" />
-          </button>
-          <h1 className="text-xl font-bold">{isNew ? 'New Template' : 'Edit Template'}</h1>
-        </div>
-        <button 
-          onClick={handleSave}
-          className="px-4 py-2 bg-orange-500 rounded-lg hover:bg-orange-400 flex items-center gap-2 transition-colors"
-        >
-          <Save className="w-4 h-4" />
-          Save
+      <div className="flex items-center gap-4">
+        <button onClick={onCancel} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+          <ChevronLeft className="w-6 h-6" />
         </button>
+        <h1 className="text-xl font-bold">Edit {day.name}</h1>
       </div>
       
-      {/* Template Name */}
+      {/* Day Name */}
       <div>
-        <label className="text-sm text-zinc-400 mb-1 block">Template Name</label>
+        <label className={`text-sm mb-1 block ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>Day Name</label>
         <input
           type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Upper Body Day"
-          className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
+          value={dayName}
+          onChange={(e) => setDayName(e.target.value)}
+          placeholder="e.g., Full Body, Arms, Rest"
+          className={`w-full rounded-lg px-4 py-3 border ${
+            isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white' : 'bg-white border-gray-200'
+          } focus:outline-none focus:border-orange-500`}
         />
       </div>
       
       {/* Exercises */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm text-zinc-400">Exercises</label>
+        <div className="flex items-center justify-between mb-3">
+          <label className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+            Exercises ({exercises.length})
+          </label>
           <button
             onClick={() => setShowExercisePicker(true)}
-            className="text-sm text-orange-400 flex items-center gap-1"
+            className="text-sm text-orange-400 hover:text-orange-300 flex items-center gap-1"
           >
             <Plus className="w-4 h-4" />
-            Add
+            Add Exercise
           </button>
         </div>
         
         {exercises.length === 0 ? (
-          <div className="bg-[#1a1a1a] border border-dashed border-[#3e3e3e] rounded-xl p-6 text-center">
-            <Dumbbell className="w-8 h-8 mx-auto mb-2 text-zinc-600" />
-            <p className="text-sm text-zinc-500">No exercises yet</p>
-            <button
-              onClick={() => setShowExercisePicker(true)}
-              className="mt-2 text-sm text-orange-400"
-            >
-              + Add your first exercise
-            </button>
+          <div className={`text-center py-8 rounded-xl border ${
+            isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-500' : 'bg-gray-50 border-gray-200 text-gray-500'
+          }`}>
+            <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>No exercises yet</p>
+            <p className="text-xs mt-1">Tap "Add Exercise" to get started</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {exercises.map((ex, i) => (
-              <div key={i} className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-medium">{ex.exerciseName}</span>
+            {exercises.map((ex, index) => (
+              <div
+                key={index}
+                className={`rounded-xl p-3 border ${
+                  isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex-1 font-medium">{ex.exerciseName}</div>
                   <button
-                    onClick={() => removeExercise(i)}
-                    className="text-zinc-500 hover:text-red-400"
+                    onClick={() => removeExercise(index)}
+                    className={`p-1 rounded transition-colors ${
+                      isDark ? 'hover:bg-red-500/10 text-zinc-500 hover:text-red-400' : 'hover:bg-red-50 text-gray-400 hover:text-red-500'
+                    }`}
                   >
-                    <X className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="flex gap-4">
+                <div className="flex gap-3">
                   <div className="flex-1">
-                    <label className="text-xs text-zinc-500 mb-1 block">Sets</label>
+                    <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Sets</label>
                     <input
                       type="number"
+                      min="1"
                       value={ex.defaultSets}
-                      onChange={(e) => updateExercise(i, 'defaultSets', parseInt(e.target.value) || 1)}
-                      min={1}
-                      max={10}
-                      className="w-full bg-[#252525] border border-[#3e3e3e] rounded-lg px-3 py-2 text-center"
+                      onChange={(e) => updateExercise(index, 'defaultSets', parseInt(e.target.value) || 1)}
+                      className={`w-full mt-1 px-3 py-2 rounded-lg border text-sm ${
+                        isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-gray-50 border-gray-200'
+                      } focus:outline-none focus:border-orange-500`}
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-zinc-500 mb-1 block">Reps</label>
+                    <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Reps</label>
                     <input
                       type="number"
+                      min="1"
                       value={ex.defaultReps}
-                      onChange={(e) => updateExercise(i, 'defaultReps', parseInt(e.target.value) || 1)}
-                      min={1}
-                      max={100}
-                      className="w-full bg-[#252525] border border-[#3e3e3e] rounded-lg px-3 py-2 text-center"
+                      onChange={(e) => updateExercise(index, 'defaultReps', parseInt(e.target.value) || 1)}
+                      className={`w-full mt-1 px-3 py-2 rounded-lg border text-sm ${
+                        isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-gray-50 border-gray-200'
+                      } focus:outline-none focus:border-orange-500`}
                     />
                   </div>
                 </div>
@@ -1876,6 +1996,24 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
             ))}
           </div>
         )}
+      </div>
+      
+      {/* Save/Cancel */}
+      <div className="flex gap-3 pt-4">
+        <button
+          onClick={onCancel}
+          className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
+            isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e] text-zinc-400 hover:bg-[#252525]' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          className="flex-1 py-3 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-400 transition-colors"
+        >
+          Save Day
+        </button>
       </div>
     </div>
   );
