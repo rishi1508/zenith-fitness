@@ -1,94 +1,135 @@
-# Zenith Fitness - Critical Fixes TODO
+# Zenith Fitness — Feature Roadmap
 
-**Created:** 2026-02-01 12:15 PM
-**Status:** IN PROGRESS
-
----
-
-## Priority Issues (Must Fix)
-
-### 1. ✅ Splash Screen — FIXED
-- [x] Remove fixed 1.5s timer - now loads data and dismisses
-- [x] Splash shows immediately, no white screen
-- **Fix:** Removed setTimeout, splash hides when loadData completes
-
-### 2. ✅ Home Stats Cards — FIXED
-- [x] Removed "Total Volume" and "Avg/Session"
-- [x] Now shows only "This Week" and "Total Workouts"
-- **Why:** Volume metrics are meaningless (legs vs arms comparison)
-
-### 3. ✅ Weekly Plan System — MAJOR REFACTOR
-- [x] Templates → Weekly Plans (e.g., "4 Full Body + 1 Arms")
-- [x] Each plan has multiple days with their own exercises
-- [x] Home shows active plan label with switch button
-- [x] Day selector dropdown (Day 1, Day 2, etc.)
-- [x] Remembers last used day and active plan
-
-### 4. ✅ Remove "Log Rest Day" Button — FIXED
-- [x] Deleted the manual rest day button
-- [x] Rest days are auto-detected (no workout = rest day)
-
-### 5. ✅ Google Sheets Import - Exercise Auto-Population — FIXED
-- [x] Now reads "Exercise Data Transpose" sheet (first COLUMN has names)
-- [x] Extracts exercise names from first column
-- [x] Auto-adds to exercise database with guessed muscle groups
-- **Note:** Re-import to populate exercises
-
-### 6. ✅ Google Sheets Import - Weekly Plan Creation — FIXED
-- [x] Now reads "Workout Plan" sheet properly
-- [x] Creates WeeklyPlan with SEPARATE days (Day 1, Day 2, etc.)
-- [x] Each day has its own exercises
-- [x] Empty days marked as rest days
-- [x] Sets imported plan as active automatically
-- **Note:** Re-import to create proper weekly plan
-
-### 7. ✅ Templates Page - Edit All Templates — FIXED
-- [x] Added Edit button to ALL templates (not just custom)
-- [x] Default templates can now be edited
-- [x] Delete button only shows for custom templates
-- [x] Light mode styling for buttons
-
-### 8. ❌ History Page - Shows Only One Exercise
-- [ ] Re-test after running import (exercises should now populate)
-- [ ] Verify all exercises show after import fix
-- [ ] Check for other potential causes
-
-### 9. ✅ Progress Page - Graph Fixed
-- [x] Replaced bar chart with interactive SVG line chart
-- [x] Points are clickable - shows date, volume, max weight/reps
-- [x] Area fill under line for visual appeal
-- [x] Hover/click interaction on points
-- [x] Shows last 15 sessions
+**Status Legend:** 🎯 Planned | 🚧 In Progress | ✅ Done | 🔥 High Priority
 
 ---
 
-## Completed ✅
-- [x] Light mode support (all views)
-- [x] PR notifications
-- [x] Workout celebration
-- [x] Rest timer presets
+## 🔥 High Priority (Quick Wins)
+
+### ✅ v2.7.0 - UI Refinements
+- [x] Exercise Library button alignment
+- [x] Distinct Active state (green badge + ring)
+- [x] Rename default template to "Sample Weekly Plan"
+
+### ✅ v2.8.0 - Progressive Overload Tracker
+**Status:** Completed 2026-02-02  
+**Impact:** High — Core feature for strength progression  
+**Complexity:** Medium
+
+Show visual indicators during active workout:
+- [x] 🔺 Green up arrow if weight/reps increased vs last session
+- [x] ➡️ Gray equals if same
+- [x] 🔻 Red down arrow if decreased
+- [x] Display last session stats next to current input fields
+- [x] Automatic comparison per set with matching last workout
+
+### 🎯 v2.9.0 - Exercise Notes
+**Impact:** High — Personalization & form tracking  
+**Complexity:** Low
+
+- Add notes field to Exercise interface
+- Show notes in workout view (expandable)
+- Use cases: form cues, pain points, RPE tracking
+
+### 🎯 v2.10.0 - Weekly Overview Calendar
+**Impact:** High — Big picture view  
+**Complexity:** Medium
+
+- 7-day calendar grid showing active plan
+- Color-coded: completed (green), today (orange), rest (gray), upcoming (outline)
+- Tap any day to jump to that workout
+- Show completion checkmarks
 
 ---
 
-## ✅ ALL FEATURES COMPLETE!
+## 📊 Medium Priority
 
-**v2.2.0 - Weekly Plan Creator shipped!**
-- [x] Templates view → Weekly Plans view
-- [x] Create custom weekly plans from scratch
-- [x] Per-day input (add/remove days)
-- [x] Assign exercises per day with search
-- [x] Mark rest days
-- [x] Edit existing plans
-- [x] Set active plan
+### 🎯 Superset Support
+**Impact:** Medium — Training efficiency  
+**Complexity:** Medium
 
-## Deferred (Later)
-- [ ] Two-way Google Sheets sync (needs OAuth)
+- Mark exercises as supersets (A1/A2, B1/B2 pattern)
+- Shared rest timer between superset pairs
+- Visual grouping in workout view
+
+### 🎯 Volume Goals per Muscle Group
+**Impact:** Medium — Targeted progression  
+**Complexity:** High (needs muscle group tracking)
+
+- Set weekly volume targets (e.g., 12 sets chest, 15 sets legs)
+- Track progress throughout week
+- End-of-week summary showing hit/miss
+
+### 🎯 Workout Templates from History
+**Impact:** Medium — Convenience  
+**Complexity:** Low
+
+- Long-press any past workout → "Save as Template"
+- Converts to reusable weekly plan
+- Quick iteration on what worked
+
+### 🎯 Comparison View
+**Impact:** Medium — Analysis tool  
+**Complexity:** Medium
+
+- Select two workouts/weeks to compare
+- Side-by-side stats: volume, exercises, PRs
+- Visual diff highlighting changes
 
 ---
 
-## Google Sheet Reference
-- **Sheet ID:** `1WvpNhL-CNxFet5VvN_iTtYcDwh3ehCNwv9oYRGFXu1s`
-- **Sheets:**
-  - Log Sheet - workout history data
-  - Exercise Data - exercise names, muscle groups
-  - Workout Plan - template structure
+## 🌟 Nice to Have
+
+### 🎯 Rest Day Reminders
+**Impact:** Low-Medium — Recovery management  
+**Complexity:** Low
+
+- Smart notification after 3+ consecutive workout days
+- "Consider a rest day" with option to log it
+- Respects active plan's rest days
+
+### 🎯 Exercise Video Links
+**Impact:** Low — Form reference  
+**Complexity:** Low
+
+- Add optional URL field to exercises
+- Tap to open YouTube/form guide
+- Embedded preview in workout view?
+
+### 🎯 Deload Week Tracking
+**Impact:** Low — Periodization support  
+**Complexity:** Medium
+
+- Mark weeks as deload
+- Auto-suggest 60-70% volume reduction
+- Track deload frequency
+
+---
+
+## 🚀 Future (Post-MVP)
+
+- [ ] Two-way Google Sheets sync (OAuth)
+- [ ] Workout reminders/notifications
+- [ ] Workout sharing (export/import JSON)
+- [ ] Wear OS companion app
+- [ ] Exercise form videos (hosted)
+- [ ] Community templates library
+- [ ] Plate calculator (what plates to load)
+- [ ] 1RM calculator and predictions
+
+---
+
+## 🎨 UI/UX Polish Ideas
+
+- [ ] Swipe gestures (swipe exercise left → delete, right → duplicate)
+- [ ] Long-press menu for quick actions
+- [ ] Haptic feedback on PR achievements
+- [ ] Sound effects toggle (celebration, timer)
+- [ ] Export workout as shareable image
+- [ ] Dark mode schedule (auto-switch at sunset)
+
+---
+
+**Last Updated:** 2026-02-02 01:00 IST  
+**Current Version:** v2.8.0  
+**Next Target:** v2.9.0 - Exercise Notes

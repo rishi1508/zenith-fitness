@@ -1176,6 +1176,34 @@ function ExerciseCard({ exercise, onUpdateSet }: {
 }) {
   const [expanded, setExpanded] = useState(true);
   const completedCount = exercise.sets.filter(s => s.completed).length;
+  
+  // Get last session data for progressive overload tracking
+  const lastSession = useMemo(() => 
+    storage.getLastExerciseSession(exercise.exerciseId), 
+    [exercise.exerciseId]
+  );
+  
+  // Helper to get comparison indicator for a set
+  const getProgressIndicator = (setIndex: number, currentWeight: number, currentReps: number) => {
+    if (!lastSession || setIndex >= lastSession.length) return null;
+    const lastSet = lastSession[setIndex];
+    
+    if (currentWeight === 0 || currentReps === 0) return null; // No data yet
+    
+    const weightDiff = currentWeight - lastSet.weight;
+    const repsDiff = currentReps - lastSet.reps;
+    
+    // Improved: either weight or reps increased (or both)
+    if (weightDiff > 0 || repsDiff > 0) {
+      return { icon: '🔺', color: 'text-green-400', label: 'Improved!' };
+    }
+    // Same
+    if (weightDiff === 0 && repsDiff === 0) {
+      return { icon: '➡️', color: 'text-zinc-400', label: 'Same as last' };
+    }
+    // Decreased
+    return { icon: '🔻', color: 'text-red-400', label: 'Lower' };
+  };
 
   return (
     <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
@@ -1206,46 +1234,67 @@ function ExerciseCard({ exercise, onUpdateSet }: {
           </div>
 
           {/* Sets */}
-          {exercise.sets.map((set, setIndex) => (
-            <div 
-              key={set.id} 
-              className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${
-                set.completed ? 'bg-emerald-500/10' : 'bg-[#252525]'
-              }`}
-            >
-              <div className="col-span-2 text-center font-medium">{setIndex + 1}</div>
-              <div className="col-span-4">
-                <input
-                  type="number"
-                  value={set.weight || ''}
-                  onChange={(e) => onUpdateSet(setIndex, { weight: parseFloat(e.target.value) || 0 })}
-                  placeholder="0"
-                  className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-3 py-2 text-center focus:outline-none focus:border-orange-500"
-                />
-              </div>
-              <div className="col-span-4">
-                <input
-                  type="number"
-                  value={set.reps || ''}
-                  onChange={(e) => onUpdateSet(setIndex, { reps: parseInt(e.target.value) || 0 })}
-                  placeholder="0"
-                  className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-3 py-2 text-center focus:outline-none focus:border-orange-500"
-                />
-              </div>
-              <div className="col-span-2 flex justify-center">
-                <button
-                  onClick={() => onUpdateSet(setIndex, { completed: !set.completed })}
-                  className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                    set.completed 
-                      ? 'bg-emerald-500 text-white' 
-                      : 'bg-[#2e2e2e] text-zinc-400 hover:bg-[#3e3e3e]'
+          {exercise.sets.map((set, setIndex) => {
+            const lastSet = lastSession && setIndex < lastSession.length ? lastSession[setIndex] : null;
+            const indicator = getProgressIndicator(setIndex, set.weight, set.reps);
+            
+            return (
+              <div key={set.id} className="space-y-1">
+                <div 
+                  className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${
+                    set.completed ? 'bg-emerald-500/10' : 'bg-[#252525]'
                   }`}
                 >
-                  <Check className="w-5 h-5" />
-                </button>
+                  <div className="col-span-2 text-center font-medium">{setIndex + 1}</div>
+                  <div className="col-span-4">
+                    <input
+                      type="number"
+                      value={set.weight || ''}
+                      onChange={(e) => onUpdateSet(setIndex, { weight: parseFloat(e.target.value) || 0 })}
+                      placeholder="0"
+                      className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-3 py-2 text-center focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <div className="col-span-4">
+                    <input
+                      type="number"
+                      value={set.reps || ''}
+                      onChange={(e) => onUpdateSet(setIndex, { reps: parseInt(e.target.value) || 0 })}
+                      placeholder="0"
+                      className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-3 py-2 text-center focus:outline-none focus:border-orange-500"
+                    />
+                  </div>
+                  <div className="col-span-2 flex justify-center">
+                    <button
+                      onClick={() => onUpdateSet(setIndex, { completed: !set.completed })}
+                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
+                        set.completed 
+                          ? 'bg-emerald-500 text-white' 
+                          : 'bg-[#2e2e2e] text-zinc-400 hover:bg-[#3e3e3e]'
+                      }`}
+                    >
+                      <Check className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Last session comparison */}
+                {lastSet && (
+                  <div className="flex items-center justify-between px-2 text-xs">
+                    <span className="text-zinc-500">
+                      Last: {lastSet.weight}kg × {lastSet.reps} reps
+                    </span>
+                    {indicator && (
+                      <span className={`flex items-center gap-1 ${indicator.color} font-medium`}>
+                        <span>{indicator.icon}</span>
+                        <span>{indicator.label}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1517,7 +1566,7 @@ function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
               key={plan.id}
               className={`border rounded-xl overflow-hidden ${
                 isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200 shadow-sm'
-              } ${isActive ? 'ring-2 ring-orange-500/50' : ''}`}
+              } ${isActive ? 'ring-2 ring-green-500/50 border-green-500/50' : ''}`}
             >
               <div className={`p-4 ${isDark ? '' : 'bg-white'}`}>
                 <div className="flex items-start justify-between gap-3">
@@ -1529,7 +1578,7 @@ function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
                       <div className="font-medium flex items-center gap-2">
                         {plan.name}
                         {isActive && (
-                          <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded">Active</span>
+                          <span className="text-sm bg-green-500/20 text-green-400 px-3 py-1 rounded-lg font-semibold">✓ Active</span>
                         )}
                         {plan.isImported && (
                           <span className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>Imported</span>
@@ -2376,7 +2425,7 @@ function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDark }: {
       {onNavigateToExercises && (
         <button
           onClick={onNavigateToExercises}
-          className="w-full bg-orange-500 hover:bg-orange-400 text-white font-medium py-4 rounded-xl flex items-center justify-between transition-colors"
+          className="w-full bg-orange-500 hover:bg-orange-400 text-white font-medium py-4 px-4 rounded-xl flex items-center justify-between transition-colors"
         >
           <div className="flex items-center gap-3">
             <Dumbbell className="w-5 h-5" />

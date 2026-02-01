@@ -4,7 +4,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-2.6.0-orange)
+![Version](https://img.shields.io/badge/version-2.8.0-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -219,6 +219,8 @@ For importing, your Google Sheet should have these sheets:
 See [Releases](https://github.com/rishi1508/zenith-fitness/releases) for full version history.
 
 ### v2.x (Major Architecture Refactor)
+- **v2.8.0** — 🔥 Progressive Overload Tracker: Shows last session stats + visual indicators (🔺 improved, ➡️ same, 🔻 lower)
+- **v2.7.0** — UI improvements: Exercise Library button alignment, distinct Active state (green badge + ring), renamed default template
 - **v2.6.0** — Fixed PR calculation (max reps at max weight), exact set pattern auto-fill, header safe area
 - **v2.5.0** — Comprehensive import fix (exercise ID matching), Progress view height fix
 - **v2.4.0** — Critical data fixes (import empty dates, progress scroll)

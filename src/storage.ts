@@ -151,7 +151,7 @@ export function setLastUsedDay(dayNumber: number): void {
 // Default weekly plan (4 Full Body + 1 Arms)
 const defaultWeeklyPlan: WeeklyPlan = {
   id: 'default_plan',
-  name: '4 Full Body + 1 Arms',
+  name: 'Sample Weekly Plan',
   days: [
     {
       dayNumber: 1,
@@ -324,6 +324,26 @@ export function checkAndUpdatePR(exerciseId: string, exerciseName: string, weigh
   }
   
   return false;
+}
+
+// Get last session data for an exercise (for progressive overload tracking)
+export function getLastExerciseSession(exerciseId: string, beforeDate?: string): WorkoutSet[] | null {
+  const workouts = getWorkouts()
+    .filter(w => w.completed && w.type !== 'rest')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  
+  const cutoffDate = beforeDate ? new Date(beforeDate).getTime() : Date.now();
+  
+  for (const workout of workouts) {
+    if (new Date(workout.date).getTime() >= cutoffDate) continue; // Skip today's or future workouts
+    
+    const exercise = workout.exercises.find(ex => ex.exerciseId === exerciseId);
+    if (exercise && exercise.sets.some(s => s.completed)) {
+      return exercise.sets.filter(s => s.completed);
+    }
+  }
+  
+  return null;
 }
 
 // Stats
