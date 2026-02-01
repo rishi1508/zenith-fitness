@@ -1443,26 +1443,32 @@ function TemplatesView({ templates, isDark, onBack, onStartWorkout, onTemplatesC
                 <ChevronRight className="w-5 h-5 text-zinc-500" />
               </button>
               
-              {/* Action buttons for custom templates */}
-              {!isDefault && (
-                <div className={`flex border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
-                  <button
-                    onClick={() => setEditingTemplate(template)}
-                    className="flex-1 py-2 text-sm text-zinc-400 hover:text-white hover:bg-[#252525] flex items-center justify-center gap-1 transition-colors"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                    Edit
-                  </button>
-                  <div className="w-px bg-[#2e2e2e]" />
-                  <button
-                    onClick={() => handleDelete(template)}
-                    className="flex-1 py-2 text-sm text-zinc-400 hover:text-red-400 hover:bg-[#252525] flex items-center justify-center gap-1 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Delete
-                  </button>
-                </div>
-              )}
+              {/* Action buttons - Edit for all, Delete only for custom */}
+              <div className={`flex border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setEditingTemplate(template)}
+                  className={`flex-1 py-2 text-sm flex items-center justify-center gap-1 transition-colors ${
+                    isDark ? 'text-zinc-400 hover:text-white hover:bg-[#252525]' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  <Edit3 className="w-4 h-4" />
+                  Edit
+                </button>
+                {!isDefault && (
+                  <>
+                    <div className={`w-px ${isDark ? 'bg-[#2e2e2e]' : 'bg-gray-200'}`} />
+                    <button
+                      onClick={() => handleDelete(template)}
+                      className={`flex-1 py-2 text-sm flex items-center justify-center gap-1 transition-colors ${
+                        isDark ? 'text-zinc-400 hover:text-red-400 hover:bg-[#252525]' : 'text-gray-500 hover:text-red-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Delete
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           );
         })}
