@@ -1340,10 +1340,11 @@ function ExerciseCard({ exercise, onUpdateSet }: {
 
 // History View
 // History Workout Card - expandable to show exercise details
-function HistoryWorkoutCard({ workout, isDark, onDelete }: {
+function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate }: {
   workout: Workout;
   isDark: boolean;
   onDelete: () => void;
+  onSaveAsTemplate: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const isImported = workout.type === 'imported';
@@ -1403,6 +1404,18 @@ function HistoryWorkoutCard({ workout, isDark, onDelete }: {
             {!isRest && workout.exercises.length > 0 && (
               <ChevronRight className={`w-5 h-5 text-zinc-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
             )}
+            {!isRest && workout.exercises.length > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSaveAsTemplate();
+                }}
+                className="p-2 text-zinc-500 hover:text-orange-400"
+                title="Save as template"
+              >
+                <Copy className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -1457,6 +1470,50 @@ function HistoryView({ workouts, isDark, onBack, onDelete }: {
   onBack: () => void;
   onDelete: (id: string) => void;
 }) {
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  
+  const handleSaveAsTemplate = (workout: Workout) => {
+    if (workout.exercises.length === 0) return;
+    
+    const templateName = prompt('Enter a name for this template:', workout.name.replace(/\s-\s\d{4}-\d{2}-\d{2}.*/, ''));
+    if (!templateName) return;
+    
+    // Create a new weekly plan from this workout
+    const newPlan: WeeklyPlan = {
+      id: `custom_${Date.now()}`,
+      name: templateName.trim(),
+      isCustom: true,
+      days: [
+        {
+          dayNumber: 1,
+          name: 'Day 1',
+          exercises: workout.exercises.map(ex => ({
+            exerciseId: ex.exerciseId,
+            exerciseName: ex.exerciseName,
+            defaultSets: ex.sets.length,
+            defaultReps: ex.sets[0]?.reps || 10,
+          })),
+        },
+        {
+          dayNumber: 2,
+          name: 'Rest Day',
+          exercises: [],
+          isRestDay: true,
+        },
+      ],
+    };
+    
+    // Save to storage
+    const existingPlans = storage.getWeeklyPlans();
+    existingPlans.push(newPlan);
+    localStorage.setItem('zenith_weekly_plans', JSON.stringify(existingPlans));
+    
+    setToastMessage(`✓ Saved as "${templateName}"`);
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 3000);
+  };
+  
   // Group by date
   const grouped = workouts.reduce((acc, workout) => {
     const date = workout.date.split('T')[0];
@@ -1469,8 +1526,20 @@ function HistoryView({ workouts, isDark, onBack, onDelete }: {
 
   return (
     <div className="space-y-4 animate-fadeIn">
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="fixed top-4 left-4 right-4 z-50 animate-fadeIn">
+          <div className={`rounded-xl p-4 shadow-lg flex items-center gap-3 ${
+            isDark ? 'bg-green-500/20 border border-green-500/30' : 'bg-green-50 border border-green-200'
+          }`}>
+            <CheckCircle2 className="w-5 h-5 text-green-400" />
+            <span className={isDark ? 'text-white' : 'text-gray-900'}>{toastMessage}</span>
+          </div>
+        </div>
+      )}
+      
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+        <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">Workout History</h1>
@@ -1499,6 +1568,7 @@ function HistoryView({ workouts, isDark, onBack, onDelete }: {
                     workout={workout}
                     isDark={isDark}
                     onDelete={() => onDelete(workout.id)}
+                    onSaveAsTemplate={() => handleSaveAsTemplate(workout)}
                   />
                 ))}
               </div>

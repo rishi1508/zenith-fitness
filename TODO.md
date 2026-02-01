@@ -65,13 +65,16 @@ Show visual indicators during active workout:
 - Track progress throughout week
 - End-of-week summary showing hit/miss
 
-### 🎯 Workout Templates from History
+### ✅ v2.11.0 - Workout Templates from History
+**Status:** Completed 2026-02-02  
 **Impact:** Medium — Convenience  
 **Complexity:** Low
 
-- Long-press any past workout → "Save as Template"
-- Converts to reusable weekly plan
-- Quick iteration on what worked
+- [x] Copy icon in history cards
+- [x] Converts workout to new weekly plan
+- [x] Prompts for custom name
+- [x] Adds as Day 1 + Rest Day template
+- [x] Toast confirmation
 
 ### 🎯 Comparison View
 **Impact:** Medium — Analysis tool  
@@ -135,6 +138,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-02 01:30 IST  
-**Current Version:** v2.10.0  
-**Next Target:** v2.11.0 - Superset Support
+**Last Updated:** 2026-02-02 01:35 IST  
+**Current Version:** v2.11.0  
+**Next Target:** Continue with remaining features autonomously
