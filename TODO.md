@@ -7,37 +7,36 @@
 
 ## Priority Issues (Must Fix)
 
-### 1. ❌ Splash Screen
-- [ ] Remove fixed 1.5s timer - show content as soon as data loads
-- [ ] Fix white screen on cold start - splash should appear immediately
-- **Root cause:** Using setTimeout instead of actual data loading state
+### 1. ✅ Splash Screen — FIXED
+- [x] Remove fixed 1.5s timer - now loads data and dismisses
+- [x] Splash shows immediately, no white screen
+- **Fix:** Removed setTimeout, splash hides when loadData completes
 
-### 2. ❌ Home Stats Cards
-- [ ] Remove "Total Volume" and "Avg/Session" - not useful metrics
-- [ ] Replace with meaningful stats OR just remove the cards
-- **Why:** Volume varies by muscle group (legs vs arms), comparison is meaningless
+### 2. ✅ Home Stats Cards — FIXED
+- [x] Removed "Total Volume" and "Avg/Session"
+- [x] Now shows only "This Week" and "Total Workouts"
+- **Why:** Volume metrics are meaningless (legs vs arms comparison)
 
 ### 3. ❌ Template Selection Dropdown
 - [ ] Add dropdown/selector to choose which template to start
 - [ ] Currently just lists templates - no way to select one easily
 - **Expected:** User picks template from dropdown → starts workout
 
-### 4. ❌ Remove "Log Rest Day" Button
-- [ ] Delete the manual rest day button entirely
-- [ ] Rest days should be auto-detected (no workout = rest day)
-- **Logic:** If no workout logged for a day, it's automatically a rest day
+### 4. ✅ Remove "Log Rest Day" Button — FIXED
+- [x] Deleted the manual rest day button
+- [x] Rest days are auto-detected (no workout = rest day)
 
-### 5. ❌ Google Sheets Import - Exercise Auto-Population
-- [ ] Read "Exercise Data" sheet and auto-add exercises to exercise database
-- [ ] Sheet has: Exercise Name, Muscle Group, Equipment
-- [ ] These should become available in exercise picker
-- **Sheet URL:** `1WvpNhL-CNxFet5VvN_iTtYcDwh3ehCNwv9oYRGFXu1s`
+### 5. ✅ Google Sheets Import - Exercise Auto-Population — FIXED
+- [x] Now reads "Exercise Data" sheet
+- [x] Extracts exercise names from first row
+- [x] Auto-adds to exercise database with guessed muscle groups
+- **Note:** Run import again to populate exercises
 
-### 6. ❌ Google Sheets Import - Template Creation
-- [ ] Read "Workout Plan" sheet and create template automatically
-- [ ] Sheet has the user's actual workout routine
-- [ ] Should appear as importable template after import
-- **Expected:** Import → Template created → Shows in Templates dropdown
+### 6. ✅ Google Sheets Import - Template Creation — FIXED
+- [x] Now reads "Workout Plan" sheet
+- [x] Creates "Imported Workout Plan" template
+- [x] Collects exercises from all days
+- **Note:** Run import again to create template
 
 ### 7. ❌ Templates Page - Edit Existing Templates
 - [ ] Add dropdown to SELECT which template to edit
@@ -45,8 +44,8 @@
 - [ ] Allow editing any template (including imported ones)
 
 ### 8. ❌ History Page - Shows Only One Exercise
-- [ ] Likely caused by missing exercises from import issue (#5)
-- [ ] Verify: Once exercises are auto-populated, history should show all
+- [ ] Re-test after running import (exercises should now populate)
+- [ ] Verify all exercises show after import fix
 - [ ] Check for other potential causes
 
 ### 9. ❌ Progress Page - Graph Not Working
