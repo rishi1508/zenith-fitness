@@ -144,16 +144,16 @@ function App() {
       name: template.name,
       type: template.type,
       exercises: template.exercises.map(ex => {
-        // Auto-fill weight from last session of this day
-        const lastWeight = lastWeights.get(ex.exerciseId) || 0;
+        // Auto-fill weights from last session - exact sets pattern
+        const lastSets = lastWeights.get(ex.exerciseId) || [];
         return {
           id: crypto.randomUUID(),
           exerciseId: ex.exerciseId,
           exerciseName: ex.exerciseName,
-          sets: Array.from({ length: ex.defaultSets }, () => ({
+          sets: Array.from({ length: ex.defaultSets }, (_, i) => ({
             id: crypto.randomUUID(),
             reps: 0, // Leave empty for user to fill
-            weight: lastWeight, // Auto-filled from last session
+            weight: lastSets[i] || lastSets[lastSets.length - 1] || 0, // Use exact set pattern, fall back to last set weight
             completed: false,
           })),
         };
@@ -165,17 +165,17 @@ function App() {
     navigateTo('active');
   };
   
-  // Helper: Get last weights used for each exercise in this specific day
-  const getLastWeightsForDay = (template: WorkoutTemplate): Map<string, number> => {
-    const weights = new Map<string, number>();
+  // Helper: Get last weights used for each exercise - returns EXACT sets pattern
+  const getLastWeightsForDay = (template: WorkoutTemplate): Map<string, number[]> => {
+    const weights = new Map<string, number[]>();
     
-    // Build a map of exerciseId -> last weight used
+    // Build a map of exerciseId -> array of weights from last workout
     // Look at ALL completed workouts and find last time each exercise was done
     const completedWorkouts = workoutHistory
       .filter(w => w.completed && w.type !== 'rest' && w.date < new Date().toISOString())
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Most recent first
     
-    // For each exercise in this template, find the last weight used
+    // For each exercise in this template, find the last weights used
     template.exercises.forEach(templateEx => {
       // Find the most recent workout containing this exercise
       for (const workout of completedWorkouts) {
@@ -183,15 +183,10 @@ function App() {
         if (matchingEx) {
           const completedSets = matchingEx.sets.filter(s => s.completed && s.weight > 0);
           if (completedSets.length > 0) {
-            // Use the most common weight from that workout
-            const weightCounts = new Map<number, number>();
-            completedSets.forEach(s => {
-              weightCounts.set(s.weight, (weightCounts.get(s.weight) || 0) + 1);
-            });
-            const mostCommonWeight = Array.from(weightCounts.entries())
-              .sort((a, b) => b[1] - a[1])[0][0];
-            weights.set(templateEx.exerciseId, mostCommonWeight);
-            break; // Found the last weight for this exercise, move to next
+            // Extract the exact weight pattern from that workout
+            const weightPattern = completedSets.map(s => s.weight);
+            weights.set(templateEx.exerciseId, weightPattern);
+            break; // Found the last workout for this exercise, move to next
           }
         }
       }
@@ -344,7 +339,7 @@ function App() {
       )}
       
       {/* Header */}
-      <header className={`sticky top-0 backdrop-blur-sm border-b px-4 py-3 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`}>
+      <header className={`sticky top-0 backdrop-blur-sm border-b px-4 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`} style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: '12px' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
@@ -2086,8 +2081,8 @@ function ProgressView({ workouts, isDark, onBack }: {
                 sessionMaxReps = set.reps;
               }
               
-              // PR is the highest weight lifted (with any reps)
-              if (set.weight > prWeight) {
+              // PR: highest weight × max reps WITH that weight
+              if (set.weight > prWeight || (set.weight === prWeight && set.reps > prReps)) {
                 prWeight = set.weight;
                 prReps = set.reps;
                 prDate = workout.date;
