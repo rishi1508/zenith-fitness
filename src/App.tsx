@@ -473,6 +473,135 @@ function WorkoutTimer({ startTime }: { startTime: string }) {
   );
 }
 
+// Volume Line Chart Component - interactive SVG line chart
+function VolumeLineChart({ sessions, isDark }: { 
+  sessions: Array<{ date: string; volume: number; maxWeight: number; maxReps: number; sets: { weight: number; reps: number }[] }>;
+  isDark: boolean;
+}) {
+  const [selectedPoint, setSelectedPoint] = useState<number | null>(null);
+  
+  // Get last 15 sessions
+  const data = sessions.slice(-15);
+  if (data.length === 0) {
+    return (
+      <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
+        <div className="text-sm font-medium mb-3">Volume per Session</div>
+        <div className={`text-center py-8 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+          No session data yet
+        </div>
+      </div>
+    );
+  }
+  
+  const maxVolume = Math.max(...data.map(s => s.volume), 1);
+  const minVolume = Math.min(...data.map(s => s.volume));
+  const range = maxVolume - minVolume || 1;
+  
+  // Chart dimensions
+  const width = 300;
+  const height = 120;
+  const padding = { top: 10, right: 10, bottom: 25, left: 10 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  // Calculate points
+  const points = data.map((session, i) => ({
+    x: padding.left + (i / Math.max(data.length - 1, 1)) * chartWidth,
+    y: padding.top + chartHeight - ((session.volume - minVolume) / range) * chartHeight,
+    session,
+    index: i,
+  }));
+  
+  // Create path
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  
+  return (
+    <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
+      <div className="text-sm font-medium mb-3">Volume per Session</div>
+      
+      {/* Selected point detail */}
+      {selectedPoint !== null && data[selectedPoint] && (
+        <div className={`text-xs mb-2 p-2 rounded-lg ${isDark ? 'bg-[#252525]' : 'bg-gray-100'}`}>
+          <div className="font-medium text-orange-400">
+            {new Date(data[selectedPoint].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </div>
+          <div className={isDark ? 'text-zinc-400' : 'text-gray-600'}>
+            Volume: {Math.round(data[selectedPoint].volume)} · Max: {data[selectedPoint].maxWeight}kg × {data[selectedPoint].maxReps}
+          </div>
+        </div>
+      )}
+      
+      <svg 
+        viewBox={`0 0 ${width} ${height}`} 
+        className="w-full h-32"
+        onMouseLeave={() => setSelectedPoint(null)}
+      >
+        {/* Grid lines */}
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} 
+          stroke={isDark ? '#333' : '#ddd'} strokeWidth="1" />
+        <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} 
+          stroke={isDark ? '#333' : '#ddd'} strokeWidth="1" />
+        
+        {/* Area fill */}
+        <path
+          d={`${pathD} L ${points[points.length - 1]?.x || 0} ${height - padding.bottom} L ${padding.left} ${height - padding.bottom} Z`}
+          fill="url(#volumeGradient)"
+          opacity="0.3"
+        />
+        
+        {/* Line */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke="#f97316"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        
+        {/* Points */}
+        {points.map((p, i) => (
+          <g key={i}>
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={selectedPoint === i ? 6 : 4}
+              fill={selectedPoint === i ? '#f97316' : isDark ? '#1a1a1a' : '#fff'}
+              stroke="#f97316"
+              strokeWidth="2"
+              className="cursor-pointer transition-all"
+              onClick={() => setSelectedPoint(selectedPoint === i ? null : i)}
+              onMouseEnter={() => setSelectedPoint(i)}
+            />
+          </g>
+        ))}
+        
+        {/* Gradient definition */}
+        <defs>
+          <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+      </svg>
+      
+      {/* X-axis labels */}
+      <div className="flex justify-between text-[9px] mt-1" style={{ paddingLeft: padding.left, paddingRight: padding.right }}>
+        {data.length > 0 && (
+          <>
+            <span className={isDark ? 'text-zinc-600' : 'text-gray-400'}>
+              {new Date(data[0].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            </span>
+            <span className={isDark ? 'text-zinc-600' : 'text-gray-400'}>
+              {new Date(data[data.length - 1].date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Weekly Insights Card
 function WeeklyInsightsCard({ workouts }: { workouts: Workout[] }) {
   const now = new Date();
@@ -1714,7 +1843,6 @@ function ProgressView({ workouts, isDark, onBack }: {
   // If an exercise is selected, show detail view
   if (selectedExercise && exerciseData) {
     const exerciseName = exerciseList.find(e => e.id === selectedExercise)?.name || '';
-    const maxVolume = Math.max(...exerciseData.sessions.map(s => s.volume), 1);
     
     return (
       <div className="space-y-4 animate-fadeIn">
@@ -1764,24 +1892,11 @@ function ProgressView({ workouts, isDark, onBack }: {
           </div>
         </div>
 
-        {/* Volume Chart */}
-        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
-          <div className="text-sm font-medium mb-3">Volume per Session</div>
-          <div className="flex items-end gap-1 h-32 overflow-x-auto">
-            {exerciseData.sessions.slice(-15).map((session, i) => (
-              <div key={i} className="flex-shrink-0 w-8 flex flex-col items-center gap-1">
-                <div className={`text-[10px] mb-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{Math.round(session.volume)}</div>
-                <div 
-                  className="w-full bg-orange-500/70 rounded-t transition-all"
-                  style={{ height: `${(session.volume / maxVolume) * 80}%`, minHeight: '4px' }}
-                />
-                <div className={`text-[9px] ${isDark ? 'text-zinc-600' : 'text-gray-400'}`}>
-                  {new Date(session.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }).replace(' ', '\n')}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* Volume Line Chart */}
+        <VolumeLineChart 
+          sessions={exerciseData.sessions} 
+          isDark={isDark} 
+        />
 
         {/* Recent Sessions */}
         <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
