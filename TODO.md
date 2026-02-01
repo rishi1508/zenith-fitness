@@ -70,6 +70,13 @@
 
 ---
 
+## In Progress
+- [ ] **Weekly Plan Creator** - per-day input (significant UI work)
+  - Need to refactor Templates view to manage WeeklyPlans
+  - UI for adding/removing days
+  - Assign exercises per day
+  - Mark rest days
+
 ## Deferred (Later)
 - [ ] Two-way Google Sheets sync (needs OAuth)
 
