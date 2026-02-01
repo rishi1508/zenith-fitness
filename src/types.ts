@@ -110,3 +110,11 @@ export interface PersonalRecord {
   reps: number;
   date: string;
 }
+
+// Body weight tracking for body composition goals
+export interface BodyWeightEntry {
+  id: string;
+  date: string; // ISO date string
+  weight: number; // in kg
+  notes?: string; // e.g., "morning weight", "after workout", "bloated"
+}

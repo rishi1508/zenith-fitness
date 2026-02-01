@@ -1,4 +1,4 @@
-import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan } from './types';
+import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry } from './types';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'zenith_workouts',
@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   WEEKLY_PLANS: 'zenith_weekly_plans',
   ACTIVE_PLAN: 'zenith_active_plan',
   LAST_DAY: 'zenith_last_day', // Last used day number in active plan
+  BODY_WEIGHT: 'zenith_body_weight', // Body weight tracking entries
 };
 
 // Generic storage helpers
@@ -904,6 +905,73 @@ export function exportToCSV(): string {
   }
   
   return rows.join('\n');
+}
+
+// =====================
+// Body Weight Tracking
+// =====================
+
+// Get all body weight entries, sorted by date (newest first)
+export function getBodyWeightEntries(): BodyWeightEntry[] {
+  const entries = getItem<BodyWeightEntry[]>(STORAGE_KEYS.BODY_WEIGHT, []);
+  return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+// Add a new body weight entry
+export function addBodyWeightEntry(weight: number, notes?: string, date?: string): BodyWeightEntry {
+  const entry: BodyWeightEntry = {
+    id: `bw_${Date.now()}`,
+    date: date || new Date().toISOString().split('T')[0],
+    weight,
+    notes,
+  };
+  
+  const entries = getBodyWeightEntries();
+  
+  // Check if there's already an entry for this date - replace it
+  const existingIndex = entries.findIndex(e => e.date === entry.date);
+  if (existingIndex >= 0) {
+    entries[existingIndex] = entry;
+  } else {
+    entries.push(entry);
+  }
+  
+  setItem(STORAGE_KEYS.BODY_WEIGHT, entries);
+  return entry;
+}
+
+// Delete a body weight entry
+export function deleteBodyWeightEntry(id: string): void {
+  const entries = getBodyWeightEntries().filter(e => e.id !== id);
+  setItem(STORAGE_KEYS.BODY_WEIGHT, entries);
+}
+
+// Get the latest body weight entry
+export function getLatestBodyWeight(): BodyWeightEntry | null {
+  const entries = getBodyWeightEntries();
+  return entries.length > 0 ? entries[0] : null;
+}
+
+// Get body weight change over a period
+export function getBodyWeightChange(days: number = 7): { change: number; startWeight: number; endWeight: number } | null {
+  const entries = getBodyWeightEntries();
+  if (entries.length < 2) return null;
+  
+  const now = new Date();
+  const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  
+  // Latest weight
+  const endWeight = entries[0].weight;
+  
+  // Find weight closest to (but before) the cutoff date
+  const startEntry = entries.find(e => new Date(e.date) <= cutoffDate);
+  if (!startEntry) return null;
+  
+  return {
+    change: endWeight - startEntry.weight,
+    startWeight: startEntry.weight,
+    endWeight,
+  };
 }
 
 // Default exercises for Rishi's workout style
