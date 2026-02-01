@@ -1272,11 +1272,11 @@ function ExerciseCard({ exercise, onUpdateSet }: {
     [exercise.exerciseId]
   );
   
-  // Get exercise notes from library
-  const exerciseNotes = useMemo(() => {
+  // Get exercise notes and video from library
+  const exerciseData = useMemo(() => {
     const exercises = storage.getExercises();
     const ex = exercises.find(e => e.id === exercise.exerciseId);
-    return ex?.notes;
+    return { notes: ex?.notes, videoUrl: ex?.videoUrl };
   }, [exercise.exerciseId]);
   
   // Helper to get comparison indicator for a set
@@ -1321,11 +1321,26 @@ function ExerciseCard({ exercise, onUpdateSet }: {
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
-          {/* Exercise Notes */}
-          {exerciseNotes && (
+          {/* Exercise Notes & Video */}
+          {(exerciseData.notes || exerciseData.videoUrl) && (
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
-              <div className="text-xs font-medium text-blue-400 mb-1">📝 Notes</div>
-              <div className="text-sm text-zinc-300">{exerciseNotes}</div>
+              {exerciseData.notes && (
+                <div className="mb-2">
+                  <div className="text-xs font-medium text-blue-400 mb-1">📝 Notes</div>
+                  <div className="text-sm text-zinc-300">{exerciseData.notes}</div>
+                </div>
+              )}
+              {exerciseData.videoUrl && (
+                <a
+                  href={exerciseData.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300 transition-colors"
+                >
+                  <span>▶️</span>
+                  <span>Watch Form Video</span>
+                </a>
+              )}
             </div>
           )}
           
@@ -2732,6 +2747,7 @@ function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
+  const [editingVideoUrl, setEditingVideoUrl] = useState<string | null>(null);
   
   const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other'];
   
@@ -2765,10 +2781,12 @@ function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
       allExercises[exerciseIndex] = {
         ...allExercises[exerciseIndex],
         notes: editingNotes?.trim() || undefined,
+        videoUrl: editingVideoUrl?.trim() || undefined,
       };
       localStorage.setItem('zenith_exercises', JSON.stringify(allExercises));
       setExercises(allExercises);
       setEditingNotes(null);
+      setEditingVideoUrl(null);
       setExpandedExerciseId(null);
       onExercisesChange();
     }
@@ -2909,24 +2927,42 @@ function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
               {/* Expanded notes editor */}
               {isExpanded && (
                 <div className={`px-4 pb-4 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
-                  <div className="pt-3 space-y-2">
-                    <label className={`text-sm font-medium ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
-                      Personal Notes
-                    </label>
-                    <textarea
-                      value={editingNotes ?? exercise.notes ?? ''}
-                      onChange={(e) => setEditingNotes(e.target.value)}
-                      placeholder="Add form cues, pain points, RPE targets..."
-                      rows={3}
-                      className={`w-full p-3 rounded-lg border ${
-                        isDark ? 'bg-[#252525] border-[#3e3e3e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
-                      } focus:outline-none focus:border-orange-500 resize-none`}
-                    />
+                  <div className="pt-3 space-y-3">
+                    <div className="space-y-2">
+                      <label className={`text-sm font-medium ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+                        Personal Notes
+                      </label>
+                      <textarea
+                        value={editingNotes ?? exercise.notes ?? ''}
+                        onChange={(e) => setEditingNotes(e.target.value)}
+                        placeholder="Add form cues, pain points, RPE targets..."
+                        rows={3}
+                        className={`w-full p-3 rounded-lg border ${
+                          isDark ? 'bg-[#252525] border-[#3e3e3e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
+                        } focus:outline-none focus:border-orange-500 resize-none`}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className={`text-sm font-medium ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+                        Video URL (optional)
+                      </label>
+                      <input
+                        type="url"
+                        value={editingVideoUrl ?? exercise.videoUrl ?? ''}
+                        onChange={(e) => setEditingVideoUrl(e.target.value)}
+                        placeholder="https://youtube.com/..."
+                        className={`w-full p-3 rounded-lg border ${
+                          isDark ? 'bg-[#252525] border-[#3e3e3e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
+                        } focus:outline-none focus:border-orange-500`}
+                      />
+                    </div>
+                    
                     <button
                       onClick={() => handleSaveNotes(exercise.id)}
                       className="w-full py-2 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-400 transition-colors"
                     >
-                      Save Notes
+                      Save
                     </button>
                   </div>
                 </div>
