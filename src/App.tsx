@@ -2030,6 +2030,7 @@ function ProgressView({ workouts, isDark, onBack }: {
   onBack: () => void;
 }) {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
   
   // Get ALL exercises from library, with session counts
@@ -2230,6 +2231,20 @@ function ProgressView({ workouts, isDark, onBack }: {
         </div>
       </div>
 
+      {/* Search */}
+      <div className="relative">
+        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search exercises..."
+          className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
+            isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
+          } focus:outline-none focus:border-orange-500`}
+        />
+      </div>
+
       {/* Exercise List - tap to see details */}
       <div className={`rounded-xl overflow-hidden ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
         <div className={`px-4 py-3 border-b ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
@@ -2237,16 +2252,20 @@ function ProgressView({ workouts, isDark, onBack }: {
             <TrendingUp className="w-5 h-5 text-orange-400" />
             <span className="text-sm font-medium">Exercise Progress</span>
           </div>
-          <div className={`text-xs mt-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Tap an exercise to see detailed analysis</div>
+          <div className={`text-xs mt-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+            {searchQuery ? `${exerciseList.filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase())).length} matching` : `${exerciseList.length} total exercises`} - Tap to see details
+          </div>
         </div>
-        <div className={`divide-y ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`}>
+        <div className={`divide-y max-h-96 overflow-y-auto ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`}>
           {exerciseList.length === 0 ? (
             <div className={`px-4 py-8 text-center ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
               <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <div>Complete workouts to see exercise progress</div>
             </div>
           ) : (
-            exerciseList.slice(0, 20).map(exercise => (
+            exerciseList
+              .filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase()))
+              .map(exercise => (
               <button
                 key={exercise.id}
                 onClick={() => setSelectedExercise(exercise.id)}

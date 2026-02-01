@@ -664,6 +664,7 @@ export function importFromCSV(csvText: string): ImportResult {
   // Group rows by date (multiple exercises per workout)
   const workoutsByDate = new Map<string, { date: Date; exercises: Map<string, { sets: WorkoutSet[] }> }>();
   const exercisesFound = new Set<string>();
+  let lastDate: Date | null = null; // Track last seen date for empty date rows
   
   for (const line of dataLines) {
     // Parse CSV (handle quoted values)
@@ -675,11 +676,22 @@ export function importFromCSV(csvText: string): ImportResult {
     
     const [dateStr, exerciseName, set1Reps, set1Weight, set2Reps, set2Weight, set3Reps, set3Weight] = values;
     
-    // Parse date (DD-MMM-YY format like "31-Jan-26")
-    const date = parseDateString(dateStr);
-    if (!date) {
-      errors.push(`Invalid date format: ${dateStr}`);
-      continue;
+    // Handle empty date (means same workout as previous row)
+    let date: Date | null = null;
+    if (dateStr && dateStr.trim()) {
+      date = parseDateString(dateStr);
+      if (!date) {
+        errors.push(`Invalid date format: ${dateStr}`);
+        continue;
+      }
+      lastDate = date; // Remember this date for subsequent rows
+    } else {
+      // Empty date - use last seen date
+      if (!lastDate) {
+        errors.push(`Empty date with no previous date to reference`);
+        continue;
+      }
+      date = lastDate;
     }
     
     const dateKey = date.toISOString().split('T')[0];
