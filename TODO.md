@@ -39,10 +39,11 @@
 - [x] Collects exercises from all days
 - **Note:** Run import again to create template
 
-### 7. ❌ Templates Page - Edit Existing Templates
-- [ ] Add dropdown to SELECT which template to edit
-- [ ] Currently only shows list with no edit option for defaults
-- [ ] Allow editing any template (including imported ones)
+### 7. ✅ Templates Page - Edit All Templates — FIXED
+- [x] Added Edit button to ALL templates (not just custom)
+- [x] Default templates can now be edited
+- [x] Delete button only shows for custom templates
+- [x] Light mode styling for buttons
 
 ### 8. ❌ History Page - Shows Only One Exercise
 - [ ] Re-test after running import (exercises should now populate)
