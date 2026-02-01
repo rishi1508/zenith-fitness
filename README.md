@@ -4,41 +4,51 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-1.18.2-orange)
+![Version](https://img.shields.io/badge/version-2.4.0-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## ✨ Features
 
-### Core Tracking
-- **Workout Templates** — Create custom templates or use pre-built 4-day split
-- **Custom Exercises** — Create your own exercises with name and muscle group
-- **Smart Template Selection** — Remembers your last used template, shows it first
+### 📅 Weekly Plans (v2.0+)
+The core concept: **A "plan" is a full week** — not a single workout.
+
+- **Weekly Plan Architecture** — Create plans like "4FB+1Arms" or "PPL" with multiple days
+- **Per-Day Exercise Assignment** — Each day has its own exercises with default sets/reps
+- **Rest Day Support** — Mark any day as a rest day with one tap
+- **Active Plan Tracking** — Set any plan as active, app remembers where you left off
+- **Day Selector** — Pick which day of your weekly plan you're doing today
+
+### 🏋️ Core Tracking
+- **Exercise Library** — Centralized list of all exercises (Settings → Exercise Library)
+- **Custom Exercises** — Create your own with name and muscle group
 - **Active Workout Mode** — Log weight, reps, mark sets complete in real-time
-- **Rest Timer** — Preset buttons (30s, 60s, 90s, 2m) with vibration alerts
+- **Auto-fill Weights** — Automatically pre-fills weights from your last session of same day
+- **Rest Timer** — Preset buttons (1:00, 1:30, 2:00, 3:00) with vibration alerts
 - **Auto Rest Day Detection** — Prompts to log missed days as rest days
 
-### Progress & Stats
-- **Dashboard Stats** — Total Volume, Avg/Session, Weekly Workouts, Total Count
-- **Exercise Progress** — Per-exercise analytics with interactive line charts
+### 📊 Progress & Stats
 - **Weekly Insights** — Volume and workout comparisons vs. last week
+- **Exercise Progress** — Interactive line charts with clickable data points
 - **Personal Record Notifications** — Toast + vibration when you hit a new PR 🏆
+- **Full Exercise List** — See progress for ALL exercises in your library
 
-### Google Sheets Integration
-- **Import Workouts** — Pull workout history from Google Sheets
-- **Import Exercises** — Load custom exercise lists
-- **Import Templates** — Create templates from your workout plans
+### 📥 Google Sheets Integration
+- **Import Exercises** — Load from "Exercise Data" sheet (reads first column)
+- **Import Workout Plan** — Creates full weekly plan from "Workout Plan" sheet
+- **Import History** — Pull workout logs from "Log Sheet"
+- **Smart Data Handling** — Handles empty dates (same workout grouping)
 - **Export Data** — Backup your data to clipboard (JSON format)
 
-### UI/UX
+### 🎨 UI/UX
 - **Splash Screen** — Animated loading with app branding
 - **Dark/Light Mode** — Toggle in Settings, persists across sessions
 - **Daily Motivational Quotes** — Fresh inspiration on the home screen
 - **Workout Celebration** — Confetti animation when you complete a workout 🎉
-- **Search** — Find exercises in progress view
+- **Search** — Find exercises in Progress view and template editors
 - **Hardware Back Button** — Proper Android back navigation
 
-### Technical
+### ⚙️ Technical
 - **Offline Support** — Full PWA capability, works without internet
 - **Auto-Updates** — Notification when new versions are available
 - **Local Storage** — All data stored on device (privacy-first)
@@ -47,7 +57,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 ## 📱 Installation
 
 ### Option 1: Download APK (Recommended)
-1. Go to [Releases](https://github.com/LordZenith/zenith-fitness/releases)
+1. Go to [Releases](https://github.com/rishi1508/zenith-fitness/releases)
 2. Download the latest `zenith-fitness-vX.X.X.apk`
 3. Install on your Android phone
 4. Future updates install over existing app (no uninstall needed from v1.5.1+)
@@ -94,101 +104,139 @@ cd android
 ## 🚀 GitHub Actions
 
 The repo includes automated APK builds:
-- Push a version tag (e.g., `v1.14.0`) to trigger a release
+- Push a version tag (e.g., `v2.4.0`) to trigger a release
 - APK is automatically built and attached to the GitHub release
 - Uses secure signing key from GitHub Secrets
+
 
 ## 📂 Project Structure
 
 ```
 zenith-fitness/
 ├── src/
-│   ├── App.tsx           # Main React component (all views)
-│   ├── storage.ts        # LocalStorage data layer
-│   ├── types.ts          # TypeScript interfaces
-│   ├── UpdateChecker.tsx # Version check component
-│   ├── VolumeLineChart.tsx # Interactive progress chart
-│   └── index.css         # Styles + CSS variables for theming
-├── android/              # Capacitor Android project
-├── .github/workflows/    # CI/CD for APK builds
-├── capacitor.config.ts   # Capacitor configuration
+│   ├── App.tsx              # Main React component + views
+│   ├── storage.ts           # LocalStorage data layer
+│   ├── types.ts             # TypeScript interfaces
+│   ├── UpdateChecker.tsx    # Version check component
+│   ├── VolumeLineChart.tsx  # Interactive progress chart
+│   ├── components/
+│   │   ├── WeeklyPlanSelector.tsx  # Plan + day selection
+│   │   ├── WeeklyPlansView.tsx     # Plans management
+│   │   ├── EditWeeklyPlanView.tsx  # Plan editor
+│   │   └── DayExerciseEditor.tsx   # Per-day exercise editor
+│   └── index.css            # Styles + CSS variables for theming
+├── android/                 # Capacitor Android project
+├── .github/workflows/       # CI/CD for APK builds
+├── capacitor.config.ts      # Capacitor configuration
 └── package.json
 ```
 
 ## 📊 Data Format
 
-Workout data is stored in localStorage as JSON:
+### Weekly Plan Structure
+
+```typescript
+interface WeeklyPlan {
+  id: string;
+  name: string;           // e.g., "4FB+1Arms"
+  days: DayPlan[];        // Array of days in the plan
+  isActive?: boolean;
+  lastUsedDayIndex?: number;
+}
+
+interface DayPlan {
+  dayName: string;        // e.g., "Day 1 - Full Body"
+  isRestDay: boolean;
+  exercises: DayExercise[];
+}
+
+interface DayExercise {
+  exerciseId: string;
+  defaultSets: number;
+  defaultReps: number;
+}
+```
+
+### Workout Record
 
 ```typescript
 interface Workout {
   id: string;
-  templateId?: string;
-  name: string;
+  name: string;           // e.g., "4FB+1Arms - Day 1"
   date: string;           // ISO date
   exercises: WorkoutExercise[];
   completed: boolean;
   isRestDay?: boolean;
   isImported?: boolean;
-  importSource?: string;
-}
-
-interface WorkoutExercise {
-  name: string;
-  sets: WorkoutSet[];
-}
-
-interface WorkoutSet {
-  weight: number;
-  reps: number;
-  completed: boolean;
+  planId?: string;
+  dayIndex?: number;
 }
 ```
 
 ## 🔗 Google Sheets Format
 
-For importing, your Google Sheet should have:
+For importing, your Google Sheet should have these sheets:
+
+**Exercise Data** (first column = exercise names):
+```
+| A (Exercise Names) | B (Notes)    |
+|--------------------|--------------|
+| Bench Press        | Chest        |
+| Squat              | Legs         |
+| Deadlift           | Back         |
+```
+
+**Workout Plan** (each column = one day):
+```
+| A          | B          | C          | D (Rest) |
+|------------|------------|------------|----------|
+| Day 1      | Day 2      | Day 3      | Day 4    |
+| Squat      | Bench      | Deadlift   |          |
+| Leg Press  | OHP        | Rows       |          |
+| Lunges     | Dips       | Pullups    |          |
+```
 
 **Log Sheet** (workout history):
-| Date | Exercise | Weight | Reps | Sets |
-|------|----------|--------|------|------|
-| 2026-01-30 | Bench Press | 60 | 10 | 3 |
-
-**Exercise Data** (exercise list):
-| Exercise Name | Category | Primary Muscle |
-|---------------|----------|----------------|
-| Bench Press | Compound | Chest |
-
-**Workout Plan** (for templates):
-| Day | Exercise | Sets | Reps |
-|-----|----------|------|------|
-| Day 1 - Push | Bench Press | 3 | 10 |
+```
+| Date       | Exercise      | Weight | Reps | Sets |
+|------------|---------------|--------|------|------|
+| 2026-01-30 | Bench Press   | 60     | 10   | 3    |
+|            | Incline Press | 40     | 10   | 3    |
+| 2026-01-31 | Squat         | 80     | 8    | 4    |
+```
+*(Empty date = same workout as row above)*
 
 ## 🎯 Roadmap
 
-- [ ] Two-way Google Sheets sync (read + write)
+- [ ] Two-way Google Sheets sync (read + write via OAuth)
 - [ ] Workout reminders / notifications
 - [ ] Exercise video demonstrations
-- [ ] Social features (share workouts)
-- [ ] Apple Watch / Wear OS support
+- [ ] Workout sharing
+- [ ] Wear OS support
 
 ## 📝 Changelog
 
-See [Releases](https://github.com/LordZenith/zenith-fitness/releases) for full version history.
+See [Releases](https://github.com/rishi1508/zenith-fitness/releases) for full version history.
 
-### Recent Highlights
-- **v1.18.1** — Complete light mode for Progress view
-- **v1.18.0** — Light mode for History view
-- **v1.17.0** — Full light mode polish
-- **v1.16.0** — Light mode home/nav improvements
-- **v1.15.0** — Bug fixes + exercise search in templates
-- **v1.14.0** — Improved rest timer with preset buttons
-- **v1.13.0** — Daily motivational quotes
-- **v1.12.0** — Weekly Insights card
+### v2.x (Major Architecture Refactor)
+- **v2.4.0** — Critical data fixes (import empty dates, progress scroll)
+- **v2.3.0** — Auto-fill weights, history template names, settings light mode
+- **v2.2.0** — Weekly Plan Creator with per-day UI
+- **v2.1.0** — Exercise Library manager + auto-fill weights
+- **v2.0.0** — WeeklyPlan architecture (plans = full weeks, not single days)
+
+### v1.x Highlights
+- **v1.22.0** — Edit all templates
+- **v1.21.0** — Template dropdown selector
+- **v1.20.0** — Interactive progress line charts
+- **v1.19.0** — Splash, stats, import fixes
+- **v1.18.x** — Complete light mode support
+- **v1.15.0** — Bug fixes + exercise search
+- **v1.14.0** — Rest timer presets
 - **v1.11.0** — PR notifications 🏆
 - **v1.10.0** — Workout celebration 🎉
-- **v1.9.0** — Smart templates + auto rest day detection
-- **v1.8.0** — Volume stats (replaced streaks)
-- **v1.7.0** — Splash screen + light/dark mode
+- **v1.9.0** — Smart templates + auto rest day
+- **v1.5.1** — Release signing (updates work without uninstall)
 
 ---
 
