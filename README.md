@@ -4,7 +4,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-1.14.0-orange)
+![Version](https://img.shields.io/badge/version-1.18.1-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -175,6 +175,11 @@ For importing, your Google Sheet should have:
 See [Releases](https://github.com/LordZenith/zenith-fitness/releases) for full version history.
 
 ### Recent Highlights
+- **v1.18.1** — Complete light mode for Progress view
+- **v1.18.0** — Light mode for History view
+- **v1.17.0** — Full light mode polish
+- **v1.16.0** — Light mode home/nav improvements
+- **v1.15.0** — Bug fixes + exercise search in templates
 - **v1.14.0** — Improved rest timer with preset buttons
 - **v1.13.0** — Daily motivational quotes
 - **v1.12.0** — Weekly Insights card
@@ -183,9 +188,6 @@ See [Releases](https://github.com/LordZenith/zenith-fitness/releases) for full v
 - **v1.9.0** — Smart templates + auto rest day detection
 - **v1.8.0** — Volume stats (replaced streaks)
 - **v1.7.0** — Splash screen + light/dark mode
-- **v1.6.0** — Interactive line charts
-- **v1.5.0** — Custom workout templates
-- **v1.4.0** — Google Sheets import/export
 
 ---
 
