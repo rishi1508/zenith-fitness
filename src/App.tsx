@@ -1361,8 +1361,11 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
   const [name, setName] = useState(template.name);
   const [exercises, setExercises] = useState(template.exercises);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [showCustomExerciseForm, setShowCustomExerciseForm] = useState(false);
   const [exerciseSearch, setExerciseSearch] = useState('');
-  const allExercises = storage.getExercises();
+  const [customExerciseName, setCustomExerciseName] = useState('');
+  const [customExerciseGroup, setCustomExerciseGroup] = useState('');
+  const [allExercises, setAllExercises] = useState(storage.getExercises());
   
   const addExercise = (exercise: { id: string; name: string }) => {
     setExercises([...exercises, {
@@ -1376,6 +1379,23 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
   
   const removeExercise = (index: number) => {
     setExercises(exercises.filter((_, i) => i !== index));
+  };
+  
+  const createCustomExercise = () => {
+    if (!customExerciseName.trim()) {
+      alert('Please enter an exercise name');
+      return;
+    }
+    if (!customExerciseGroup.trim()) {
+      alert('Please select a muscle group');
+      return;
+    }
+    const newExercise = storage.addCustomExercise(customExerciseName, customExerciseGroup);
+    setAllExercises(storage.getExercises()); // Refresh list
+    addExercise(newExercise);
+    setCustomExerciseName('');
+    setCustomExerciseGroup('');
+    setShowCustomExerciseForm(false);
   };
   
   const updateExercise = (index: number, field: 'defaultSets' | 'defaultReps', value: number) => {
@@ -1400,6 +1420,55 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
       exercises,
     });
   };
+  
+  // Muscle groups for custom exercise dropdown (must match MuscleGroup type)
+  const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body'];
+  
+  if (showCustomExerciseForm) {
+    return (
+      <div className="space-y-4 animate-fadeIn">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setShowCustomExerciseForm(false)} className="p-2 -ml-2 text-zinc-400">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-xl font-bold">Create Custom Exercise</h1>
+        </div>
+        
+        <div>
+          <label className="text-sm text-zinc-400 mb-1 block">Exercise Name</label>
+          <input
+            type="text"
+            value={customExerciseName}
+            onChange={(e) => setCustomExerciseName(e.target.value)}
+            placeholder="e.g., Cable Flyes"
+            className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500"
+          />
+        </div>
+        
+        <div>
+          <label className="text-sm text-zinc-400 mb-1 block">Muscle Group</label>
+          <select
+            value={customExerciseGroup}
+            onChange={(e) => setCustomExerciseGroup(e.target.value)}
+            className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-4 py-3 focus:outline-none focus:border-orange-500 appearance-none"
+          >
+            <option value="">Select muscle group...</option>
+            {muscleGroups.map(group => (
+              <option key={group} value={group} className="capitalize">{group.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
+            ))}
+          </select>
+        </div>
+        
+        <button
+          onClick={createCustomExercise}
+          className="w-full py-3 bg-orange-500 rounded-lg hover:bg-orange-400 flex items-center justify-center gap-2 transition-colors font-medium"
+        >
+          <Plus className="w-5 h-5" />
+          Create & Add Exercise
+        </button>
+      </div>
+    );
+  }
   
   if (showExercisePicker) {
     // Filter exercises by search
@@ -1436,6 +1505,15 @@ function EditTemplateView({ template, isNew, onSave, onCancel }: {
             className="w-full pl-10 pr-4 py-3 bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
           />
         </div>
+        
+        {/* Create Custom Exercise Button */}
+        <button
+          onClick={() => setShowCustomExerciseForm(true)}
+          className="w-full py-3 border-2 border-dashed border-orange-500/50 rounded-xl text-orange-400 hover:bg-orange-500/10 flex items-center justify-center gap-2 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Create Custom Exercise
+        </button>
         
         {Object.keys(filteredByGroup).length === 0 && (
           <p className="text-center text-zinc-500 py-8">No exercises found</p>

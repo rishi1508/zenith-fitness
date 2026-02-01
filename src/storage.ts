@@ -149,6 +149,19 @@ export function getExercises(): Exercise[] {
   return getItem<Exercise[]>(STORAGE_KEYS.EXERCISES, defaultExercises);
 }
 
+export function addCustomExercise(name: string, muscleGroup: string): Exercise {
+  const exercises = getExercises();
+  const newExercise: Exercise = {
+    id: `custom_${Date.now()}`,
+    name: name.trim(),
+    muscleGroup: muscleGroup.toLowerCase().replace(' ', '_') as Exercise['muscleGroup'],
+    isCompound: false, // Custom exercises default to isolation
+  };
+  exercises.push(newExercise);
+  setItem(STORAGE_KEYS.EXERCISES, exercises);
+  return newExercise;
+}
+
 // Personal Records
 export function getPersonalRecords(): PersonalRecord[] {
   return getItem<PersonalRecord[]>(STORAGE_KEYS.RECORDS, []);
