@@ -17,27 +17,30 @@
 - [x] Now shows only "This Week" and "Total Workouts"
 - **Why:** Volume metrics are meaningless (legs vs arms comparison)
 
-### 3. ✅ Template Selection Dropdown — FIXED
-- [x] Added dropdown selector to choose template
-- [x] Shows exercise preview of selected template
-- [x] Big "Start Workout" button
-- [x] Remembers last used template as default selection
+### 3. ✅ Weekly Plan System — MAJOR REFACTOR
+- [x] Templates → Weekly Plans (e.g., "4 Full Body + 1 Arms")
+- [x] Each plan has multiple days with their own exercises
+- [x] Home shows active plan label with switch button
+- [x] Day selector dropdown (Day 1, Day 2, etc.)
+- [x] Remembers last used day and active plan
 
 ### 4. ✅ Remove "Log Rest Day" Button — FIXED
 - [x] Deleted the manual rest day button
 - [x] Rest days are auto-detected (no workout = rest day)
 
 ### 5. ✅ Google Sheets Import - Exercise Auto-Population — FIXED
-- [x] Now reads "Exercise Data" sheet
-- [x] Extracts exercise names from first row
+- [x] Now reads "Exercise Data Transpose" sheet (first COLUMN has names)
+- [x] Extracts exercise names from first column
 - [x] Auto-adds to exercise database with guessed muscle groups
-- **Note:** Run import again to populate exercises
+- **Note:** Re-import to populate exercises
 
-### 6. ✅ Google Sheets Import - Template Creation — FIXED
-- [x] Now reads "Workout Plan" sheet
-- [x] Creates "Imported Workout Plan" template
-- [x] Collects exercises from all days
-- **Note:** Run import again to create template
+### 6. ✅ Google Sheets Import - Weekly Plan Creation — FIXED
+- [x] Now reads "Workout Plan" sheet properly
+- [x] Creates WeeklyPlan with SEPARATE days (Day 1, Day 2, etc.)
+- [x] Each day has its own exercises
+- [x] Empty days marked as rest days
+- [x] Sets imported plan as active automatically
+- **Note:** Re-import to create proper weekly plan
 
 ### 7. ✅ Templates Page - Edit All Templates — FIXED
 - [x] Added Edit button to ALL templates (not just custom)

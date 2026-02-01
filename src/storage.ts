@@ -1,4 +1,4 @@
-import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet } from './types';
+import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan } from './types';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'zenith_workouts',
@@ -7,6 +7,9 @@ const STORAGE_KEYS = {
   RECORDS: 'zenith_records',
   SETTINGS: 'zenith_settings',
   LAST_TEMPLATE: 'zenith_last_template',
+  WEEKLY_PLANS: 'zenith_weekly_plans',
+  ACTIVE_PLAN: 'zenith_active_plan',
+  LAST_DAY: 'zenith_last_day', // Last used day number in active plan
 };
 
 // Generic storage helpers
@@ -91,6 +94,131 @@ export function getLastUsedTemplateId(): string | null {
 export function setLastUsedTemplateId(templateId: string): void {
   setItem(STORAGE_KEYS.LAST_TEMPLATE, templateId);
 }
+
+// ============ WEEKLY PLANS ============
+
+// Get all weekly plans
+export function getWeeklyPlans(): WeeklyPlan[] {
+  return getItem<WeeklyPlan[]>(STORAGE_KEYS.WEEKLY_PLANS, [defaultWeeklyPlan]);
+}
+
+// Save a weekly plan
+export function saveWeeklyPlan(plan: WeeklyPlan): void {
+  const plans = getWeeklyPlans();
+  const index = plans.findIndex(p => p.id === plan.id);
+  if (index >= 0) {
+    plans[index] = plan;
+  } else {
+    plans.push(plan);
+  }
+  setItem(STORAGE_KEYS.WEEKLY_PLANS, plans);
+}
+
+// Delete a weekly plan
+export function deleteWeeklyPlan(id: string): void {
+  const plans = getWeeklyPlans().filter(p => p.id !== id);
+  setItem(STORAGE_KEYS.WEEKLY_PLANS, plans);
+  // If deleted plan was active, switch to first available
+  if (getActivePlanId() === id && plans.length > 0) {
+    setActivePlanId(plans[0].id);
+  }
+}
+
+// Get/Set active plan
+export function getActivePlanId(): string | null {
+  return getItem<string | null>(STORAGE_KEYS.ACTIVE_PLAN, 'default_plan');
+}
+
+export function setActivePlanId(planId: string): void {
+  setItem(STORAGE_KEYS.ACTIVE_PLAN, planId);
+}
+
+export function getActivePlan(): WeeklyPlan | null {
+  const planId = getActivePlanId();
+  if (!planId) return null;
+  return getWeeklyPlans().find(p => p.id === planId) || null;
+}
+
+// Get/Set last used day
+export function getLastUsedDay(): number | null {
+  return getItem<number | null>(STORAGE_KEYS.LAST_DAY, null);
+}
+
+export function setLastUsedDay(dayNumber: number): void {
+  setItem(STORAGE_KEYS.LAST_DAY, dayNumber);
+}
+
+// Default weekly plan (4 Full Body + 1 Arms)
+const defaultWeeklyPlan: WeeklyPlan = {
+  id: 'default_plan',
+  name: '4 Full Body + 1 Arms',
+  days: [
+    {
+      dayNumber: 1,
+      name: 'Day 1 - Full Body',
+      exercises: [
+        { exerciseId: 'lat_pulldown', exerciseName: 'Lat Pulldown', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'bench_press', exerciseName: 'Bench Press', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'leg_press', exerciseName: 'Leg Press', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'shoulder_press', exerciseName: 'Shoulder Press', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'cable_crunch', exerciseName: 'Cable Crunch', defaultSets: 3, defaultReps: 15 },
+      ],
+    },
+    {
+      dayNumber: 2,
+      name: 'Day 2 - Full Body',
+      exercises: [
+        { exerciseId: 'seated_row', exerciseName: 'Seated Row', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'incline_press', exerciseName: 'Incline Press', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'romanian_deadlift', exerciseName: 'Romanian Deadlift', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'lateral_raise', exerciseName: 'Lateral Raise', defaultSets: 3, defaultReps: 12 },
+      ],
+    },
+    {
+      dayNumber: 3,
+      name: 'Day 3 - Full Body',
+      exercises: [
+        { exerciseId: 'lat_pulldown', exerciseName: 'Lat Pulldown', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'chest_fly', exerciseName: 'Chest Fly', defaultSets: 3, defaultReps: 12 },
+        { exerciseId: 'leg_curl', exerciseName: 'Leg Curl', defaultSets: 3, defaultReps: 12 },
+        { exerciseId: 'leg_extension', exerciseName: 'Leg Extension', defaultSets: 3, defaultReps: 12 },
+      ],
+    },
+    {
+      dayNumber: 4,
+      name: 'Rest Day',
+      exercises: [],
+      isRestDay: true,
+    },
+    {
+      dayNumber: 5,
+      name: 'Day 5 - Full Body (Legs Focus)',
+      exercises: [
+        { exerciseId: 'leg_curl', exerciseName: 'Leg Curl', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'machine_squat', exerciseName: 'Machine Squat', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'cable_pec_fly', exerciseName: 'Cable Pec Fly', defaultSets: 3, defaultReps: 12 },
+        { exerciseId: 'lat_pulldown', exerciseName: 'Lat Pulldown', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'calf_raise', exerciseName: 'Calf Raise', defaultSets: 3, defaultReps: 15 },
+      ],
+    },
+    {
+      dayNumber: 6,
+      name: 'Day 6 - Arms',
+      exercises: [
+        { exerciseId: 'bicep_curls', exerciseName: 'Bicep Curls', defaultSets: 3, defaultReps: 12 },
+        { exerciseId: 'tricep_pressdown', exerciseName: 'Tricep Pressdown', defaultSets: 3, defaultReps: 12 },
+        { exerciseId: 'preacher_curl', exerciseName: 'Preacher Curl', defaultSets: 3, defaultReps: 10 },
+        { exerciseId: 'tricep_kickback', exerciseName: 'Tricep Kickback', defaultSets: 3, defaultReps: 12 },
+      ],
+    },
+    {
+      dayNumber: 7,
+      name: 'Rest Day',
+      exercises: [],
+      isRestDay: true,
+    },
+  ],
+};
 
 // Missing Days Detection
 export function getMissingDays(): string[] {
@@ -321,12 +449,12 @@ export async function importFromGoogleSheetsUrl(url: string): Promise<ImportResu
     
     const sheetId = sheetIdMatch[1];
     
-    // Fetch all three sheets: Log Sheet, Exercise Data, Workout Plan
+    // Fetch all three sheets: Log Sheet, Exercise Data Transpose, Workout Plan
     const logSheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Log%20Sheet`;
-    const exerciseDataUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Exercise%20Data`;
+    const exerciseDataUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Exercise%20Data%20Transpose`;
     const workoutPlanUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Workout%20Plan`;
     
-    // Step 1: Import exercises from Exercise Data sheet
+    // Step 1: Import exercises from Exercise Data Transpose sheet (first column has exercise names)
     try {
       const exerciseResponse = await fetch(exerciseDataUrl);
       if (exerciseResponse.ok) {
@@ -366,20 +494,19 @@ export async function importFromGoogleSheetsUrl(url: string): Promise<ImportResu
   }
 }
 
-// Import exercises from Exercise Data sheet (first row contains exercise names)
+// Import exercises from Exercise Data Transpose sheet (first COLUMN contains exercise names)
 function importExercisesFromSheet(csvText: string, _errors: string[]): void {
   const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
-  if (lines.length < 1) return;
+  if (lines.length < 2) return;
   
-  // First row has exercise names starting from column B
-  const exerciseNames = parseCSVLine(lines[0]);
   const existingExercises = getExercises();
   const existingNames = new Set(existingExercises.map(e => e.name.toLowerCase()));
   
   let addedCount = 0;
-  // Skip first column ("Exercise Name" label), rest are exercise names
-  for (let i = 1; i < exerciseNames.length; i++) {
-    const name = exerciseNames[i].trim();
+  // Skip header row, each subsequent row has exercise name in first column
+  for (let i = 1; i < lines.length; i++) {
+    const rowValues = parseCSVLine(lines[i]);
+    const name = rowValues[0]?.trim();
     if (name && !existingNames.has(name.toLowerCase())) {
       // Guess muscle group from exercise name
       const muscleGroup = guessMuscleGroup(name);
@@ -400,68 +527,106 @@ function importExercisesFromSheet(csvText: string, _errors: string[]): void {
   }
 }
 
-// Import workout template from Workout Plan sheet
+// Import workout template from Workout Plan sheet - creates a WeeklyPlan with separate days
 function importWorkoutPlanFromSheet(csvText: string, _errors: string[]): void {
   const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
   if (lines.length < 2) return;
   
-  // First row: Day 1, Day 2, etc. (not used - we collect all exercises)
-  // Skip header row (parseCSVLine(lines[0]) would give day names)
+  // First row: Day 1, Day 2, Day 3, etc.
+  const headerRow = parseCSVLine(lines[0]);
+  const numDays = headerRow.length;
   const exercises = getExercises();
   
-  // Create a template with exercises for each day
-  const templateExercises: Array<{
-    exerciseId: string;
-    exerciseName: string;
-    defaultSets: number;
-    defaultReps: number;
-  }> = [];
+  // Initialize days array
+  const days: DayPlan[] = [];
+  for (let col = 0; col < numDays; col++) {
+    const dayName = headerRow[col]?.trim() || `Day ${col + 1}`;
+    days.push({
+      dayNumber: col + 1,
+      name: dayName,
+      exercises: [],
+      isRestDay: false,
+    });
+  }
   
-  // Collect all unique exercises from all days
-  const addedExercises = new Set<string>();
+  // Parse each row - each cell goes to its respective day
   for (let row = 1; row < lines.length; row++) {
     const rowValues = parseCSVLine(lines[row]);
-    for (const exerciseName of rowValues) {
-      const name = exerciseName.trim();
-      if (name && !addedExercises.has(name.toLowerCase())) {
-        // Find matching exercise in database
-        const exercise = exercises.find(e => e.name.toLowerCase() === name.toLowerCase());
+    for (let col = 0; col < numDays; col++) {
+      const exerciseName = rowValues[col]?.trim();
+      if (exerciseName) {
+        // Find matching exercise in database (case-insensitive)
+        let exercise = exercises.find(e => 
+          e.name.toLowerCase() === exerciseName.toLowerCase()
+        );
+        
+        // If not found, try partial match
+        if (!exercise) {
+          exercise = exercises.find(e => 
+            e.name.toLowerCase().includes(exerciseName.toLowerCase()) ||
+            exerciseName.toLowerCase().includes(e.name.toLowerCase())
+          );
+        }
+        
         if (exercise) {
-          templateExercises.push({
+          days[col].exercises.push({
             exerciseId: exercise.id,
             exerciseName: exercise.name,
             defaultSets: 3,
             defaultReps: 10,
           });
-          addedExercises.add(name.toLowerCase());
+        } else {
+          // Create exercise on the fly if not found
+          const newExercise: Exercise = {
+            id: `imported_${Date.now()}_${row}_${col}`,
+            name: exerciseName,
+            muscleGroup: guessMuscleGroup(exerciseName),
+            isCompound: isCompoundExercise(exerciseName),
+          };
+          const allExercises = getExercises();
+          allExercises.push(newExercise);
+          setItem(STORAGE_KEYS.EXERCISES, allExercises);
+          
+          days[col].exercises.push({
+            exerciseId: newExercise.id,
+            exerciseName: newExercise.name,
+            defaultSets: 3,
+            defaultReps: 10,
+          });
         }
       }
     }
   }
   
-  if (templateExercises.length > 0) {
-    // Check if imported template already exists
-    const templates = getTemplates();
-    const existingImported = templates.find(t => t.id === 'imported_template');
-    
-    const importedTemplate: WorkoutTemplate = {
-      id: 'imported_template',
-      name: 'Imported Workout Plan',
-      type: 'custom',
-      exercises: templateExercises,
-    };
-    
-    if (existingImported) {
-      // Update existing imported template
-      const index = templates.findIndex(t => t.id === 'imported_template');
-      templates[index] = importedTemplate;
-    } else {
-      // Add new imported template
-      templates.push(importedTemplate);
+  // Mark days with no exercises as rest days
+  for (const day of days) {
+    if (day.exercises.length === 0) {
+      day.isRestDay = true;
+      day.name = `${day.name} (Rest)`;
     }
-    
-    setItem(STORAGE_KEYS.TEMPLATES, templates);
   }
+  
+  // Create the weekly plan
+  const weeklyPlan: WeeklyPlan = {
+    id: 'imported_plan',
+    name: 'Imported Workout Plan',
+    days,
+    isCustom: false,
+    isImported: true,
+  };
+  
+  // Save or update the imported plan
+  const plans = getWeeklyPlans();
+  const existingIndex = plans.findIndex(p => p.id === 'imported_plan');
+  if (existingIndex >= 0) {
+    plans[existingIndex] = weeklyPlan;
+  } else {
+    plans.push(weeklyPlan);
+  }
+  setItem(STORAGE_KEYS.WEEKLY_PLANS, plans);
+  
+  // Set as active plan
+  setActivePlanId('imported_plan');
 }
 
 // Helper to guess muscle group from exercise name

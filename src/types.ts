@@ -63,6 +63,24 @@ export interface TemplateExercise {
   defaultReps: number;
 }
 
+// A single day's workout within a weekly plan
+export interface DayPlan {
+  dayNumber: number; // 1-7
+  name: string; // e.g., "Day 1 - Full Body" or "Arms Day"
+  exercises: TemplateExercise[];
+  isRestDay?: boolean;
+}
+
+// Weekly workout plan (the TEMPLATE)
+export interface WeeklyPlan {
+  id: string;
+  name: string; // e.g., "4 Full Body + 1 Arms", "Push/Pull/Legs"
+  days: DayPlan[];
+  isCustom?: boolean;
+  isImported?: boolean;
+}
+
+// Legacy - kept for backward compatibility, represents a single day workout
 export interface WorkoutTemplate {
   id: string;
   name: string;
@@ -70,6 +88,7 @@ export interface WorkoutTemplate {
   exercises: TemplateExercise[];
   dayOfWeek?: number; // 0-6, Sunday-Saturday
   isCustom?: boolean; // true for user-created templates
+  weeklyPlanId?: string; // Link to parent weekly plan
 }
 
 export interface UserStats {
