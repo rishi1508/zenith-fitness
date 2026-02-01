@@ -169,28 +169,31 @@ function App() {
   const getLastWeightsForDay = (template: WorkoutTemplate): Map<string, number> => {
     const weights = new Map<string, number>();
     
-    // Only auto-fill if this is from a weekly plan
-    if (!template.weeklyPlanId) return weights;
+    // Build a map of exerciseId -> last weight used
+    // Look at ALL completed workouts and find last time each exercise was done
+    const completedWorkouts = workoutHistory
+      .filter(w => w.completed && w.type !== 'rest' && w.date < new Date().toISOString())
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Most recent first
     
-    // Find the last workout with the same template ID (same day in same plan)
-    const lastWorkout = workoutHistory
-      .filter(w => w.completed && w.name === template.name && w.date < new Date().toISOString())
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-    
-    if (!lastWorkout) return weights;
-    
-    // Extract weights from last workout
-    lastWorkout.exercises.forEach(ex => {
-      const completedSets = ex.sets.filter(s => s.completed && s.weight > 0);
-      if (completedSets.length > 0) {
-        // Use the most common weight from completed sets
-        const weightCounts = new Map<number, number>();
-        completedSets.forEach(s => {
-          weightCounts.set(s.weight, (weightCounts.get(s.weight) || 0) + 1);
-        });
-        const mostCommonWeight = Array.from(weightCounts.entries())
-          .sort((a, b) => b[1] - a[1])[0][0];
-        weights.set(ex.exerciseId, mostCommonWeight);
+    // For each exercise in this template, find the last weight used
+    template.exercises.forEach(templateEx => {
+      // Find the most recent workout containing this exercise
+      for (const workout of completedWorkouts) {
+        const matchingEx = workout.exercises.find(ex => ex.exerciseId === templateEx.exerciseId);
+        if (matchingEx) {
+          const completedSets = matchingEx.sets.filter(s => s.completed && s.weight > 0);
+          if (completedSets.length > 0) {
+            // Use the most common weight from that workout
+            const weightCounts = new Map<number, number>();
+            completedSets.forEach(s => {
+              weightCounts.set(s.weight, (weightCounts.get(s.weight) || 0) + 1);
+            });
+            const mostCommonWeight = Array.from(weightCounts.entries())
+              .sort((a, b) => b[1] - a[1])[0][0];
+            weights.set(templateEx.exerciseId, mostCommonWeight);
+            break; // Found the last weight for this exercise, move to next
+          }
+        }
       }
     });
     
@@ -2256,7 +2259,7 @@ function ProgressView({ workouts, isDark, onBack }: {
             {searchQuery ? `${exerciseList.filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase())).length} matching` : `${exerciseList.length} total exercises`} - Tap to see details
           </div>
         </div>
-        <div className={`divide-y max-h-96 overflow-y-auto ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`}>
+        <div className={`divide-y overflow-y-auto ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`} style={{ maxHeight: 'calc(100vh - 400px)' }}>
           {exerciseList.length === 0 ? (
             <div className={`px-4 py-8 text-center ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
               <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
