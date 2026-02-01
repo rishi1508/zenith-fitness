@@ -23,13 +23,8 @@ function formatVolume(volume: number): string {
   return volume.toString();
 }
 
-// Splash Screen
-function SplashScreen({ onFinish }: { onFinish: () => void }) {
-  useEffect(() => {
-    const timer = setTimeout(onFinish, 1500);
-    return () => clearTimeout(timer);
-  }, [onFinish]);
-
+// Splash Screen - shows immediately, dismissed when data is loaded
+function SplashScreen() {
   return (
     <div className="fixed inset-0 bg-[#0f0f0f] flex flex-col items-center justify-center z-50">
       <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mb-4 animate-pulse shadow-lg shadow-orange-500/20">
@@ -92,6 +87,8 @@ function App() {
     // Check for missing days after splash
     const missing = storage.getMissingDays();
     setMissingDays(missing);
+    // Data loaded, hide splash
+    setShowSplash(false);
   }, []);
 
   useEffect(() => {
@@ -208,20 +205,6 @@ function App() {
     }
   };
 
-  const logRestDay = () => {
-    const restWorkout: Workout = {
-      id: crypto.randomUUID(),
-      date: new Date().toISOString(),
-      name: 'Rest Day',
-      type: 'rest',
-      exercises: [],
-      completed: true,
-      completedAt: new Date().toISOString(),
-    };
-    storage.saveWorkout(restWorkout);
-    loadData();
-  };
-
   const handleBackfillRestDays = () => {
     storage.backfillRestDays(missingDays);
     setMissingDays([]);
@@ -234,7 +217,7 @@ function App() {
 
   // Show splash screen
   if (showSplash) {
-    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+    return <SplashScreen />;
   }
 
   const isDark = theme === 'dark';
@@ -364,7 +347,6 @@ function App() {
             workouts={workoutHistory}
             isDark={isDark}
             onStartWorkout={startWorkout}
-            onLogRest={logRestDay}
             onViewHistory={() => navigateTo('history')}
           />
         )}
@@ -553,14 +535,13 @@ function WeeklyInsightsCard({ workouts }: { workouts: Workout[] }) {
 }
 
 // Home View
-function HomeView({ stats, templates, lastTemplate, workouts, isDark, onStartWorkout, onLogRest, onViewHistory }: {
+function HomeView({ stats, templates, lastTemplate, workouts, isDark, onStartWorkout, onViewHistory }: {
   stats: UserStats | null;
   templates: WorkoutTemplate[];
   lastTemplate: WorkoutTemplate | null | undefined;
   workouts: Workout[];
   isDark: boolean;
   onStartWorkout: (template: WorkoutTemplate) => void;
-  onLogRest: () => void;
   onViewHistory: () => void;
 }) {
   const today = new Date();
@@ -612,14 +593,8 @@ function HomeView({ stats, templates, lastTemplate, workouts, isDark, onStartWor
         </button>
       )}
 
-      {/* Stats Cards */}
+      {/* Stats Cards - simplified to useful metrics */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard 
-          icon={<Dumbbell className="text-orange-400" />}
-          value={formatVolume(stats?.totalVolume || 0)}
-          label="Total Volume"
-          color="orange"
-        />
         <StatCard 
           icon={<Target className="text-emerald-400" />}
           value={stats?.thisWeekWorkouts || 0}
@@ -628,16 +603,10 @@ function HomeView({ stats, templates, lastTemplate, workouts, isDark, onStartWor
           color="emerald"
         />
         <StatCard 
-          icon={<TrendingUp className="text-yellow-400" />}
-          value={formatVolume(stats?.avgVolumePerSession || 0)}
-          label="Avg/Session"
-          color="yellow"
-        />
-        <StatCard 
-          icon={<Trophy className="text-indigo-400" />}
+          icon={<Trophy className="text-orange-400" />}
           value={stats?.totalWorkouts || 0}
           label="Total Workouts"
-          color="indigo"
+          color="orange"
         />
       </div>
 
@@ -697,19 +666,6 @@ function HomeView({ stats, templates, lastTemplate, workouts, isDark, onStartWor
           })()}
         </div>
       </div>
-
-      {/* Rest Day Button */}
-      <button
-        onClick={onLogRest}
-        className={`w-full border rounded-xl p-4 flex items-center justify-center gap-2 transition-colors ${
-          isDark 
-            ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-400 hover:border-zinc-500/50' 
-            : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300 shadow-sm'
-        }`}
-      >
-        <Clock className="w-5 h-5" />
-        <span>Log Rest Day</span>
-      </button>
 
       {/* Recent History */}
       {stats?.lastWorkoutDate && (
