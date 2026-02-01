@@ -13,7 +13,8 @@ export type MuscleGroup =
   | 'triceps' 
   | 'legs' 
   | 'core' 
-  | 'full_body';
+  | 'full_body'
+  | 'other';
 
 export interface WorkoutSet {
   id: string;

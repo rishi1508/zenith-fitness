@@ -313,28 +313,176 @@ export async function importFromGoogleSheetsUrl(url: string): Promise<ImportResu
   const errors: string[] = [];
   
   try {
-    // Convert Google Sheets URL to CSV export URL
-    // From: https://docs.google.com/spreadsheets/d/SHEET_ID/edit...
-    // To: https://docs.google.com/spreadsheets/d/SHEET_ID/export?format=csv
+    // Extract sheet ID from URL
     const sheetIdMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
     if (!sheetIdMatch) {
       return { success: false, workoutsImported: 0, exercisesFound: 0, errors: ['Invalid Google Sheets URL'] };
     }
     
     const sheetId = sheetIdMatch[1];
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
     
-    const response = await fetch(csvUrl);
-    if (!response.ok) {
-      return { success: false, workoutsImported: 0, exercisesFound: 0, errors: ['Failed to fetch sheet. Make sure it\'s publicly accessible (Anyone with link can view).'] };
+    // Fetch all three sheets: Log Sheet, Exercise Data, Workout Plan
+    const logSheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Log%20Sheet`;
+    const exerciseDataUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Exercise%20Data`;
+    const workoutPlanUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=Workout%20Plan`;
+    
+    // Step 1: Import exercises from Exercise Data sheet
+    try {
+      const exerciseResponse = await fetch(exerciseDataUrl);
+      if (exerciseResponse.ok) {
+        const exerciseText = await exerciseResponse.text();
+        importExercisesFromSheet(exerciseText, errors);
+      } else {
+        errors.push('Could not fetch Exercise Data sheet');
+      }
+    } catch (e) {
+      errors.push('Error fetching Exercise Data sheet');
     }
     
-    const csvText = await response.text();
+    // Step 2: Import workout template from Workout Plan sheet
+    try {
+      const planResponse = await fetch(workoutPlanUrl);
+      if (planResponse.ok) {
+        const planText = await planResponse.text();
+        importWorkoutPlanFromSheet(planText, errors);
+      } else {
+        errors.push('Could not fetch Workout Plan sheet');
+      }
+    } catch (e) {
+      errors.push('Error fetching Workout Plan sheet');
+    }
+    
+    // Step 3: Import workout history from Log Sheet
+    const logResponse = await fetch(logSheetUrl);
+    if (!logResponse.ok) {
+      return { success: false, workoutsImported: 0, exercisesFound: 0, errors: ['Failed to fetch Log Sheet. Make sure it\'s publicly accessible.'] };
+    }
+    
+    const csvText = await logResponse.text();
     return importFromCSV(csvText);
   } catch (e) {
     errors.push(`Network error: ${e instanceof Error ? e.message : 'Unknown error'}`);
     return { success: false, workoutsImported: 0, exercisesFound: 0, errors };
   }
+}
+
+// Import exercises from Exercise Data sheet (first row contains exercise names)
+function importExercisesFromSheet(csvText: string, _errors: string[]): void {
+  const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
+  if (lines.length < 1) return;
+  
+  // First row has exercise names starting from column B
+  const exerciseNames = parseCSVLine(lines[0]);
+  const existingExercises = getExercises();
+  const existingNames = new Set(existingExercises.map(e => e.name.toLowerCase()));
+  
+  let addedCount = 0;
+  // Skip first column ("Exercise Name" label), rest are exercise names
+  for (let i = 1; i < exerciseNames.length; i++) {
+    const name = exerciseNames[i].trim();
+    if (name && !existingNames.has(name.toLowerCase())) {
+      // Guess muscle group from exercise name
+      const muscleGroup = guessMuscleGroup(name);
+      const newExercise: Exercise = {
+        id: `imported_${Date.now()}_${i}`,
+        name,
+        muscleGroup,
+        isCompound: isCompoundExercise(name),
+      };
+      existingExercises.push(newExercise);
+      existingNames.add(name.toLowerCase());
+      addedCount++;
+    }
+  }
+  
+  if (addedCount > 0) {
+    setItem(STORAGE_KEYS.EXERCISES, existingExercises);
+  }
+}
+
+// Import workout template from Workout Plan sheet
+function importWorkoutPlanFromSheet(csvText: string, _errors: string[]): void {
+  const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
+  if (lines.length < 2) return;
+  
+  // First row: Day 1, Day 2, etc. (not used - we collect all exercises)
+  // Skip header row (parseCSVLine(lines[0]) would give day names)
+  const exercises = getExercises();
+  
+  // Create a template with exercises for each day
+  const templateExercises: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    defaultSets: number;
+    defaultReps: number;
+  }> = [];
+  
+  // Collect all unique exercises from all days
+  const addedExercises = new Set<string>();
+  for (let row = 1; row < lines.length; row++) {
+    const rowValues = parseCSVLine(lines[row]);
+    for (const exerciseName of rowValues) {
+      const name = exerciseName.trim();
+      if (name && !addedExercises.has(name.toLowerCase())) {
+        // Find matching exercise in database
+        const exercise = exercises.find(e => e.name.toLowerCase() === name.toLowerCase());
+        if (exercise) {
+          templateExercises.push({
+            exerciseId: exercise.id,
+            exerciseName: exercise.name,
+            defaultSets: 3,
+            defaultReps: 10,
+          });
+          addedExercises.add(name.toLowerCase());
+        }
+      }
+    }
+  }
+  
+  if (templateExercises.length > 0) {
+    // Check if imported template already exists
+    const templates = getTemplates();
+    const existingImported = templates.find(t => t.id === 'imported_template');
+    
+    const importedTemplate: WorkoutTemplate = {
+      id: 'imported_template',
+      name: 'Imported Workout Plan',
+      type: 'custom',
+      exercises: templateExercises,
+    };
+    
+    if (existingImported) {
+      // Update existing imported template
+      const index = templates.findIndex(t => t.id === 'imported_template');
+      templates[index] = importedTemplate;
+    } else {
+      // Add new imported template
+      templates.push(importedTemplate);
+    }
+    
+    setItem(STORAGE_KEYS.TEMPLATES, templates);
+  }
+}
+
+// Helper to guess muscle group from exercise name
+function guessMuscleGroup(name: string): Exercise['muscleGroup'] {
+  const lower = name.toLowerCase();
+  if (lower.includes('squat') || lower.includes('leg') || lower.includes('calf') || lower.includes('hip')) return 'legs';
+  if (lower.includes('bench') || lower.includes('chest') || lower.includes('pec') || lower.includes('push')) return 'chest';
+  if (lower.includes('row') || lower.includes('lat') || lower.includes('pull')) return 'back';
+  if (lower.includes('shoulder') || lower.includes('delt') || lower.includes('lateral raise') || lower.includes('shrug')) return 'shoulders';
+  if (lower.includes('curl') || lower.includes('bicep')) return 'biceps';
+  if (lower.includes('tricep') || lower.includes('extension') || lower.includes('pressdown') || lower.includes('kickback')) return 'triceps';
+  if (lower.includes('crunch') || lower.includes('ab') || lower.includes('leg raise')) return 'core';
+  if (lower.includes('deadlift') || lower.includes('romanian')) return 'legs';
+  return 'full_body';
+}
+
+// Helper to check if exercise is compound
+function isCompoundExercise(name: string): boolean {
+  const lower = name.toLowerCase();
+  const compounds = ['squat', 'deadlift', 'bench', 'row', 'press', 'pull-up', 'pulldown', 'dip'];
+  return compounds.some(c => lower.includes(c));
 }
 
 export function importFromCSV(csvText: string): ImportResult {
