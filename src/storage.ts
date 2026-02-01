@@ -742,12 +742,41 @@ export function importFromCSV(csvText: string): ImportResult {
       continue;
     }
     
-    const exercises = Array.from(workoutData.exercises.entries()).map(([name, data]) => ({
-      id: crypto.randomUUID(),
-      exerciseId: name.toLowerCase().replace(/\s+/g, '-'),
-      exerciseName: name,
-      sets: data.sets,
-    }));
+    // Map exercise names to actual exercise IDs from database
+    const allExercises = getExercises();
+    const exercises = Array.from(workoutData.exercises.entries()).map(([name, data]) => {
+      // Find exercise in database (case-insensitive, trim whitespace)
+      const cleanName = name.trim();
+      let exercise = allExercises.find(e => e.name.toLowerCase() === cleanName.toLowerCase());
+      
+      // If not found, try partial match
+      if (!exercise) {
+        exercise = allExercises.find(e => 
+          e.name.toLowerCase().includes(cleanName.toLowerCase()) ||
+          cleanName.toLowerCase().includes(e.name.toLowerCase())
+        );
+      }
+      
+      // If still not found, create it
+      if (!exercise) {
+        const newEx: Exercise = {
+          id: `imported_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          name: cleanName,
+          muscleGroup: guessMuscleGroup(cleanName),
+          isCompound: isCompoundExercise(cleanName),
+        };
+        allExercises.push(newEx);
+        setItem(STORAGE_KEYS.EXERCISES, allExercises);
+        exercise = newEx;
+      }
+      
+      return {
+        id: crypto.randomUUID(),
+        exerciseId: exercise.id, // Use actual exercise ID from database
+        exerciseName: exercise.name, // Use consistent name from database
+        sets: data.sets,
+      };
+    });
     
     if (exercises.length === 0) continue;
     
