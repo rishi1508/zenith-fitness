@@ -4,6 +4,7 @@ export interface Exercise {
   muscleGroup: MuscleGroup;
   isCompound: boolean;
   notes?: string; // Personal notes: form cues, pain points, RPE targets
+  videoUrl?: string; // YouTube or form guide link
 }
 
 export type MuscleGroup = 

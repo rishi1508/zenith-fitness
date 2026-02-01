@@ -98,13 +98,15 @@ Show visual indicators during active workout:
 - [x] One-tap button to log rest day
 - [x] Auto-refresh after logging
 
-### 🎯 Exercise Video Links
+### ✅ v2.13.0 - Exercise Video Links
+**Status:** Completed 2026-02-02  
 **Impact:** Low — Form reference  
 **Complexity:** Low
 
-- Add optional URL field to exercises
-- Tap to open YouTube/form guide
-- Embedded preview in workout view?
+- [x] Video URL field in Exercise Library editor
+- [x] Opens in new tab during workouts
+- [x] Displayed with notes in blue callout box
+- [x] Icon: ▶️ Watch Form Video
 
 ### 🎯 Deload Week Tracking
 **Impact:** Low — Periodization support  
@@ -140,6 +142,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-02 01:40 IST  
-**Current Version:** v2.12.0  
-**Next Target:** Exercise Video Links (quick win)
+**Last Updated:** 2026-02-02 01:45 IST  
+**Current Version:** v2.13.0  
+**Next Target:** Continue autonomous feature delivery
