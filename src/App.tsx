@@ -13,7 +13,7 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises';
 type Theme = 'dark' | 'light';
 
 // Format volume: 1500 -> 1.5k, 1500000 -> 1.5t
@@ -135,27 +135,66 @@ function App() {
     // Remember this template as last used
     storage.setLastUsedTemplateId(template.id);
     
+    // Get last weights for auto-fill
+    const lastWeights = getLastWeightsForDay(template);
+    
     const workout: Workout = {
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
       name: template.name,
       type: template.type,
-      exercises: template.exercises.map(ex => ({
-        id: crypto.randomUUID(),
-        exerciseId: ex.exerciseId,
-        exerciseName: ex.exerciseName,
-        sets: Array.from({ length: ex.defaultSets }, () => ({
+      exercises: template.exercises.map(ex => {
+        // Auto-fill weight from last session of this day
+        const lastWeight = lastWeights.get(ex.exerciseId) || 0;
+        return {
           id: crypto.randomUUID(),
-          reps: ex.defaultReps,
-          weight: 0,
-          completed: false,
-        })),
-      })),
+          exerciseId: ex.exerciseId,
+          exerciseName: ex.exerciseName,
+          sets: Array.from({ length: ex.defaultSets }, () => ({
+            id: crypto.randomUUID(),
+            reps: ex.defaultReps,
+            weight: lastWeight, // Auto-filled from last session
+            completed: false,
+          })),
+        };
+      }),
       completed: false,
       startedAt: new Date().toISOString(),
     };
     setActiveWorkout(workout);
     navigateTo('active');
+  };
+  
+  // Helper: Get last weights used for each exercise in this specific day
+  const getLastWeightsForDay = (template: WorkoutTemplate): Map<string, number> => {
+    const weights = new Map<string, number>();
+    
+    // Only auto-fill if this is from a weekly plan
+    if (!template.weeklyPlanId) return weights;
+    
+    // Find the last workout with the same template ID (same day in same plan)
+    const lastWorkout = workoutHistory
+      .filter(w => w.completed && w.name === template.name && w.date < new Date().toISOString())
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    
+    if (!lastWorkout) return weights;
+    
+    // Extract weights from last workout
+    lastWorkout.exercises.forEach(ex => {
+      const completedSets = ex.sets.filter(s => s.completed && s.weight > 0);
+      if (completedSets.length > 0) {
+        // Use the most common weight from completed sets
+        const weightCounts = new Map<number, number>();
+        completedSets.forEach(s => {
+          weightCounts.set(s.weight, (weightCounts.get(s.weight) || 0) + 1);
+        });
+        const mostCommonWeight = Array.from(weightCounts.entries())
+          .sort((a, b) => b[1] - a[1])[0][0];
+        weights.set(ex.exerciseId, mostCommonWeight);
+      }
+    });
+    
+    return weights;
   };
 
   const saveActiveWorkout = (workout: Workout) => {
@@ -387,6 +426,14 @@ function App() {
           <SettingsView 
             onBack={() => goBack()}
             onDataChange={loadData}
+            onNavigateToExercises={() => navigateTo('exercises')}
+          />
+        )}
+        {view === 'exercises' && (
+          <ExerciseManagerView
+            isDark={isDark}
+            onBack={() => goBack()}
+            onExercisesChange={loadData}
           />
         )}
       </main>
@@ -2091,9 +2138,10 @@ function ProgressView({ workouts, isDark, onBack }: {
 }
 
 // Settings View - Import/Export
-function SettingsView({ onBack, onDataChange }: {
+function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
   onBack: () => void;
   onDataChange: () => void;
+  onNavigateToExercises?: () => void;
 }) {
   const [sheetsUrl, setSheetsUrl] = useState('');
   const [importing, setImporting] = useState(false);
@@ -2163,6 +2211,20 @@ function SettingsView({ onBack, onDataChange }: {
         </button>
         <h1 className="text-xl font-bold">Settings</h1>
       </div>
+
+      {/* Exercise Library Button */}
+      {onNavigateToExercises && (
+        <button
+          onClick={onNavigateToExercises}
+          className="w-full bg-orange-500 hover:bg-orange-400 text-white font-medium py-4 rounded-xl flex items-center justify-between transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Dumbbell className="w-5 h-5" />
+            <span>Exercise Library</span>
+          </div>
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Import from Google Sheets */}
       <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
@@ -2265,6 +2327,171 @@ function SettingsView({ onBack, onDataChange }: {
       <div className="text-center text-xs text-zinc-500 space-y-1">
         <p>Zenith Fitness v{__APP_VERSION__}</p>
         <p>Built with ⚡ by Zenith</p>
+      </div>
+    </div>
+  );
+}
+
+// Exercise Manager View - Centralized exercise list management
+function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
+  isDark: boolean;
+  onBack: () => void;
+  onExercisesChange: () => void;
+}) {
+  const [exercises, setExercises] = useState(() => storage.getExercises());
+  const [isAdding, setIsAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newMuscleGroup, setNewMuscleGroup] = useState<string>('chest');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other'];
+  
+  const filteredExercises = exercises.filter(ex =>
+    ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ex.muscleGroup.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const handleAdd = () => {
+    if (!newName.trim()) return;
+    storage.addCustomExercise(newName.trim(), newMuscleGroup);
+    setExercises(storage.getExercises());
+    setNewName('');
+    setIsAdding(false);
+    onExercisesChange();
+  };
+  
+  const handleDelete = (id: string, name: string) => {
+    if (confirm(`Delete exercise "${name}"?\n\nWarning: This will affect all templates and workouts using this exercise.`)) {
+      const allExercises = storage.getExercises().filter(e => e.id !== id);
+      localStorage.setItem('zenith_exercises', JSON.stringify(allExercises));
+      setExercises(allExercises);
+      onExercisesChange();
+    }
+  };
+  
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <h1 className="text-xl font-bold">Exercise Library</h1>
+        <button
+          onClick={() => setIsAdding(!isAdding)}
+          className="ml-auto p-2 bg-orange-500 rounded-lg hover:bg-orange-400 transition-colors"
+        >
+          {isAdding ? <X className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
+        </button>
+      </div>
+      
+      {/* Add New Exercise */}
+      {isAdding && (
+        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Exercise name"
+              className={`w-full p-3 rounded-lg border ${
+                isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-white border-gray-200'
+              } focus:outline-none focus:border-orange-500`}
+            />
+            <select
+              value={newMuscleGroup}
+              onChange={(e) => setNewMuscleGroup(e.target.value)}
+              className={`w-full p-3 rounded-lg border ${
+                isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-white border-gray-200'
+              } focus:outline-none focus:border-orange-500`}
+            >
+              {muscleGroups.map(mg => (
+                <option key={mg} value={mg}>
+                  {mg.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleAdd}
+              disabled={!newName.trim()}
+              className="w-full py-3 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Add Exercise
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Search */}
+      <div className="relative">
+        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search exercises..."
+          className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
+            isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
+          } focus:outline-none focus:border-orange-500`}
+        />
+      </div>
+      
+      {/* Exercise Count */}
+      <div className={`text-sm ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+        {filteredExercises.length} exercise{filteredExercises.length !== 1 ? 's' : ''}
+        {searchQuery && ` matching "${searchQuery}"`}
+      </div>
+      
+      {/* Exercise List */}
+      <div className="space-y-2">
+        {filteredExercises.map(exercise => (
+          <div
+            key={exercise.id}
+            className={`rounded-xl p-4 flex items-center justify-between ${
+              isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'
+            }`}
+          >
+            <div className="flex items-center gap-3 flex-1">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                exercise.muscleGroup === 'chest' ? 'bg-blue-500/20' :
+                exercise.muscleGroup === 'back' ? 'bg-green-500/20' :
+                exercise.muscleGroup === 'legs' ? 'bg-purple-500/20' :
+                exercise.muscleGroup === 'shoulders' ? 'bg-yellow-500/20' :
+                exercise.muscleGroup === 'biceps' || exercise.muscleGroup === 'triceps' ? 'bg-red-500/20' :
+                'bg-orange-500/20'
+              }`}>
+                <Dumbbell className={`w-5 h-5 ${
+                  exercise.muscleGroup === 'chest' ? 'text-blue-400' :
+                  exercise.muscleGroup === 'back' ? 'text-green-400' :
+                  exercise.muscleGroup === 'legs' ? 'text-purple-400' :
+                  exercise.muscleGroup === 'shoulders' ? 'text-yellow-400' :
+                  exercise.muscleGroup === 'biceps' || exercise.muscleGroup === 'triceps' ? 'text-red-400' :
+                  'text-orange-400'
+                }`} />
+              </div>
+              <div className="flex-1">
+                <div className="font-medium">{exercise.name}</div>
+                <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                  {exercise.muscleGroup.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  {exercise.isCompound && ' • Compound'}
+                </div>
+              </div>
+            </div>
+            {exercise.id.startsWith('custom_') || exercise.id.startsWith('imported_') ? (
+              <button
+                onClick={() => handleDelete(exercise.id, exercise.name)}
+                className={`p-2 rounded-lg transition-colors ${
+                  isDark ? 'text-zinc-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                }`}
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            ) : (
+              <div className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-[#252525] text-zinc-500' : 'bg-gray-100 text-gray-500'}`}>
+                Default
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
