@@ -70,12 +70,16 @@
 
 ---
 
-## In Progress
-- [ ] **Weekly Plan Creator** - per-day input (significant UI work)
-  - Need to refactor Templates view to manage WeeklyPlans
-  - UI for adding/removing days
-  - Assign exercises per day
-  - Mark rest days
+## ✅ ALL FEATURES COMPLETE!
+
+**v2.2.0 - Weekly Plan Creator shipped!**
+- [x] Templates view → Weekly Plans view
+- [x] Create custom weekly plans from scratch
+- [x] Per-day input (add/remove days)
+- [x] Assign exercises per day with search
+- [x] Mark rest days
+- [x] Edit existing plans
+- [x] Set active plan
 
 ## Deferred (Later)
 - [ ] Two-way Google Sheets sync (needs OAuth)

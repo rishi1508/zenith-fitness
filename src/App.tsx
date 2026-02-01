@@ -152,7 +152,7 @@ function App() {
           exerciseName: ex.exerciseName,
           sets: Array.from({ length: ex.defaultSets }, () => ({
             id: crypto.randomUUID(),
-            reps: ex.defaultReps,
+            reps: 0, // Leave empty for user to fill
             weight: lastWeight, // Auto-filled from last session
             completed: false,
           })),
@@ -423,6 +423,7 @@ function App() {
             onBack={() => goBack()}
             onDataChange={loadData}
             onNavigateToExercises={() => navigateTo('exercises')}
+            isDark={isDark}
           />
         )}
         {view === 'exercises' && (
@@ -547,11 +548,14 @@ function WeeklyPlanSelector({ isDark, onStartWorkout }: {
   
   // Convert DayPlan to WorkoutTemplate for starting workout
   const startWorkoutForDay = () => {
-    if (!selectedDay || selectedDay.isRestDay) return;
+    if (!selectedDay || selectedDay.isRestDay || !activePlan) return;
+    
+    // Create workout name with plan name (e.g., "4FB+1Arms - Day 1")
+    const workoutName = `${activePlan.name} - ${selectedDay.name}`;
     
     const template: WorkoutTemplate = {
       id: `${activePlanId}_day_${selectedDay.dayNumber}`,
-      name: selectedDay.name,
+      name: workoutName,
       type: 'custom',
       exercises: selectedDay.exercises,
       weeklyPlanId: activePlanId || undefined,
@@ -2028,24 +2032,24 @@ function ProgressView({ workouts, isDark, onBack }: {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
   
-  // Get all unique exercises from workout history
+  // Get ALL exercises from library, with session counts
   const exerciseList = useMemo(() => {
-    const exerciseMap = new Map<string, { id: string; name: string; sessionCount: number }>();
+    const allExercises = storage.getExercises();
+    const sessionCounts = new Map<string, number>();
+    
+    // Count sessions for each exercise
     completedWorkouts.forEach(workout => {
       workout.exercises.forEach(exercise => {
-        const existing = exerciseMap.get(exercise.exerciseId);
-        if (existing) {
-          existing.sessionCount++;
-        } else {
-          exerciseMap.set(exercise.exerciseId, {
-            id: exercise.exerciseId,
-            name: exercise.exerciseName,
-            sessionCount: 1,
-          });
-        }
+        sessionCounts.set(exercise.exerciseId, (sessionCounts.get(exercise.exerciseId) || 0) + 1);
       });
     });
-    return Array.from(exerciseMap.values()).sort((a, b) => b.sessionCount - a.sessionCount);
+    
+    // Map all exercises with their session counts
+    return allExercises.map(ex => ({
+      id: ex.id,
+      name: ex.name,
+      sessionCount: sessionCounts.get(ex.id) || 0,
+    })).sort((a, b) => b.sessionCount - a.sessionCount || a.name.localeCompare(b.name));
   }, [completedWorkouts]);
 
   // Get data for selected exercise
@@ -2276,10 +2280,11 @@ function ProgressView({ workouts, isDark, onBack }: {
 }
 
 // Settings View - Import/Export
-function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
+function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDark }: {
   onBack: () => void;
   onDataChange: () => void;
   onNavigateToExercises?: () => void;
+  isDark: boolean;
 }) {
   const [sheetsUrl, setSheetsUrl] = useState('');
   const [importing, setImporting] = useState(false);
@@ -2344,7 +2349,7 @@ function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 -ml-2 text-zinc-400">
+        <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">Settings</h1>
@@ -2365,17 +2370,17 @@ function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
       )}
 
       {/* Import from Google Sheets */}
-      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+      <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-2 mb-4">
           <FileSpreadsheet className="w-5 h-5 text-green-400" />
           <span className="font-medium">Import from Google Sheets</span>
         </div>
         
-        <p className="text-sm text-zinc-400 mb-4">
+        <p className={`text-sm mb-4 ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
           Import your existing workout history from Google Sheets. The sheet must be publicly accessible (Anyone with link can view).
         </p>
         
-        <p className="text-xs text-zinc-500 mb-4">
+        <p className={`text-xs mb-4 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
           Expected format: Date, Exercise, Set1 Reps, Set1 Weight, Set2 Reps, Set2 Weight, Set3 Reps, Set3 Weight, Volume
         </p>
         
@@ -2384,7 +2389,9 @@ function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
           value={sheetsUrl}
           onChange={(e) => setSheetsUrl(e.target.value)}
           placeholder="https://docs.google.com/spreadsheets/d/..."
-          className="w-full bg-[#252525] border border-[#3e3e3e] rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-orange-500 mb-3"
+          className={`w-full rounded-lg px-4 py-3 text-sm border mb-3 ${
+            isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-white border-gray-200'
+          } focus:outline-none focus:border-orange-500`}
         />
         
         <button
@@ -2416,13 +2423,13 @@ function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
       </div>
 
       {/* Export to CSV */}
-      <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-4">
+      <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
         <div className="flex items-center gap-2 mb-4">
           <Upload className="w-5 h-5 text-blue-400" />
           <span className="font-medium">Export to CSV</span>
         </div>
         
-        <p className="text-sm text-zinc-400 mb-4">
+        <p className={`text-sm mb-4 ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
           Export your workout data as CSV. Copy and paste into Google Sheets to sync your data.
         </p>
         
@@ -2439,7 +2446,9 @@ function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
             <textarea
               value={exportCsv}
               readOnly
-              className="w-full h-32 bg-[#252525] border border-[#3e3e3e] rounded-lg px-3 py-2 text-xs font-mono text-zinc-300 resize-none"
+              className={`w-full h-32 rounded-lg px-3 py-2 text-xs font-mono resize-none border ${
+                isDark ? 'bg-[#252525] border-[#3e3e3e] text-zinc-300' : 'bg-gray-50 border-gray-200 text-gray-700'
+              }`}
             />
             <button
               onClick={copyToClipboard}
@@ -2462,7 +2471,7 @@ function SettingsView({ onBack, onDataChange, onNavigateToExercises }: {
       </div>
 
       {/* App Info */}
-      <div className="text-center text-xs text-zinc-500 space-y-1">
+      <div className={`text-center text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
         <p>Zenith Fitness v{__APP_VERSION__}</p>
         <p>Built with ⚡ by Zenith</p>
       </div>
