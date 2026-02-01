@@ -4,7 +4,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-2.4.0-orange)
+![Version](https://img.shields.io/badge/version-2.6.0-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -23,7 +23,7 @@ The core concept: **A "plan" is a full week** — not a single workout.
 - **Exercise Library** — Centralized list of all exercises (Settings → Exercise Library)
 - **Custom Exercises** — Create your own with name and muscle group
 - **Active Workout Mode** — Log weight, reps, mark sets complete in real-time
-- **Auto-fill Weights** — Automatically pre-fills weights from your last session of same day
+- **Auto-fill Weights** — Pre-fills exact weight pattern from last session (e.g., 48kg, 52kg, 48kg)
 - **Rest Timer** — Preset buttons (1:00, 1:30, 2:00, 3:00) with vibration alerts
 - **Auto Rest Day Detection** — Prompts to log missed days as rest days
 
@@ -219,6 +219,8 @@ For importing, your Google Sheet should have these sheets:
 See [Releases](https://github.com/rishi1508/zenith-fitness/releases) for full version history.
 
 ### v2.x (Major Architecture Refactor)
+- **v2.6.0** — Fixed PR calculation (max reps at max weight), exact set pattern auto-fill, header safe area
+- **v2.5.0** — Comprehensive import fix (exercise ID matching), Progress view height fix
 - **v2.4.0** — Critical data fixes (import empty dates, progress scroll)
 - **v2.3.0** — Auto-fill weights, history template names, settings light mode
 - **v2.2.0** — Weekly Plan Creator with per-day UI
