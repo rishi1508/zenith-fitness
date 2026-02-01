@@ -1183,6 +1183,13 @@ function ExerciseCard({ exercise, onUpdateSet }: {
     [exercise.exerciseId]
   );
   
+  // Get exercise notes from library
+  const exerciseNotes = useMemo(() => {
+    const exercises = storage.getExercises();
+    const ex = exercises.find(e => e.id === exercise.exerciseId);
+    return ex?.notes;
+  }, [exercise.exerciseId]);
+  
   // Helper to get comparison indicator for a set
   const getProgressIndicator = (setIndex: number, currentWeight: number, currentReps: number) => {
     if (!lastSession || setIndex >= lastSession.length) return null;
@@ -1225,6 +1232,14 @@ function ExerciseCard({ exercise, onUpdateSet }: {
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
+          {/* Exercise Notes */}
+          {exerciseNotes && (
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+              <div className="text-xs font-medium text-blue-400 mb-1">📝 Notes</div>
+              <div className="text-sm text-zinc-300">{exerciseNotes}</div>
+            </div>
+          )}
+          
           {/* Header */}
           <div className="grid grid-cols-12 gap-2 text-xs text-zinc-500 px-2">
             <div className="col-span-2">SET</div>
@@ -2556,6 +2571,8 @@ function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   const [newName, setNewName] = useState('');
   const [newMuscleGroup, setNewMuscleGroup] = useState<string>('chest');
   const [searchQuery, setSearchQuery] = useState('');
+  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState<string | null>(null);
   
   const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other'];
   
@@ -2578,6 +2595,22 @@ function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
       const allExercises = storage.getExercises().filter(e => e.id !== id);
       localStorage.setItem('zenith_exercises', JSON.stringify(allExercises));
       setExercises(allExercises);
+      onExercisesChange();
+    }
+  };
+  
+  const handleSaveNotes = (exerciseId: string) => {
+    const allExercises = storage.getExercises();
+    const exerciseIndex = allExercises.findIndex(e => e.id === exerciseId);
+    if (exerciseIndex >= 0) {
+      allExercises[exerciseIndex] = {
+        ...allExercises[exerciseIndex],
+        notes: editingNotes?.trim() || undefined,
+      };
+      localStorage.setItem('zenith_exercises', JSON.stringify(allExercises));
+      setExercises(allExercises);
+      setEditingNotes(null);
+      setExpandedExerciseId(null);
       onExercisesChange();
     }
   };
@@ -2656,55 +2689,92 @@ function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
       
       {/* Exercise List */}
       <div className="space-y-2">
-        {filteredExercises.map(exercise => (
-          <div
-            key={exercise.id}
-            className={`rounded-xl p-4 flex items-center justify-between ${
-              isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'
-            }`}
-          >
-            <div className="flex items-center gap-3 flex-1">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                exercise.muscleGroup === 'chest' ? 'bg-blue-500/20' :
-                exercise.muscleGroup === 'back' ? 'bg-green-500/20' :
-                exercise.muscleGroup === 'legs' ? 'bg-purple-500/20' :
-                exercise.muscleGroup === 'shoulders' ? 'bg-yellow-500/20' :
-                exercise.muscleGroup === 'biceps' || exercise.muscleGroup === 'triceps' ? 'bg-red-500/20' :
-                'bg-orange-500/20'
-              }`}>
-                <Dumbbell className={`w-5 h-5 ${
-                  exercise.muscleGroup === 'chest' ? 'text-blue-400' :
-                  exercise.muscleGroup === 'back' ? 'text-green-400' :
-                  exercise.muscleGroup === 'legs' ? 'text-purple-400' :
-                  exercise.muscleGroup === 'shoulders' ? 'text-yellow-400' :
-                  exercise.muscleGroup === 'biceps' || exercise.muscleGroup === 'triceps' ? 'text-red-400' :
-                  'text-orange-400'
-                }`} />
+        {filteredExercises.map(exercise => {
+          const isExpanded = expandedExerciseId === exercise.id;
+          
+          return (
+            <div
+              key={exercise.id}
+              className={`rounded-xl overflow-hidden ${
+                isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'
+              }`}
+            >
+              <div className="p-4 flex items-center justify-between">
+                <button
+                  onClick={() => setExpandedExerciseId(isExpanded ? null : exercise.id)}
+                  className="flex items-center gap-3 flex-1 text-left"
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    exercise.muscleGroup === 'chest' ? 'bg-blue-500/20' :
+                    exercise.muscleGroup === 'back' ? 'bg-green-500/20' :
+                    exercise.muscleGroup === 'legs' ? 'bg-purple-500/20' :
+                    exercise.muscleGroup === 'shoulders' ? 'bg-yellow-500/20' :
+                    exercise.muscleGroup === 'biceps' || exercise.muscleGroup === 'triceps' ? 'bg-red-500/20' :
+                    'bg-orange-500/20'
+                  }`}>
+                    <Dumbbell className={`w-5 h-5 ${
+                      exercise.muscleGroup === 'chest' ? 'text-blue-400' :
+                      exercise.muscleGroup === 'back' ? 'text-green-400' :
+                      exercise.muscleGroup === 'legs' ? 'text-purple-400' :
+                      exercise.muscleGroup === 'shoulders' ? 'text-yellow-400' :
+                      exercise.muscleGroup === 'biceps' || exercise.muscleGroup === 'triceps' ? 'text-red-400' :
+                      'text-orange-400'
+                    }`} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium">{exercise.name}</div>
+                    <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                      {exercise.muscleGroup.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      {exercise.isCompound && ' • Compound'}
+                      {exercise.notes && ' • Has notes'}
+                    </div>
+                  </div>
+                  <ChevronRight className={`w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'} transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                </button>
+                {exercise.id.startsWith('custom_') || exercise.id.startsWith('imported_') ? (
+                  <button
+                    onClick={() => handleDelete(exercise.id, exercise.name)}
+                    className={`p-2 rounded-lg transition-colors ml-2 ${
+                      isDark ? 'text-zinc-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                    }`}
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <div className={`text-xs px-2 py-1 rounded ml-2 ${isDark ? 'bg-[#252525] text-zinc-500' : 'bg-gray-100 text-gray-500'}`}>
+                    Default
+                  </div>
+                )}
               </div>
-              <div className="flex-1">
-                <div className="font-medium">{exercise.name}</div>
-                <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
-                  {exercise.muscleGroup.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                  {exercise.isCompound && ' • Compound'}
+              
+              {/* Expanded notes editor */}
+              {isExpanded && (
+                <div className={`px-4 pb-4 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+                  <div className="pt-3 space-y-2">
+                    <label className={`text-sm font-medium ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+                      Personal Notes
+                    </label>
+                    <textarea
+                      value={editingNotes ?? exercise.notes ?? ''}
+                      onChange={(e) => setEditingNotes(e.target.value)}
+                      placeholder="Add form cues, pain points, RPE targets..."
+                      rows={3}
+                      className={`w-full p-3 rounded-lg border ${
+                        isDark ? 'bg-[#252525] border-[#3e3e3e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
+                      } focus:outline-none focus:border-orange-500 resize-none`}
+                    />
+                    <button
+                      onClick={() => handleSaveNotes(exercise.id)}
+                      className="w-full py-2 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-400 transition-colors"
+                    >
+                      Save Notes
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
-            {exercise.id.startsWith('custom_') || exercise.id.startsWith('imported_') ? (
-              <button
-                onClick={() => handleDelete(exercise.id, exercise.name)}
-                className={`p-2 rounded-lg transition-colors ${
-                  isDark ? 'text-zinc-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
-                }`}
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-            ) : (
-              <div className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-[#252525] text-zinc-500' : 'bg-gray-100 text-gray-500'}`}>
-                Default
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
