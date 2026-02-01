@@ -473,6 +473,95 @@ function WorkoutTimer({ startTime }: { startTime: string }) {
   );
 }
 
+// Template Selector with Dropdown
+function TemplateSelector({ templates, lastTemplateId, isDark, onStartWorkout }: {
+  templates: WorkoutTemplate[];
+  lastTemplateId: string | null;
+  isDark: boolean;
+  onStartWorkout: (template: WorkoutTemplate) => void;
+}) {
+  const [selectedId, setSelectedId] = useState<string>(
+    lastTemplateId || templates[0]?.id || ''
+  );
+  
+  const selectedTemplate = templates.find(t => t.id === selectedId);
+  
+  if (templates.length === 0) {
+    return (
+      <div className={`rounded-xl p-6 text-center ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
+        <Dumbbell className="w-10 h-10 mx-auto mb-2 text-zinc-500 opacity-50" />
+        <p className="text-zinc-500">No templates available</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-3">
+      <h2 className="text-lg font-semibold">Start Workout</h2>
+      
+      {/* Dropdown Selector */}
+      <select
+        value={selectedId}
+        onChange={(e) => setSelectedId(e.target.value)}
+        className={`w-full p-4 rounded-xl border text-base font-medium appearance-none cursor-pointer ${
+          isDark 
+            ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white' 
+            : 'bg-white border-gray-200 text-gray-900'
+        } focus:outline-none focus:border-orange-500`}
+        style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23666'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
+      >
+        {templates.map(template => (
+          <option key={template.id} value={template.id}>
+            {template.name} ({template.exercises.length} exercises)
+          </option>
+        ))}
+      </select>
+      
+      {/* Selected Template Preview */}
+      {selectedTemplate && (
+        <div className={`rounded-xl p-4 ${isDark ? 'bg-[#252525]' : 'bg-gray-50'}`}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              selectedTemplate.type === 'arms' ? 'bg-purple-500/20' : 'bg-orange-500/20'
+            }`}>
+              <Dumbbell className={`w-5 h-5 ${
+                selectedTemplate.type === 'arms' ? 'text-purple-400' : 'text-orange-400'
+              }`} />
+            </div>
+            <div>
+              <div className="font-medium">{selectedTemplate.name}</div>
+              <div className={`text-sm ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                {selectedTemplate.exercises.length} exercises
+              </div>
+            </div>
+          </div>
+          
+          {/* Exercise list preview */}
+          <div className={`text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+            {selectedTemplate.exercises.slice(0, 4).map((ex, i) => (
+              <div key={i}>• {ex.exerciseName}</div>
+            ))}
+            {selectedTemplate.exercises.length > 4 && (
+              <div>+ {selectedTemplate.exercises.length - 4} more</div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Start Button */}
+      {selectedTemplate && (
+        <button
+          onClick={() => onStartWorkout(selectedTemplate)}
+          className="w-full py-4 bg-gradient-to-r from-orange-500 to-red-600 rounded-xl font-semibold text-white shadow-lg shadow-orange-500/20 hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+        >
+          <Flame className="w-5 h-5" />
+          Start Workout
+        </button>
+      )}
+    </div>
+  );
+}
+
 // Volume Line Chart Component - interactive SVG line chart
 function VolumeLineChart({ sessions, isDark }: { 
   sessions: Array<{ date: string; volume: number; maxWeight: number; maxReps: number; sets: { weight: number; reps: number }[] }>;
@@ -742,59 +831,13 @@ function HomeView({ stats, templates, lastTemplate, workouts, isDark, onStartWor
       {/* Weekly Insights */}
       <WeeklyInsightsCard workouts={workouts} />
 
-      {/* Quick Actions */}
-      <div className="space-y-3">
-        <h2 className="text-lg font-semibold">Start Workout</h2>
-        <div className="space-y-2">
-          {(() => {
-            const lastUsedId = storage.getLastUsedTemplateId();
-            // Sort: last used first, then the rest
-            const sortedTemplates = [...templates].sort((a, b) => {
-              if (a.id === lastUsedId) return -1;
-              if (b.id === lastUsedId) return 1;
-              return 0;
-            });
-            return sortedTemplates.map(template => {
-              const isLastUsed = template.id === lastUsedId;
-              return (
-                <button
-                  key={template.id}
-                  onClick={() => onStartWorkout(template)}
-                  className={`w-full border rounded-xl p-4 flex items-center justify-between transition-colors ${
-                    isDark ? 'bg-[#1a1a1a]' : 'bg-white shadow-sm'
-                  } ${
-                    isLastUsed 
-                      ? 'border-orange-500/50 ring-1 ring-orange-500/20' 
-                      : isDark ? 'border-[#2e2e2e] hover:border-orange-500/50' : 'border-gray-200 hover:border-orange-500/50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      template.type === 'arms' ? 'bg-purple-500/20' : 'bg-orange-500/20'
-                    }`}>
-                      <Dumbbell className={`w-5 h-5 ${
-                        template.type === 'arms' ? 'text-purple-400' : 'text-orange-400'
-                      }`} />
-                    </div>
-                    <div className="text-left">
-                      <div className="font-medium flex items-center gap-2">
-                        {template.name}
-                        {isLastUsed && (
-                          <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full">
-                            Last used
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-sm text-zinc-500">{template.exercises.length} exercises</div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-zinc-500" />
-                </button>
-              );
-            });
-          })()}
-        </div>
-      </div>
+      {/* Template Selection & Start */}
+      <TemplateSelector 
+        templates={templates}
+        lastTemplateId={lastTemplate?.id || null}
+        isDark={isDark}
+        onStartWorkout={onStartWorkout}
+      />
 
       {/* Recent History */}
       {stats?.lastWorkoutDate && (
