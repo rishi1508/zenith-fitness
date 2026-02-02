@@ -61,6 +61,20 @@ function App() {
     // Check for missing days after splash
     const missing = storage.getMissingDays();
     setMissingDays(missing);
+    
+    // CRITICAL: Restore active workout if one was in progress (screen timeout fix)
+    try {
+      const savedActiveWorkout = localStorage.getItem('zenith_active_workout');
+      if (savedActiveWorkout) {
+        const workout = JSON.parse(savedActiveWorkout);
+        setActiveWorkout(workout);
+        setView('active');
+        console.log('[Recovery] Restored active workout session');
+      }
+    } catch (e) {
+      console.error('[Recovery] Failed to restore active workout:', e);
+    }
+    
     // Data loaded, hide splash
     setShowSplash(false);
   }, []);
@@ -68,6 +82,17 @@ function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+  
+  // CRITICAL: Persist active workout to localStorage on every change (screen timeout fix)
+  useEffect(() => {
+    if (activeWorkout) {
+      try {
+        localStorage.setItem('zenith_active_workout', JSON.stringify(activeWorkout));
+      } catch (e) {
+        console.error('[Persist] Failed to save active workout:', e);
+      }
+    }
+  }, [activeWorkout]);
 
   // Apply theme
   useEffect(() => {
@@ -191,6 +216,9 @@ function App() {
       };
       storage.saveWorkout(finished);
       
+      // Clear the persisted active workout (session is done)
+      localStorage.removeItem('zenith_active_workout');
+      
       // Show celebration
       setCelebrationData({
         name: activeWorkout.name,
@@ -209,6 +237,8 @@ function App() {
 
   const cancelWorkout = () => {
     if (activeWorkout && confirm('Discard this workout?')) {
+      // Clear the persisted active workout
+      localStorage.removeItem('zenith_active_workout');
       setActiveWorkout(null);
       // Reset navigation history since we cancelled
       navigationHistory.current = ['home'];
