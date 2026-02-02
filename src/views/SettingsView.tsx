@@ -6,6 +6,7 @@ import {
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
 import * as sync from '../sync';
+import { BodyWeightChart } from '../BodyWeightChart';
 
 declare const __APP_VERSION__: string;
 
@@ -44,12 +45,6 @@ function BodyWeightSection({ isDark }: { isDark: boolean }) {
     const sign = change > 0 ? '+' : '';
     return `${sign}${change.toFixed(1)} kg`;
   };
-
-  // Mini chart - last 10 entries
-  const chartData = entries.slice(0, 10).reverse();
-  const minWeight = chartData.length > 0 ? Math.min(...chartData.map(e => e.weight)) : 0;
-  const maxWeight = chartData.length > 0 ? Math.max(...chartData.map(e => e.weight)) : 100;
-  const range = maxWeight - minWeight || 1;
 
   return (
     <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
@@ -101,42 +96,10 @@ function BodyWeightSection({ isDark }: { isDark: boolean }) {
         </div>
       )}
 
-      {/* Mini Chart */}
-      {chartData.length > 1 && (
+      {/* Interactive Weight Chart */}
+      {entries.length >= 2 && (
         <div className="mb-4">
-          <svg viewBox="0 0 200 50" className="w-full h-12">
-            {/* Line path */}
-            <path
-              d={chartData.map((entry, i) => {
-                const x = (i / (chartData.length - 1)) * 190 + 5;
-                const y = 45 - ((entry.weight - minWeight) / range) * 40;
-                return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-              }).join(' ')}
-              fill="none"
-              stroke={isDark ? '#a855f7' : '#9333ea'}
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Dots */}
-            {chartData.map((entry, i) => {
-              const x = (i / (chartData.length - 1)) * 190 + 5;
-              const y = 45 - ((entry.weight - minWeight) / range) * 40;
-              return (
-                <circle
-                  key={i}
-                  cx={x}
-                  cy={y}
-                  r="3"
-                  fill={isDark ? '#a855f7' : '#9333ea'}
-                />
-              );
-            })}
-          </svg>
-          <div className="flex justify-between text-xs text-zinc-500">
-            <span>{minWeight.toFixed(1)}</span>
-            <span>{maxWeight.toFixed(1)} kg</span>
-          </div>
+          <BodyWeightChart entries={entries.slice(0, 30)} isDark={isDark} />
         </div>
       )}
 

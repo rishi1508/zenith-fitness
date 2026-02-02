@@ -30,7 +30,7 @@ export function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistor
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
-      const count = await sync.processQueue();
+      await sync.processQueue();
       setPendingCount(sync.getPendingCount());
     } catch (err) {
       console.error('Sync failed:', err);
