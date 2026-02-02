@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   Dumbbell, Calendar, TrendingUp, ChevronRight, 
   Check, Clock, Flame, Trophy, Search,
-  ChevronLeft, X, Trash2, Timer, Target,
+  ChevronLeft, X, Trash2, Target,
   Settings, Download, Upload, FileSpreadsheet, Copy, CheckCircle2,
   ClipboardList, Plus, Edit3, Sun, Moon, Scale
 } from 'lucide-react';
@@ -12,42 +12,11 @@ import { UpdateChecker, VersionInfo } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
+import { calculateEstimated1RM } from './utils';
+import { SplashScreen, NavButton, WorkoutTimer, StatCard, WeeklyInsightsCard } from './components';
 
 type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly';
 type Theme = 'dark' | 'light';
-
-// Format volume: 1500 -> 1.5k, 1500000 -> 1.5t
-function formatVolume(volume: number): string {
-  if (volume >= 1000000) return (volume / 1000000).toFixed(1) + 't';
-  if (volume >= 1000) return (volume / 1000).toFixed(1) + 'k';
-  return volume.toString();
-}
-
-// Calculate estimated 1RM using Epley formula
-// 1RM = weight × (1 + reps / 30)
-function calculateEstimated1RM(weight: number, reps: number): number {
-  if (reps === 1) return weight; // Already a 1RM
-  if (reps === 0 || weight === 0) return 0;
-  return Math.round(weight * (1 + reps / 30));
-}
-
-// Splash Screen - shows immediately, dismissed when data is loaded
-function SplashScreen() {
-  return (
-    <div className="fixed inset-0 bg-[#0f0f0f] flex flex-col items-center justify-center z-50">
-      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mb-4 animate-pulse shadow-lg shadow-orange-500/20">
-        <Flame className="w-10 h-10 text-white" />
-      </div>
-      <h1 className="text-2xl font-bold text-white mb-2">Zenith Fitness</h1>
-      <p className="text-zinc-500 text-sm">Track. Improve. Dominate.</p>
-      <div className="flex gap-1 mt-6">
-        <div className="w-2 h-2 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '0ms' }} />
-        <div className="w-2 h-2 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '150ms' }} />
-        <div className="w-2 h-2 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: '300ms' }} />
-      </div>
-    </div>
-  );
-}
 
 function App() {
   const [view, setView] = useState<View>('home');
@@ -498,49 +467,6 @@ function App() {
   );
 }
 
-// Navigation Button
-function NavButton({ icon, label, active, onClick }: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
-        active ? 'text-orange-400' : 'text-zinc-500'
-      }`}
-    >
-      <span className="w-6 h-6">{icon}</span>
-      <span className="text-xs">{label}</span>
-    </button>
-  );
-}
-
-// Workout Timer
-function WorkoutTimer({ startTime }: { startTime: string }) {
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    const start = new Date(startTime).getTime();
-    const interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [startTime]);
-
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-
-  return (
-    <div className="flex items-center gap-2 text-orange-400">
-      <Timer className="w-4 h-4" />
-      <span className="font-mono">{mins}:{secs.toString().padStart(2, '0')}</span>
-    </div>
-  );
-}
-
 // Weekly Plan Selector - shows active plan, day selector, and start button
 function WeeklyPlanSelector({ isDark, onStartWorkout }: {
   isDark: boolean;
@@ -837,67 +763,6 @@ function VolumeLineChart({ sessions, isDark }: {
   );
 }
 
-// Weekly Insights Card
-function WeeklyInsightsCard({ workouts }: { workouts: Workout[] }) {
-  const now = new Date();
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay());
-  weekStart.setHours(0, 0, 0, 0);
-  
-  const lastWeekStart = new Date(weekStart);
-  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  
-  const thisWeekWorkouts = workouts.filter(w => 
-    w.completed && w.type !== 'rest' && new Date(w.date) >= weekStart
-  );
-  
-  const lastWeekWorkouts = workouts.filter(w => {
-    const d = new Date(w.date);
-    return w.completed && w.type !== 'rest' && d >= lastWeekStart && d < weekStart;
-  });
-  
-  const calculateVolume = (ws: Workout[]) => ws.reduce((total, w) => 
-    total + w.exercises.reduce((et, e) => 
-      et + e.sets.reduce((st, s) => st + (s.completed ? s.weight * s.reps : 0), 0), 0), 0);
-  
-  const thisWeekVolume = calculateVolume(thisWeekWorkouts);
-  const lastWeekVolume = calculateVolume(lastWeekWorkouts);
-  const volumeChange = lastWeekVolume > 0 ? ((thisWeekVolume - lastWeekVolume) / lastWeekVolume * 100) : 0;
-  
-  if (thisWeekWorkouts.length === 0 && lastWeekWorkouts.length === 0) return null;
-  
-  return (
-    <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <TrendingUp className="w-5 h-5 text-indigo-400" />
-        <span className="font-medium">This Week</span>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-2xl font-bold">{formatVolume(thisWeekVolume)}</div>
-          <div className="text-sm text-zinc-400 flex items-center gap-1">
-            Volume
-            {volumeChange !== 0 && (
-              <span className={volumeChange > 0 ? 'text-emerald-400' : 'text-red-400'}>
-                {volumeChange > 0 ? '↑' : '↓'}{Math.abs(volumeChange).toFixed(0)}%
-              </span>
-            )}
-          </div>
-        </div>
-        <div>
-          <div className="text-2xl font-bold">{thisWeekWorkouts.length}</div>
-          <div className="text-sm text-zinc-400">
-            Workouts
-            {lastWeekWorkouts.length > 0 && (
-              <span className="text-zinc-500"> (was {lastWeekWorkouts.length})</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Home View
 function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistory }: {
   stats: UserStats | null;
@@ -1042,32 +907,6 @@ function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistory }: {
 
       {/* Version Info */}
       <VersionInfo />
-    </div>
-  );
-}
-
-// Stat Card
-function StatCard({ icon, value, label, suffix, color }: {
-  icon: React.ReactNode;
-  value: number | string;
-  label: string;
-  suffix?: string;
-  color: string;
-}) {
-  const colorClasses: Record<string, string> = {
-    orange: 'from-orange-500/20 to-orange-500/5 border-orange-500/20',
-    emerald: 'from-emerald-500/20 to-emerald-500/5 border-emerald-500/20',
-    yellow: 'from-yellow-500/20 to-yellow-500/5 border-yellow-500/20',
-    indigo: 'from-indigo-500/20 to-indigo-500/5 border-indigo-500/20',
-  };
-
-  return (
-    <div className={`bg-gradient-to-br ${colorClasses[color]} border rounded-xl p-4`}>
-      <div className="w-8 h-8 mb-2">{icon}</div>
-      <div className="text-2xl font-bold">
-        {value}{suffix && <span className="text-sm text-zinc-500">{suffix}</span>}
-      </div>
-      <div className="text-sm text-zinc-400">{label}</div>
     </div>
   );
 }
