@@ -121,22 +121,21 @@ The repo includes automated APK builds:
 ```
 zenith-fitness/
 ├── src/
-│   ├── App.tsx              # Main React component + views
+│   ├── App.tsx              # Main component (3300+ lines, all views)
 │   ├── storage.ts           # LocalStorage data layer
 │   ├── types.ts             # TypeScript interfaces
 │   ├── UpdateChecker.tsx    # Version check component
 │   ├── VolumeLineChart.tsx  # Interactive progress chart
-│   ├── components/
-│   │   ├── WeeklyPlanSelector.tsx  # Plan + day selection
-│   │   ├── WeeklyPlansView.tsx     # Plans management
-│   │   ├── EditWeeklyPlanView.tsx  # Plan editor
-│   │   └── DayExerciseEditor.tsx   # Per-day exercise editor
+│   ├── main.tsx             # React entry point
 │   └── index.css            # Styles + CSS variables for theming
 ├── android/                 # Capacitor Android project
 ├── .github/workflows/       # CI/CD for APK builds
+├── ARCHITECTURE.md          # Technical architecture guide
 ├── capacitor.config.ts      # Capacitor configuration
 └── package.json
 ```
+
+> 📘 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed technical documentation.
 
 ## 📊 Data Format
 
