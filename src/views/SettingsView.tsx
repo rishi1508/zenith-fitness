@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
-  CheckCircle2, Copy, X, Scale, Plus, Trash2
+  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2
 } from 'lucide-react';
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
+import * as sync from '../sync';
 
 declare const __APP_VERSION__: string;
 
@@ -244,6 +245,20 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
   const [exportCsv, setExportCsv] = useState('');
   const [copied, setCopied] = useState(false);
+  
+  // Auto-sync state
+  const [syncUrl, setSyncUrl] = useState(() => sync.getSyncUrl() || '');
+  const [syncTesting, setSyncTesting] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [pendingCount, setPendingCount] = useState(() => sync.getPendingCount());
+  
+  // Refresh pending count periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPendingCount(sync.getPendingCount());
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleImport = async () => {
     if (!sheetsUrl.trim()) {
@@ -297,6 +312,41 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleSaveSyncUrl = () => {
+    if (!syncUrl.trim()) {
+      sync.clearSyncUrl();
+      setSyncResult({ success: true, message: 'Auto-sync disabled' });
+    } else {
+      sync.setSyncUrl(syncUrl);
+      setSyncResult({ success: true, message: 'Sync URL saved!' });
+    }
+    setTimeout(() => setSyncResult(null), 3000);
+  };
+
+  const handleTestSync = async () => {
+    if (!syncUrl.trim()) {
+      setSyncResult({ success: false, message: 'Please enter a sync URL first' });
+      return;
+    }
+    
+    setSyncTesting(true);
+    setSyncResult(null);
+    
+    // Save URL first
+    sync.setSyncUrl(syncUrl);
+    
+    const result = await sync.testConnection();
+    setSyncResult(result);
+    setSyncTesting(false);
+  };
+
+  const handleProcessQueue = async () => {
+    const count = await sync.processQueue();
+    setPendingCount(sync.getPendingCount());
+    setSyncResult({ success: true, message: `Processed ${count} queued items` });
+    setTimeout(() => setSyncResult(null), 3000);
   };
 
   return (
@@ -421,6 +471,87 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
             </button>
           </div>
         )}
+      </div>
+
+      {/* Auto-Sync to Google Sheets */}
+      <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center gap-2 mb-4">
+          <Cloud className="w-5 h-5 text-purple-400" />
+          <span className="font-medium">Auto-Sync to Google Sheets</span>
+          {sync.isSyncEnabled() && (
+            <span className="ml-auto text-xs px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">Active</span>
+          )}
+        </div>
+        
+        <p className={`text-sm mb-4 ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+          Automatically sync completed workouts to your Google Sheet. Set up by deploying a Google Apps Script.
+        </p>
+        
+        <div className="space-y-3">
+          <div>
+            <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'} mb-1 block`}>
+              Apps Script Web App URL
+            </label>
+            <input
+              type="url"
+              value={syncUrl}
+              onChange={(e) => setSyncUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              className={`w-full rounded-lg px-4 py-3 text-sm border ${
+                isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-white border-gray-200'
+              } focus:outline-none focus:border-purple-500`}
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={handleSaveSyncUrl}
+              className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
+            >
+              <Link2 className="w-4 h-4" />
+              Save URL
+            </button>
+            <button
+              onClick={handleTestSync}
+              disabled={syncTesting}
+              className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium ${
+                isDark ? 'bg-[#252525] hover:bg-[#303030] text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
+              }`}
+            >
+              {syncTesting ? (
+                <div className="w-4 h-4 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Test
+            </button>
+          </div>
+          
+          {pendingCount > 0 && (
+            <button
+              onClick={handleProcessQueue}
+              className={`w-full py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm ${
+                isDark ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+              }`}
+            >
+              <Upload className="w-4 h-4" />
+              Sync {pendingCount} Pending Item{pendingCount > 1 ? 's' : ''}
+            </button>
+          )}
+          
+          {syncResult && (
+            <div className={`p-3 rounded-lg text-sm ${
+              syncResult.success ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+            }`}>
+              {syncResult.success ? <CheckCircle2 className="w-4 h-4 inline mr-2" /> : <X className="w-4 h-4 inline mr-2" />}
+              {syncResult.message}
+            </div>
+          )}
+          
+          <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+            See docs/GOOGLE_SHEETS_SYNC.md for setup instructions.
+          </p>
+        </div>
       </div>
 
       {/* Body Weight Tracking */}
