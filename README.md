@@ -4,7 +4,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-2.14.0-orange)
+![Version](https://img.shields.io/badge/version-2.15.0-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -31,7 +31,14 @@ The core concept: **A "plan" is a full week** — not a single workout.
 - **Weekly Insights** — Volume and workout comparisons vs. last week
 - **Exercise Progress** — Interactive line charts with clickable data points
 - **Personal Record Notifications** — Toast + vibration when you hit a new PR 🏆
+- **Estimated 1RM** — Epley formula calculation for each exercise
 - **Full Exercise List** — See progress for ALL exercises in your library
+
+### ⚖️ Body Tracking
+- **Body Weight Logger** — Track weight with optional notes (morning, post-workout, etc.)
+- **Trend Analysis** — 7-day and 30-day change with color coding
+- **Mini Trend Chart** — Visual weight history (last 10 entries)
+- **Full History View** — Review and delete past entries
 
 ### 📥 Google Sheets Integration
 - **Import Exercises** — Load from "Exercise Data" sheet (reads first column)
@@ -219,6 +226,8 @@ For importing, your Google Sheet should have these sheets:
 See [Releases](https://github.com/rishi1508/zenith-fitness/releases) for full version history.
 
 ### v2.x (Major Architecture Refactor)
+- **v2.15.0** — ⚖️ Body Weight Tracking: Log weight with notes, 7/30-day trends, mini chart, color-coded changes
+- **v2.14.0** — 💪 Estimated 1RM Calculator: Epley formula display alongside PRs in Progress view
 - **v2.13.0** — ▶️ Exercise Video Links: Add YouTube/form guide URLs to exercises, accessible during workouts
 - **v2.12.0** — 💤 Smart Rest Day Reminders: Banner on home screen after 3+ consecutive workout days with one-tap rest logging
 - **v2.11.0** — 💾 Save Workout as Template: Tap copy icon in history to convert any workout into a reusable weekly plan
