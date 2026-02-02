@@ -1,4 +1,4 @@
-import { TrendingUp, Flame, Trophy, Target, Calendar } from 'lucide-react';
+import { TrendingUp, Flame, Trophy } from 'lucide-react';
 import type { Workout } from '../types';
 import { formatVolume } from '../utils';
 
@@ -89,8 +89,8 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
       .forEach(w => {
         w.exercises.forEach(e => {
           const maxWeight = Math.max(...e.sets.filter(s => s.completed).map(s => s.weight), 0);
-          const current = exerciseMaxes.get(e.name) || 0;
-          if (maxWeight > current) exerciseMaxes.set(e.name, maxWeight);
+          const current = exerciseMaxes.get(e.exerciseName) || 0;
+          if (maxWeight > current) exerciseMaxes.set(e.exerciseName, maxWeight);
         });
       });
     
@@ -98,10 +98,10 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
     thisWeekWorkouts.forEach(w => {
       w.exercises.forEach(e => {
         const maxWeight = Math.max(...e.sets.filter(s => s.completed).map(s => s.weight), 0);
-        const historical = exerciseMaxes.get(e.name) || 0;
+        const historical = exerciseMaxes.get(e.exerciseName) || 0;
         if (maxWeight > historical && maxWeight > 0) {
           prCount++;
-          exerciseMaxes.set(e.name, maxWeight); // Update so we don't count same PR twice
+          exerciseMaxes.set(e.exerciseName, maxWeight); // Update so we don't count same PR twice
         }
       });
     });
