@@ -1,4 +1,5 @@
 import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry } from './types';
+import { syncWorkout, syncExercise, syncPlan, isSyncEnabled } from './sync';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'zenith_workouts',
@@ -41,12 +42,30 @@ export function getWorkouts(): Workout[] {
 export function saveWorkout(workout: Workout): void {
   const workouts = getWorkouts();
   const index = workouts.findIndex(w => w.id === workout.id);
+  
   if (index >= 0) {
     workouts[index] = workout;
   } else {
     workouts.unshift(workout);
   }
   setItem(STORAGE_KEYS.WORKOUTS, workouts);
+  
+  // Auto-sync to Google Sheets when workout is completed
+  if (workout.completed && workout.type !== 'rest' && isSyncEnabled()) {
+    syncWorkout({
+      date: workout.date,
+      name: workout.name,
+      exercises: workout.exercises.map(ex => ({
+        exerciseId: ex.exerciseId,
+        exerciseName: ex.exerciseName,
+        sets: ex.sets.map(s => ({
+          reps: s.reps,
+          weight: s.weight,
+          completed: s.completed,
+        })),
+      })),
+    }).catch(err => console.error('[Storage] Sync failed:', err));
+  }
 }
 
 export function deleteWorkout(id: string): void {
@@ -113,6 +132,20 @@ export function saveWeeklyPlan(plan: WeeklyPlan): void {
     plans.push(plan);
   }
   setItem(STORAGE_KEYS.WEEKLY_PLANS, plans);
+  
+  // Auto-sync to Google Sheets if this is the active plan
+  if (isSyncEnabled() && getActivePlanId() === plan.id) {
+    syncPlan({
+      name: plan.name,
+      days: plan.days.map(d => ({
+        dayNumber: d.dayNumber,
+        name: d.name,
+        exercises: d.exercises.map(e => ({
+          exerciseName: e.exerciseName,
+        })),
+      })),
+    }).catch(err => console.error('[Storage] Sync plan failed:', err));
+  }
 }
 
 // Delete a weekly plan
@@ -288,6 +321,15 @@ export function addCustomExercise(name: string, muscleGroup: string): Exercise {
   };
   exercises.push(newExercise);
   setItem(STORAGE_KEYS.EXERCISES, exercises);
+  
+  // Auto-sync to Google Sheets
+  if (isSyncEnabled()) {
+    syncExercise({
+      name: newExercise.name,
+      muscleGroup: newExercise.muscleGroup,
+    }).catch(err => console.error('[Storage] Sync exercise failed:', err));
+  }
+  
   return newExercise;
 }
 
