@@ -4,7 +4,7 @@ Your personal workout tracker — built by Zenith ⚡ for Rishi
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-2.15.0-orange)
+![Version](https://img.shields.io/badge/version-2.18.0-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -225,6 +225,9 @@ For importing, your Google Sheet should have these sheets:
 See [Releases](https://github.com/rishi1508/zenith-fitness/releases) for full version history.
 
 ### v2.x (Major Architecture Refactor)
+- **v2.18.0** — 🔥 Weekly Insights Enhanced: Day streak counter, PRs this week, goal progress bar, offline sync indicator, interactive body weight chart with tooltips
+- **v2.17.0** — 📊 Google Sheets Auto-Sync: Workout data syncs to Google Sheets via Apps Script webhook (requires setup)
+- **v2.16.0** — 🏆 PR Tracking: Personal Records displayed in weekly insights with celebration indicator
 - **v2.15.0** — ⚖️ Body Weight Tracking: Log weight with notes, 7/30-day trends, mini chart, color-coded changes
 - **v2.14.0** — 💪 Estimated 1RM Calculator: Epley formula display alongside PRs in Progress view
 - **v2.13.0** — ▶️ Exercise Video Links: Add YouTube/form guide URLs to exercises, accessible during workouts
