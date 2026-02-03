@@ -206,8 +206,19 @@ function App() {
         ? Math.floor((Date.now() - new Date(activeWorkout.startedAt).getTime()) / 60000)
         : undefined;
       
+      // Auto-complete all sets that have weight and reps filled in
+      const exercisesWithCompletedSets = activeWorkout.exercises.map(ex => ({
+        ...ex,
+        sets: ex.sets.map(set => ({
+          ...set,
+          // Mark set as completed if it has valid data (weight > 0 OR reps > 0)
+          completed: set.completed || (set.weight > 0 || set.reps > 0),
+        })),
+      }));
+      
       const finished = {
         ...activeWorkout,
+        exercises: exercisesWithCompletedSets,
         completed: true,
         completedAt,
         duration,
