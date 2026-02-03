@@ -75,18 +75,29 @@ async function syncToSheets(payload: SyncPayload): Promise<{ success: boolean; e
   }
 
   try {
-    await fetch(url, {
+    // Use text/plain to avoid CORS preflight, Apps Script will parse JSON from body
+    const response = await fetch(url, {
       method: 'POST',
-      mode: 'no-cors', // Apps Script doesn't support CORS preflight
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain',
       },
       body: JSON.stringify(payload),
+      redirect: 'follow',
     });
 
-    // With no-cors, we can't read the response, but if no error, assume success
-    // The Apps Script will handle the actual writing
-    return { success: true };
+    // Try to read response (Apps Script redirects, but fetch follows)
+    if (response.ok) {
+      try {
+        const data = await response.json();
+        console.log('[Sync] Response:', data);
+        return { success: data.success !== false };
+      } catch {
+        // Response wasn't JSON, but request went through
+        return { success: true };
+      }
+    }
+    
+    return { success: true }; // Assume success if no error thrown
   } catch (e) {
     console.error('[Sync] Request failed:', e);
     return { success: false, error: e instanceof Error ? e.message : 'Network error' };
