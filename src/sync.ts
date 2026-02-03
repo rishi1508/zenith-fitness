@@ -71,8 +71,12 @@ function removeFromQueue(id: string): void {
 async function syncToSheets(payload: SyncPayload): Promise<{ success: boolean; error?: string }> {
   const url = getSyncUrl();
   if (!url) {
+    console.log('[Sync] No sync URL configured');
     return { success: false, error: 'No sync URL configured' };
   }
+
+  console.log('[Sync] Sending to:', url);
+  console.log('[Sync] Payload:', JSON.stringify(payload, null, 2));
 
   try {
     // Use text/plain to avoid CORS preflight, Apps Script will parse JSON from body
@@ -85,18 +89,23 @@ async function syncToSheets(payload: SyncPayload): Promise<{ success: boolean; e
       redirect: 'follow',
     });
 
+    console.log('[Sync] Response status:', response.status, response.statusText);
+    
     // Try to read response (Apps Script redirects, but fetch follows)
     if (response.ok) {
       try {
-        const data = await response.json();
-        console.log('[Sync] Response:', data);
+        const text = await response.text();
+        console.log('[Sync] Response body:', text);
+        const data = JSON.parse(text);
         return { success: data.success !== false };
       } catch {
         // Response wasn't JSON, but request went through
+        console.log('[Sync] Non-JSON response, assuming success');
         return { success: true };
       }
     }
     
+    console.log('[Sync] Response not OK, but no error thrown');
     return { success: true }; // Assume success if no error thrown
   } catch (e) {
     console.error('[Sync] Request failed:', e);
