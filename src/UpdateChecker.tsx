@@ -60,18 +60,11 @@ export function UpdateChecker() {
 
   return (
     <div className="fixed top-16 left-4 right-4 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl p-4 shadow-lg z-50 animate-fadeIn">
-      <button 
-        onClick={() => setDismissed(true)}
-        className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded"
-      >
-        <X className="w-4 h-4" />
-      </button>
-      
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+        <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
           <Download className="w-5 h-5" />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="font-semibold">Update Available!</div>
           <div className="text-sm opacity-90">
             Version {update.tag_name} is ready
@@ -81,10 +74,17 @@ export function UpdateChecker() {
           href={getApkUrl() || '#'}
           target="_blank"
           rel="noopener noreferrer"
-          className="px-4 py-2 bg-white text-orange-600 rounded-lg font-medium text-sm"
+          className="px-4 py-2 bg-white text-orange-600 rounded-lg font-medium text-sm flex-shrink-0"
         >
           Download
         </a>
+        <button 
+          onClick={() => setDismissed(true)}
+          className="p-1.5 hover:bg-white/20 rounded flex-shrink-0 ml-1"
+          aria-label="Dismiss"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
