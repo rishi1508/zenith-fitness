@@ -1323,3 +1323,23 @@ export function getEffectiveTheme(): 'dark' | 'light' {
   const hour = new Date().getHours();
   return (hour >= settings.autoLightStart && hour < settings.autoLightEnd) ? 'light' : 'dark';
 }
+
+// Rest Timer Presets
+const DEFAULT_REST_PRESETS = [60, 90, 120, 180]; // seconds
+
+export function getRestTimerPresets(): number[] {
+  return getItem<number[]>('zenith_rest_presets', DEFAULT_REST_PRESETS);
+}
+
+export function setRestTimerPresets(presets: number[]): void {
+  // Ensure 2-6 presets, sorted, valid values
+  const valid = presets
+    .filter(p => p > 0 && p <= 600)
+    .slice(0, 6)
+    .sort((a, b) => a - b);
+  setItem('zenith_rest_presets', valid.length >= 2 ? valid : DEFAULT_REST_PRESETS);
+}
+
+export function resetRestTimerPresets(): void {
+  setItem('zenith_rest_presets', DEFAULT_REST_PRESETS);
+}
