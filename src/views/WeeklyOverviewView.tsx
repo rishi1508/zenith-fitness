@@ -1,4 +1,5 @@
-import { Calendar, ChevronLeft, ChevronRight, Check, Target, Dumbbell } from 'lucide-react';
+import { useState } from 'react';
+import { Calendar, ChevronLeft, ChevronRight, Check, Target, Dumbbell, Zap, AlertTriangle } from 'lucide-react';
 import * as storage from '../storage';
 
 // Weekly Overview View - 7-day calendar grid
@@ -9,6 +10,14 @@ export function WeeklyOverviewView({ isDark, onBack, onStartDay }: {
 }) {
   const activePlan = storage.getActivePlan();
   const workouts = storage.getWorkouts();
+  const [isDeload, setIsDeload] = useState(() => storage.isCurrentWeekDeload());
+  const deloadStats = storage.getDeloadStats();
+  
+  const toggleDeload = () => {
+    const newValue = !isDeload;
+    storage.setCurrentWeekDeload(newValue);
+    setIsDeload(newValue);
+  };
   
   if (!activePlan) {
     return (
@@ -80,6 +89,53 @@ export function WeeklyOverviewView({ isDark, onBack, onStartDay }: {
             style={{ width: `${(thisWeekWorkouts.length / workoutDays.length) * 100}%` }}
           />
         </div>
+      </div>
+      
+      {/* Deload Week Toggle */}
+      <div className={`p-4 rounded-xl border ${
+        isDeload 
+          ? 'bg-teal-500/10 border-teal-500/30' 
+          : isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${isDeload ? 'bg-teal-500/20' : isDark ? 'bg-[#252525]' : 'bg-gray-100'}`}>
+              <Zap className={`w-5 h-5 ${isDeload ? 'text-teal-400' : isDark ? 'text-zinc-400' : 'text-gray-500'}`} />
+            </div>
+            <div>
+              <div className="font-medium flex items-center gap-2">
+                Deload Week
+                {isDeload && <span className="text-xs bg-teal-500 text-white px-1.5 py-0.5 rounded">ACTIVE</span>}
+              </div>
+              <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                {isDeload 
+                  ? 'Lower intensity this week (60-70% volume)'
+                  : deloadStats.weeksSinceLast > 0 
+                    ? `${deloadStats.weeksSinceLast} weeks since last deload`
+                    : 'Track recovery weeks'
+                }
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={toggleDeload}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              isDeload
+                ? 'bg-teal-500 text-white'
+                : isDark ? 'bg-[#252525] text-zinc-300 hover:bg-[#303030]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {isDeload ? 'End Deload' : 'Start Deload'}
+          </button>
+        </div>
+        
+        {/* Deload recommendation */}
+        {!isDeload && deloadStats.weeksSinceLast >= 4 && (
+          <div className={`mt-3 pt-3 border-t flex items-center gap-2 text-xs ${isDark ? 'border-[#3e3e3e] text-yellow-400' : 'border-gray-200 text-yellow-600'}`}>
+            <AlertTriangle className="w-4 h-4" />
+            Consider a deload week — it's been {deloadStats.weeksSinceLast} weeks!
+          </div>
+        )}
       </div>
       
       {/* Day Cards Grid */}
