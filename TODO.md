@@ -151,11 +151,11 @@ Show visual indicators during active workout:
 - [ ] Long-press menu for quick actions
 - [ ] Haptic feedback on PR achievements
 - [ ] Sound effects toggle (celebration, timer)
-- [ ] Export workout as shareable image
+- [x] ~~Export workout as shareable image~~ ✅ v2.26.0 - Share from History!
 - [ ] Dark mode schedule (auto-switch at sunset)
 
 ---
 
-**Last Updated:** 2026-02-11 04:30 IST  
-**Current Version:** v2.25.0  
-**Next Target:** Export as Image, Volume Goals
+**Last Updated:** 2026-02-11 04:45 IST  
+**Current Version:** v2.26.0  
+**Next Target:** Volume Goals per Muscle Group
