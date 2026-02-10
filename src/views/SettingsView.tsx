@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
   CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2, Palette, Sun, Moon, Clock
@@ -129,6 +129,170 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Data Backup Section (JSON Export/Import)
+function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataChange: () => void }) {
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleExportJSON = () => {
+    const data = {
+      version: '2.30.0',
+      exportedAt: new Date().toISOString(),
+      workouts: storage.getWorkouts(),
+      exercises: storage.getExercises(),
+      weeklyPlans: storage.getWeeklyPlans(),
+      personalRecords: storage.getPersonalRecords(),
+      bodyWeight: storage.getBodyWeightEntries(),
+      settings: {
+        theme: storage.getThemeSettings(),
+        sound: storage.getSoundSettings(),
+        restPresets: storage.getRestTimerPresets(),
+        volumeGoals: storage.getVolumeGoals(),
+      },
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `zenith-fitness-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  
+  const handleImportJSON = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      
+      // Validate structure
+      if (!data.workouts || !data.exercises) {
+        throw new Error('Invalid backup file format');
+      }
+      
+      // Confirm overwrite
+      const confirmed = confirm(
+        `This will import:\n` +
+        `• ${data.workouts?.length || 0} workouts\n` +
+        `• ${data.exercises?.length || 0} exercises\n` +
+        `• ${data.weeklyPlans?.length || 0} weekly plans\n\n` +
+        `This will MERGE with existing data. Continue?`
+      );
+      
+      if (!confirmed) {
+        setImporting(false);
+        return;
+      }
+      
+      // Import workouts (merge, avoid duplicates by ID)
+      if (data.workouts) {
+        const existing = storage.getWorkouts();
+        const existingIds = new Set(existing.map(w => w.id));
+        const newWorkouts = data.workouts.filter((w: any) => !existingIds.has(w.id));
+        if (newWorkouts.length > 0) {
+          localStorage.setItem('zenith_workouts', JSON.stringify([...existing, ...newWorkouts]));
+        }
+      }
+      
+      // Import exercises (merge)
+      if (data.exercises) {
+        const existing = storage.getExercises();
+        const existingIds = new Set(existing.map(e => e.id));
+        const newExercises = data.exercises.filter((e: any) => !existingIds.has(e.id));
+        if (newExercises.length > 0) {
+          localStorage.setItem('zenith_exercises', JSON.stringify([...existing, ...newExercises]));
+        }
+      }
+      
+      // Import weekly plans (merge)
+      if (data.weeklyPlans) {
+        const existing = storage.getWeeklyPlans();
+        const existingIds = new Set(existing.map(p => p.id));
+        const newPlans = data.weeklyPlans.filter((p: any) => !existingIds.has(p.id));
+        if (newPlans.length > 0) {
+          localStorage.setItem('zenith_weekly_plans', JSON.stringify([...existing, ...newPlans]));
+        }
+      }
+      
+      // Import PRs (merge, keep best)
+      if (data.personalRecords) {
+        const existing = storage.getPersonalRecords();
+        const merged = [...existing];
+        for (const pr of data.personalRecords) {
+          const idx = merged.findIndex(p => p.exerciseId === pr.exerciseId);
+          if (idx >= 0) {
+            if (pr.weight > merged[idx].weight) merged[idx] = pr;
+          } else {
+            merged.push(pr);
+          }
+        }
+        localStorage.setItem('zenith_prs', JSON.stringify(merged));
+      }
+      
+      alert('✓ Import successful! Data merged.');
+      onDataChange();
+    } catch (err) {
+      alert(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+  
+  return (
+    <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+      <div className="flex items-center gap-2 mb-4">
+        <Download className="w-5 h-5 text-amber-400" />
+        <span className="font-medium">Full Data Backup</span>
+      </div>
+      
+      <p className={`text-sm mb-4 ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+        Export/import all your data as JSON. Perfect for backups or transferring to a new device.
+      </p>
+      
+      <div className="flex gap-2">
+        <button
+          onClick={handleExportJSON}
+          className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
+        >
+          <Download className="w-4 h-4" />
+          Export JSON
+        </button>
+        
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleImportJSON}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          className={`flex-1 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium ${
+            isDark ? 'bg-[#252525] hover:bg-[#303030] text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
+          }`}
+        >
+          {importing ? (
+            <div className="w-4 h-4 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4" />
+          )}
+          Import JSON
+        </button>
+      </div>
+      
+      <div className={`text-xs mt-3 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+        Includes: workouts, exercises, plans, PRs, body weight, settings
+      </div>
     </div>
   );
 }
@@ -833,6 +997,9 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
           </div>
         )}
       </div>
+
+      {/* Full Data Backup (JSON) */}
+      <DataBackupSection isDark={isDark} onDataChange={onDataChange} />
 
       {/* Auto-Sync to Google Sheets */}
       <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
