@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, X, Plus, Search, Dumbbell, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Plus, Search, Dumbbell, Trash2, Star } from 'lucide-react';
 import * as storage from '../storage';
 
 export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
@@ -15,13 +15,29 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [editingVideoUrl, setEditingVideoUrl] = useState<string | null>(null);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   
   const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other'];
   
-  const filteredExercises = exercises.filter(ex =>
-    ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ex.muscleGroup.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredExercises = exercises
+    .filter(ex => !showFavoritesOnly || ex.isFavorite)
+    .filter(ex =>
+      ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ex.muscleGroup.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      // Favorites first, then alphabetical
+      if (a.isFavorite && !b.isFavorite) return -1;
+      if (!a.isFavorite && b.isFavorite) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  
+  const toggleFavorite = (exerciseId: string) => {
+    storage.toggleExerciseFavorite(exerciseId);
+    setExercises(storage.getExercises());
+  };
+  
+  const favoriteCount = exercises.filter(e => e.isFavorite).length;
   
   const handleAdd = () => {
     if (!newName.trim()) return;
@@ -111,23 +127,37 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
         </div>
       )}
       
-      {/* Search */}
-      <div className="relative">
-        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search exercises..."
-          className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
-            isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
-          } focus:outline-none focus:border-orange-500`}
-        />
+      {/* Search + Favorites Filter */}
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search exercises..."
+            className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
+              isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white placeholder-zinc-500' : 'bg-white border-gray-200 placeholder-gray-400'
+            } focus:outline-none focus:border-orange-500`}
+          />
+        </div>
+        <button
+          onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          className={`px-4 py-3 rounded-lg border flex items-center gap-2 transition-colors ${
+            showFavoritesOnly
+              ? 'bg-yellow-500 border-yellow-500 text-black'
+              : isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-400' : 'bg-white border-gray-200 text-gray-500'
+          }`}
+        >
+          <Star className={`w-5 h-5 ${showFavoritesOnly ? 'fill-current' : ''}`} />
+          {favoriteCount > 0 && <span className="text-sm">{favoriteCount}</span>}
+        </button>
       </div>
       
       {/* Exercise Count */}
       <div className={`text-sm ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
         {filteredExercises.length} exercise{filteredExercises.length !== 1 ? 's' : ''}
+        {showFavoritesOnly && ' (favorites)'}
         {searchQuery && ` matching "${searchQuery}"`}
       </div>
       
@@ -175,17 +205,28 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
                   </div>
                   <ChevronRight className={`w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'} transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
                 </button>
+                {/* Favorite Toggle */}
+                <button
+                  onClick={() => toggleFavorite(exercise.id)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    exercise.isFavorite
+                      ? 'text-yellow-400'
+                      : isDark ? 'text-zinc-600 hover:text-yellow-400' : 'text-gray-300 hover:text-yellow-500'
+                  }`}
+                >
+                  <Star className={`w-5 h-5 ${exercise.isFavorite ? 'fill-current' : ''}`} />
+                </button>
                 {exercise.id.startsWith('custom_') || exercise.id.startsWith('imported_') ? (
                   <button
                     onClick={() => handleDelete(exercise.id, exercise.name)}
-                    className={`p-2 rounded-lg transition-colors ml-2 ${
+                    className={`p-2 rounded-lg transition-colors ${
                       isDark ? 'text-zinc-500 hover:text-red-400 hover:bg-red-500/10' : 'text-gray-400 hover:text-red-500 hover:bg-red-50'
                     }`}
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
                 ) : (
-                  <div className={`text-xs px-2 py-1 rounded ml-2 ${isDark ? 'bg-[#252525] text-zinc-500' : 'bg-gray-100 text-gray-500'}`}>
+                  <div className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-[#252525] text-zinc-500' : 'bg-gray-100 text-gray-500'}`}>
                     Default
                   </div>
                 )}

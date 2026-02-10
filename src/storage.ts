@@ -1343,3 +1343,18 @@ export function setRestTimerPresets(presets: number[]): void {
 export function resetRestTimerPresets(): void {
   setItem('zenith_rest_presets', DEFAULT_REST_PRESETS);
 }
+
+// Exercise Favorites
+export function toggleExerciseFavorite(exerciseId: string): boolean {
+  const exercises = getExercises();
+  const index = exercises.findIndex(e => e.id === exerciseId);
+  if (index < 0) return false;
+  
+  exercises[index].isFavorite = !exercises[index].isFavorite;
+  setItem(STORAGE_KEYS.EXERCISES, exercises);
+  return exercises[index].isFavorite || false;
+}
+
+export function getFavoriteExercises(): Exercise[] {
+  return getExercises().filter(e => e.isFavorite);
+}
