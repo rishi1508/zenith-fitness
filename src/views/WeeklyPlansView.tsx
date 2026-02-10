@@ -44,6 +44,15 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
     setExercises(updated);
   };
   
+  const updateSupersetGroup = (index: number, group: string | undefined) => {
+    const updated = [...exercises];
+    updated[index] = { ...updated[index], supersetGroup: group };
+    setExercises(updated);
+  };
+  
+  // Available superset groups
+  const supersetGroups = ['A', 'B', 'C', 'D'];
+  
   const handleSave = () => {
     if (!dayName.trim()) {
       alert('Please enter a day name');
@@ -194,6 +203,21 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
                         isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-gray-50 border-gray-200'
                       } focus:outline-none focus:border-orange-500`}
                     />
+                  </div>
+                  <div className="w-20">
+                    <label className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>Superset</label>
+                    <select
+                      value={ex.supersetGroup || ''}
+                      onChange={(e) => updateSupersetGroup(index, e.target.value || undefined)}
+                      className={`w-full mt-1 px-2 py-2 rounded-lg border text-sm ${
+                        isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-gray-50 border-gray-200'
+                      } focus:outline-none focus:border-purple-500 ${ex.supersetGroup ? 'border-purple-500/50' : ''}`}
+                    >
+                      <option value="">—</option>
+                      {supersetGroups.map(g => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
