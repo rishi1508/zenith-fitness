@@ -15,6 +15,28 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
   const [prAchievement, setPrAchievement] = useState<{exercise: string; weight: number; reps: number; isVolumePR?: boolean} | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  
+  // Workout duration timer
+  useEffect(() => {
+    const startTime = workout.startedAt ? new Date(workout.startedAt).getTime() : Date.now();
+    
+    const updateElapsed = () => {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+    };
+    
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [workout.startedAt]);
+  
+  const formatDuration = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Rest timer with strong haptic feedback
   // Play sound effect using Web Audio API
@@ -248,7 +270,13 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
         <button onClick={onCancel} className="p-2 -ml-2 text-zinc-400">
           <X className="w-6 h-6" />
         </button>
-        <h1 className="text-lg font-bold">{workout.name}</h1>
+        <div className="text-center">
+          <h1 className="text-lg font-bold">{workout.name}</h1>
+          <div className="text-xs text-orange-400 font-mono flex items-center justify-center gap-1">
+            <Clock className="w-3 h-3" />
+            {formatDuration(elapsedSeconds)}
+          </div>
+        </div>
         <button
           onClick={onFinish}
           className="px-4 py-2 bg-emerald-600 rounded-lg text-sm font-medium"
