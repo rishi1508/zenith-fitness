@@ -69,7 +69,7 @@ Show visual indicators during active workout:
 **Impact:** Medium — Targeted progression  
 **Complexity:** High (needs muscle group tracking)
 
-- Set weekly volume targets (e.g., 12 sets chest, 15 sets legs)
+- ~~Set weekly volume targets (e.g., 12 sets chest, 15 sets legs)~~ ✅ v2.28.0
 - Track progress throughout week
 - End-of-week summary showing hit/miss
 
@@ -156,6 +156,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-11 04:45 IST  
-**Current Version:** v2.26.0  
-**Next Target:** Volume Goals per Muscle Group
+**Last Updated:** 2026-02-11 04:00 IST  
+**Current Version:** v2.28.0  
+**Next Target:** Swipe Gestures, Dark Mode Schedule
