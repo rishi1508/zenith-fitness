@@ -120,3 +120,17 @@ export interface BodyWeightEntry {
   weight: number; // in kg
   notes?: string; // e.g., "morning weight", "after workout", "bloated"
 }
+
+// Weekly volume goals per muscle group
+export interface VolumeGoal {
+  muscleGroup: MuscleGroup;
+  targetSets: number; // Weekly target sets
+  enabled: boolean;
+}
+
+export interface WeeklyVolumeProgress {
+  muscleGroup: MuscleGroup;
+  targetSets: number;
+  completedSets: number;
+  percentComplete: number;
+}

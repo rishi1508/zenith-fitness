@@ -4,6 +4,7 @@ import type { Workout } from '../types';
 import * as storage from '../storage';
 import { calculateEstimated1RM } from '../utils';
 import { VolumeLineChart } from '../VolumeLineChart';
+import { VolumeGoals } from '../components';
 
 interface ProgressViewProps {
   workouts: Workout[];
@@ -225,6 +226,9 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
           <div className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>Exercises Tracked</div>
         </div>
       </div>
+
+      {/* Weekly Volume Goals */}
+      <VolumeGoals isDark={isDark} />
 
       {/* Compare Workouts Button */}
       {onNavigateToCompare && completedWorkouts.length >= 2 && (
