@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
-  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator
+  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy
 } from 'lucide-react';
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
 import * as sync from '../sync';
 import { BodyWeightChart } from '../BodyWeightChart';
-import { PlateCalculator } from '../components';
+import { PlateCalculator, OneRMCalculator } from '../components';
 
 declare const __APP_VERSION__: string;
 
@@ -218,6 +218,7 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
   
   // Utilities state
   const [showPlateCalculator, setShowPlateCalculator] = useState(false);
+  const [showOneRMCalculator, setShowOneRMCalculator] = useState(false);
   
   // Refresh pending count periodically
   useEffect(() => {
@@ -366,6 +367,37 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
       {showPlateCalculator && (
         <PlateCalculator
           onClose={() => setShowPlateCalculator(false)}
+          isDark={isDark}
+        />
+      )}
+
+      {/* 1RM Calculator */}
+      <button
+        onClick={() => setShowOneRMCalculator(true)}
+        className={`w-full py-4 px-4 rounded-xl flex items-center justify-between transition-colors border ${
+          isDark 
+            ? 'bg-[#1a1a1a] border-[#2e2e2e] hover:border-yellow-500/50' 
+            : 'bg-white border-gray-200 hover:border-yellow-400'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${isDark ? 'bg-yellow-500/20' : 'bg-yellow-100'}`}>
+            <Trophy className="w-5 h-5 text-yellow-400" />
+          </div>
+          <div className="text-left">
+            <span className="font-medium">1RM Calculator</span>
+            <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+              Estimate your max from any rep range
+            </div>
+          </div>
+        </div>
+        <ChevronRight className={`w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
+      </button>
+      
+      {/* 1RM Calculator Modal */}
+      {showOneRMCalculator && (
+        <OneRMCalculator
+          onClose={() => setShowOneRMCalculator(false)}
           isDark={isDark}
         />
       )}

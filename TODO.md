@@ -133,7 +133,7 @@ Show visual indicators during active workout:
 - [ ] Wear OS companion app
 - [ ] Exercise form videos (hosted)
 - [ ] Community templates library
-- [ ] Plate calculator (what plates to load)
+- [x] ~~Plate calculator~~ ✅ v2.22.0 - Added to Settings!
 - [ ] 1RM calculator and predictions
 
 ---
