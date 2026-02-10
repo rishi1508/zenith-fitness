@@ -134,7 +134,7 @@ Show visual indicators during active workout:
 - [ ] Exercise form videos (hosted)
 - [ ] Community templates library
 - [x] ~~Plate calculator~~ ✅ v2.22.0 - Added to Settings!
-- [ ] 1RM calculator and predictions
+- [x] ~~1RM calculator~~ ✅ v2.23.0 - Multiple formulas, weight recommendations!
 
 ---
 
@@ -149,6 +149,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-11 03:30 IST  
-**Current Version:** v2.20.0  
-**Next Target:** Superset Support UI, Comparison View
+**Last Updated:** 2026-02-11 04:00 IST  
+**Current Version:** v2.23.0  
+**Next Target:** Superset Support UI, Deload Week Tracking

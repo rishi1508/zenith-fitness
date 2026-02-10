@@ -289,16 +289,42 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
 
       {/* Exercises */}
       <div className="space-y-4">
-        {workout.exercises.map((exercise, exIndex) => (
-          <ExerciseCard
-            key={exercise.id}
-            exercise={exercise}
-            onUpdateSet={(setIndex, updates) => updateSet(exIndex, setIndex, updates)}
-            onSwapExercise={(newExercise) => swapExercise(exIndex, newExercise)}
-            onDelete={() => deleteExercise(exIndex)}
-            canDelete={workout.exercises.length > 1}
-          />
-        ))}
+        {workout.exercises.map((exercise, exIndex) => {
+          // Check if this exercise is part of a superset
+          const isSuperset = exercise.supersetGroup;
+          const prevExercise = workout.exercises[exIndex - 1];
+          const nextExercise = workout.exercises[exIndex + 1];
+          const isFirstInSuperset = isSuperset && (!prevExercise || prevExercise.supersetGroup !== exercise.supersetGroup);
+          const isLastInSuperset = isSuperset && (!nextExercise || nextExercise.supersetGroup !== exercise.supersetGroup);
+          
+          return (
+            <div key={exercise.id} className="relative">
+              {/* Superset connector line */}
+              {isSuperset && !isFirstInSuperset && (
+                <div className="absolute left-5 -top-4 w-0.5 h-4 bg-purple-500/50" />
+              )}
+              {isSuperset && !isLastInSuperset && (
+                <div className="absolute left-5 -bottom-4 w-0.5 h-4 bg-purple-500/50 z-10" />
+              )}
+              
+              {/* Superset group label for first exercise */}
+              {isFirstInSuperset && (
+                <div className="text-xs text-purple-400 font-medium mb-2 flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-purple-500" />
+                  Superset {exercise.supersetGroup}
+                </div>
+              )}
+              
+              <ExerciseCard
+                exercise={exercise}
+                onUpdateSet={(setIndex, updates) => updateSet(exIndex, setIndex, updates)}
+                onSwapExercise={(newExercise) => swapExercise(exIndex, newExercise)}
+                onDelete={() => deleteExercise(exIndex)}
+                canDelete={workout.exercises.length > 1}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -439,11 +465,24 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-3 flex-1"
         >
-          <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center relative">
             <Dumbbell className="w-5 h-5 text-orange-400" />
+            {/* Superset Badge */}
+            {exercise.supersetGroup && (
+              <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-purple-500 text-[10px] font-bold flex items-center justify-center text-white">
+                {exercise.supersetGroup}
+              </div>
+            )}
           </div>
           <div className="text-left">
-            <div className="font-medium">{exercise.exerciseName}</div>
+            <div className="font-medium flex items-center gap-2">
+              {exercise.exerciseName}
+              {exercise.supersetGroup && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
+                  Superset {exercise.supersetGroup}
+                </span>
+              )}
+            </div>
             <div className="text-sm text-zinc-500">{completedCount}/{exercise.sets.length} sets</div>
           </div>
         </button>
