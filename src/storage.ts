@@ -1191,3 +1191,30 @@ export function getDeloadStats(): { total: number; lastDeload: string | null; we
     weeksSinceLast,
   };
 }
+
+// Sound Settings
+interface SoundSettings {
+  enabled: boolean;
+  celebration: boolean;
+  timer: boolean;
+}
+
+const DEFAULT_SOUND_SETTINGS: SoundSettings = {
+  enabled: true,
+  celebration: true,
+  timer: true,
+};
+
+export function getSoundSettings(): SoundSettings {
+  return getItem<SoundSettings>('zenith_sound_settings', DEFAULT_SOUND_SETTINGS);
+}
+
+export function setSoundSettings(settings: Partial<SoundSettings>): void {
+  const current = getSoundSettings();
+  setItem('zenith_sound_settings', { ...current, ...settings });
+}
+
+export function isSoundEnabled(type: 'celebration' | 'timer'): boolean {
+  const settings = getSoundSettings();
+  return settings.enabled && settings[type];
+}
