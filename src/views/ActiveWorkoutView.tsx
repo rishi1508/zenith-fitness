@@ -17,11 +17,43 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
   const [prAchievement, setPrAchievement] = useState<{exercise: string; weight: number; reps: number; isVolumePR?: boolean} | null>(null);
 
   // Rest timer with strong haptic feedback
+  // Play sound effect using Web Audio API
+  const playSound = (type: 'celebration' | 'timer') => {
+    if (!storage.isSoundEnabled(type)) return;
+    
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = type === 'celebration' ? 880 : 440;
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.3;
+      
+      oscillator.start();
+      
+      if (type === 'celebration') {
+        setTimeout(() => oscillator.frequency.value = 1047, 100);
+        setTimeout(() => oscillator.frequency.value = 1319, 200);
+        setTimeout(() => oscillator.stop(), 400);
+      } else {
+        setTimeout(() => oscillator.stop(), 200);
+      }
+    } catch (e) {
+      console.log('Audio not supported:', e);
+    }
+  };
+
   useEffect(() => {
     if (restTimer === null) return;
     
     if (restTimeLeft <= 0) {
       setRestTimer(null);
+      // Play timer sound
+      playSound('timer');
       // Strong vibration pattern when timer ends
       try {
         if ('vibrate' in navigator) {
@@ -147,6 +179,8 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
             reps: updatedSet.reps,
           });
           setTimeout(() => setPrAchievement(null), 3500);
+          // Play celebration sound
+          playSound('celebration');
           try {
             if ('vibrate' in navigator) {
               navigator.vibrate([100, 50, 100, 50, 200]); // PR vibration!

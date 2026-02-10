@@ -150,7 +150,7 @@ Show visual indicators during active workout:
 - [ ] Swipe gestures (swipe exercise left → delete, right → duplicate)
 - [ ] Long-press menu for quick actions
 - [ ] Haptic feedback on PR achievements
-- [ ] Sound effects toggle (celebration, timer)
+- [x] ~~Sound effects toggle~~ ✅ v2.27.0 - Master toggle + per-type!
 - [x] ~~Export workout as shareable image~~ ✅ v2.26.0 - Share from History!
 - [ ] Dark mode schedule (auto-switch at sunset)
 
