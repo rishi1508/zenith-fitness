@@ -156,6 +156,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-11 04:30 IST  
-**Current Version:** v2.31.0  
+**Last Updated:** 2026-02-11 05:00 IST  
+**Current Version:** v2.32.0  
 **Next Target:** Swipe Gestures, Long-press Menu
