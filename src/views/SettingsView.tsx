@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
-  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy
+  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2
 } from 'lucide-react';
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
@@ -10,6 +10,128 @@ import { BodyWeightChart } from '../BodyWeightChart';
 import { PlateCalculator, OneRMCalculator } from '../components';
 
 declare const __APP_VERSION__: string;
+
+// Sound Settings Section
+function SoundSettingsSection({ isDark }: { isDark: boolean }) {
+  const [settings, setSettings] = useState(() => storage.getSoundSettings());
+  
+  const toggleSetting = (key: 'enabled' | 'celebration' | 'timer') => {
+    const newSettings = { ...settings, [key]: !settings[key] };
+    storage.setSoundSettings(newSettings);
+    setSettings(newSettings);
+  };
+  
+  const playTestSound = (type: 'celebration' | 'timer') => {
+    try {
+      // Simple beep using Web Audio API
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = type === 'celebration' ? 880 : 440;
+      oscillator.type = 'sine';
+      gainNode.gain.value = 0.3;
+      
+      oscillator.start();
+      
+      if (type === 'celebration') {
+        // Victory jingle pattern
+        setTimeout(() => oscillator.frequency.value = 1047, 100);
+        setTimeout(() => oscillator.frequency.value = 1319, 200);
+        setTimeout(() => oscillator.stop(), 400);
+      } else {
+        // Timer beep
+        setTimeout(() => oscillator.stop(), 200);
+      }
+    } catch (e) {
+      console.log('Audio not supported');
+    }
+  };
+  
+  return (
+    <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Volume2 className="w-5 h-5 text-pink-400" />
+          <span className="font-medium">Sound Effects</span>
+        </div>
+        <button
+          onClick={() => toggleSetting('enabled')}
+          className={`relative w-12 h-6 rounded-full transition-colors ${
+            settings.enabled ? 'bg-pink-500' : isDark ? 'bg-[#3e3e3e]' : 'bg-gray-300'
+          }`}
+        >
+          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+            settings.enabled ? 'left-7' : 'left-1'
+          }`} />
+        </button>
+      </div>
+      
+      {settings.enabled && (
+        <div className="space-y-3">
+          {/* Celebration Sound */}
+          <div className={`flex items-center justify-between py-2 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+            <div>
+              <div className="text-sm font-medium">Celebration 🎉</div>
+              <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                Play sound on workout completion & PRs
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => playTestSound('celebration')}
+                className={`px-2 py-1 text-xs rounded ${isDark ? 'bg-[#252525] text-zinc-400' : 'bg-gray-100 text-gray-500'}`}
+              >
+                Test
+              </button>
+              <button
+                onClick={() => toggleSetting('celebration')}
+                className={`relative w-10 h-5 rounded-full transition-colors ${
+                  settings.celebration ? 'bg-pink-500' : isDark ? 'bg-[#3e3e3e]' : 'bg-gray-300'
+                }`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  settings.celebration ? 'left-5' : 'left-0.5'
+                }`} />
+              </button>
+            </div>
+          </div>
+          
+          {/* Timer Sound */}
+          <div className={`flex items-center justify-between py-2 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+            <div>
+              <div className="text-sm font-medium">Timer Beep ⏱️</div>
+              <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                Play sound when rest timer ends
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => playTestSound('timer')}
+                className={`px-2 py-1 text-xs rounded ${isDark ? 'bg-[#252525] text-zinc-400' : 'bg-gray-100 text-gray-500'}`}
+              >
+                Test
+              </button>
+              <button
+                onClick={() => toggleSetting('timer')}
+                className={`relative w-10 h-5 rounded-full transition-colors ${
+                  settings.timer ? 'bg-pink-500' : isDark ? 'bg-[#3e3e3e]' : 'bg-gray-300'
+                }`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                  settings.timer ? 'left-5' : 'left-0.5'
+                }`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Body Weight Tracking Section
 function BodyWeightSection({ isDark }: { isDark: boolean }) {
@@ -401,6 +523,9 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
           isDark={isDark}
         />
       )}
+
+      {/* Sound Settings */}
+      <SoundSettingsSection isDark={isDark} />
 
       {/* Import from Google Sheets */}
       <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
