@@ -1,7 +1,7 @@
 {
   "name": "zenith-fitness",
   "private": true,
-  "version": "2.25.0",
+  "version": "2.26.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "@capacitor/core": "^8.0.2",
     "@capacitor/status-bar": "^8.0.0",
     "express": "^5.2.1",
+    "html2canvas": "^1.4.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

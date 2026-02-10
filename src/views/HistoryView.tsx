@@ -1,19 +1,21 @@
 import { useState } from 'react';
 import { 
   Calendar, ChevronLeft, ChevronRight, Clock, 
-  Copy, Dumbbell, Trash2, CheckCircle2
+  Copy, Dumbbell, Trash2, CheckCircle2, Share2
 } from 'lucide-react';
 import type { Workout, WeeklyPlan } from '../types';
 import * as storage from '../storage';
+import { ShareWorkout } from '../components';
 
 interface HistoryWorkoutCardProps {
   workout: Workout;
   isDark: boolean;
   onDelete: () => void;
   onSaveAsTemplate: () => void;
+  onShare: () => void;
 }
 
-function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate }: HistoryWorkoutCardProps) {
+function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onShare }: HistoryWorkoutCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isImported = workout.type === 'imported';
   const isRest = workout.type === 'rest';
@@ -71,6 +73,18 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate }: His
           <div className="flex items-center gap-2">
             {!isRest && workout.exercises.length > 0 && (
               <ChevronRight className={`w-5 h-5 text-zinc-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            )}
+            {!isRest && workout.exercises.length > 0 && workout.completed && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShare();
+                }}
+                className="p-2 text-zinc-500 hover:text-purple-400"
+                title="Share workout"
+              >
+                <Share2 className="w-5 h-5" />
+              </button>
             )}
             {!isRest && workout.exercises.length > 0 && (
               <button
@@ -142,6 +156,7 @@ interface HistoryViewProps {
 export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewProps) {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [workoutToShare, setWorkoutToShare] = useState<Workout | null>(null);
   
   const handleSaveAsTemplate = (workout: Workout) => {
     if (workout.exercises.length === 0) return;
@@ -239,12 +254,22 @@ export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewP
                     isDark={isDark}
                     onDelete={() => onDelete(workout.id)}
                     onSaveAsTemplate={() => handleSaveAsTemplate(workout)}
+                    onShare={() => setWorkoutToShare(workout)}
                   />
                 ))}
               </div>
             </div>
           ))}
         </div>
+      )}
+      
+      {/* Share Workout Modal */}
+      {workoutToShare && (
+        <ShareWorkout
+          workout={workoutToShare}
+          onClose={() => setWorkoutToShare(null)}
+          isDark={isDark}
+        />
       )}
     </div>
   );
