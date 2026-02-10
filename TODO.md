@@ -152,10 +152,10 @@ Show visual indicators during active workout:
 - [ ] Haptic feedback on PR achievements
 - [x] ~~Sound effects toggle~~ ✅ v2.27.0 - Master toggle + per-type!
 - [x] ~~Export workout as shareable image~~ ✅ v2.26.0 - Share from History!
-- [ ] Dark mode schedule (auto-switch at sunset)
+- [x] ~~Dark mode schedule~~ ✅ v2.29.0 - Auto theme with customizable hours!
 
 ---
 
-**Last Updated:** 2026-02-11 04:00 IST  
-**Current Version:** v2.28.0  
-**Next Target:** Swipe Gestures, Dark Mode Schedule
+**Last Updated:** 2026-02-11 04:10 IST  
+**Current Version:** v2.29.0  
+**Next Target:** Swipe Gestures, Long-press Menu
