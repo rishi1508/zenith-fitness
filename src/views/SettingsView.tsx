@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
-  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2, Palette, Sun, Moon
+  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2, Palette, Sun, Moon, Clock
 } from 'lucide-react';
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
@@ -129,6 +129,116 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Rest Timer Presets Section
+function RestTimerPresetsSection({ isDark }: { isDark: boolean }) {
+  const [presets, setPresets] = useState(() => storage.getRestTimerPresets());
+  const [newPreset, setNewPreset] = useState('');
+  
+  const addPreset = () => {
+    const seconds = parseInt(newPreset);
+    if (isNaN(seconds) || seconds < 10 || seconds > 600) {
+      alert('Enter a value between 10 and 600 seconds');
+      return;
+    }
+    if (presets.includes(seconds)) {
+      alert('This preset already exists');
+      return;
+    }
+    if (presets.length >= 6) {
+      alert('Maximum 6 presets allowed');
+      return;
+    }
+    const updated = [...presets, seconds].sort((a, b) => a - b);
+    storage.setRestTimerPresets(updated);
+    setPresets(updated);
+    setNewPreset('');
+  };
+  
+  const removePreset = (seconds: number) => {
+    if (presets.length <= 2) {
+      alert('Minimum 2 presets required');
+      return;
+    }
+    const updated = presets.filter(p => p !== seconds);
+    storage.setRestTimerPresets(updated);
+    setPresets(updated);
+  };
+  
+  const resetDefaults = () => {
+    storage.resetRestTimerPresets();
+    setPresets(storage.getRestTimerPresets());
+  };
+  
+  const formatTime = (seconds: number) => {
+    if (seconds >= 60) {
+      return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    }
+    return `${seconds}s`;
+  };
+  
+  return (
+    <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Clock className="w-5 h-5 text-orange-400" />
+          <span className="font-medium">Rest Timer Presets</span>
+        </div>
+        <button
+          onClick={resetDefaults}
+          className={`text-xs px-2 py-1 rounded ${isDark ? 'bg-[#252525] text-zinc-400' : 'bg-gray-100 text-gray-500'}`}
+        >
+          Reset
+        </button>
+      </div>
+      
+      {/* Current Presets */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {presets.map(seconds => (
+          <div
+            key={seconds}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm ${
+              isDark ? 'bg-[#252525]' : 'bg-gray-100'
+            }`}
+          >
+            <span>{formatTime(seconds)}</span>
+            <button
+              onClick={() => removePreset(seconds)}
+              className="ml-1 text-zinc-500 hover:text-red-400"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+      
+      {/* Add New */}
+      {presets.length < 6 && (
+        <div className="flex gap-2">
+          <input
+            type="number"
+            value={newPreset}
+            onChange={(e) => setNewPreset(e.target.value)}
+            placeholder="Seconds (10-600)"
+            className={`flex-1 rounded-lg px-3 py-2 text-sm border ${
+              isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-white border-gray-200'
+            }`}
+          />
+          <button
+            onClick={addPreset}
+            className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium"
+          >
+            Add
+          </button>
+        </div>
+      )}
+      
+      <div className={`text-xs mt-3 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+        These buttons appear during workouts
+      </div>
     </div>
   );
 }
@@ -619,6 +729,9 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
 
       {/* Theme Settings */}
       <ThemeSettingsSection isDark={isDark} onThemeChange={onThemeChange} />
+
+      {/* Rest Timer Presets */}
+      <RestTimerPresetsSection isDark={isDark} />
 
       {/* Import from Google Sheets */}
       <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>

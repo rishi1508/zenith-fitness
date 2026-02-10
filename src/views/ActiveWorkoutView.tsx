@@ -275,7 +275,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
       {restTimer === null && (
         <div className="flex gap-2">
           <span className="text-sm text-zinc-500 self-center">Rest:</span>
-          {[60, 90, 120, 180].map(seconds => (
+          {storage.getRestTimerPresets().map(seconds => (
             <button
               key={seconds}
               onClick={() => startRestTimer(seconds)}
