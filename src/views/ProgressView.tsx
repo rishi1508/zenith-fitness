@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Dumbbell, Search, TrendingUp, Trophy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Dumbbell, Search, TrendingUp, Trophy, Scale } from 'lucide-react';
 import type { Workout } from '../types';
 import * as storage from '../storage';
 import { calculateEstimated1RM } from '../utils';
@@ -9,9 +9,10 @@ interface ProgressViewProps {
   workouts: Workout[];
   isDark: boolean;
   onBack: () => void;
+  onNavigateToCompare?: () => void;
 }
 
-export function ProgressView({ workouts, isDark, onBack }: ProgressViewProps) {
+export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: ProgressViewProps) {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
@@ -224,6 +225,31 @@ export function ProgressView({ workouts, isDark, onBack }: ProgressViewProps) {
           <div className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>Exercises Tracked</div>
         </div>
       </div>
+
+      {/* Compare Workouts Button */}
+      {onNavigateToCompare && completedWorkouts.length >= 2 && (
+        <button
+          onClick={onNavigateToCompare}
+          className={`w-full p-4 rounded-xl border flex items-center justify-between transition-colors ${
+            isDark 
+              ? 'bg-[#1a1a1a] border-[#2e2e2e] hover:border-purple-500/50' 
+              : 'bg-white border-gray-200 hover:border-purple-400'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isDark ? 'bg-purple-500/20' : 'bg-purple-100'}`}>
+              <Scale className="w-5 h-5 text-purple-400" />
+            </div>
+            <div className="text-left">
+              <div className="font-medium">Compare Workouts</div>
+              <div className={`text-sm ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                See how your sessions stack up
+              </div>
+            </div>
+          </div>
+          <ChevronRight className={`w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
+        </button>
+      )}
 
       {/* Search */}
       <div className="relative">

@@ -49,13 +49,17 @@ Show visual indicators during active workout:
 
 ## 📊 Medium Priority
 
-### 🎯 Superset Support
+### 🚧 Superset Support
 **Impact:** Medium — Training efficiency  
-**Complexity:** Medium
+**Complexity:** Medium  
+**Status:** Types defined (2026-02-11), UI implementation pending
 
-- Mark exercises as supersets (A1/A2, B1/B2 pattern)
-- Shared rest timer between superset pairs
-- Visual grouping in workout view
+- [x] Add supersetGroup field to WorkoutExercise type
+- [x] Add supersetGroup field to TemplateExercise type  
+- [ ] Mark exercises as supersets (A1/A2, B1/B2 pattern)
+- [ ] Shared rest timer between superset pairs
+- [ ] Visual grouping in workout view
+- [ ] UI to assign superset groups in weekly plan editor
 
 ### 🎯 Volume Goals per Muscle Group
 **Impact:** Medium — Targeted progression  
@@ -142,6 +146,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-02 01:45 IST  
-**Current Version:** v2.13.0  
-**Next Target:** Continue autonomous feature delivery
+**Last Updated:** 2026-02-11 03:30 IST  
+**Current Version:** v2.20.0  
+**Next Target:** Superset Support UI, Comparison View

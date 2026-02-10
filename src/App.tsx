@@ -10,9 +10,9 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer } from './components';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView } from './views';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView } from './views';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -426,6 +426,14 @@ function App() {
         )}
         {view === 'progress' && (
           <ProgressView 
+            workouts={workoutHistory}
+            isDark={isDark}
+            onBack={() => goBack()}
+            onNavigateToCompare={() => navigateTo('compare')}
+          />
+        )}
+        {view === 'compare' && (
+          <ComparisonView
             workouts={workoutHistory}
             isDark={isDark}
             onBack={() => goBack()}
