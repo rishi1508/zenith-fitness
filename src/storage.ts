@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
   ACTIVE_PLAN: 'zenith_active_plan',
   LAST_DAY: 'zenith_last_day', // Last used day number in active plan
   BODY_WEIGHT: 'zenith_body_weight', // Body weight tracking entries
+  DELOAD_WEEKS: 'zenith_deload_weeks', // Array of ISO week strings that were deload weeks
 };
 
 // Generic storage helpers
@@ -1135,3 +1136,58 @@ const defaultTemplates: WorkoutTemplate[] = [
     ],
   },
 ];
+
+// Deload Week Tracking
+// Get ISO week string (YYYY-WXX format)
+function getISOWeek(date: Date = new Date()): string {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7)); // ISO week starts Monday
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${d.getFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+export function getDeloadWeeks(): string[] {
+  return getItem<string[]>(STORAGE_KEYS.DELOAD_WEEKS, []);
+}
+
+export function isCurrentWeekDeload(): boolean {
+  const currentWeek = getISOWeek();
+  return getDeloadWeeks().includes(currentWeek);
+}
+
+export function setCurrentWeekDeload(isDeload: boolean): void {
+  const currentWeek = getISOWeek();
+  const deloadWeeks = getDeloadWeeks();
+  
+  if (isDeload && !deloadWeeks.includes(currentWeek)) {
+    deloadWeeks.push(currentWeek);
+  } else if (!isDeload) {
+    const index = deloadWeeks.indexOf(currentWeek);
+    if (index >= 0) deloadWeeks.splice(index, 1);
+  }
+  
+  setItem(STORAGE_KEYS.DELOAD_WEEKS, deloadWeeks);
+}
+
+export function getDeloadStats(): { total: number; lastDeload: string | null; weeksSinceLast: number } {
+  const deloadWeeks = getDeloadWeeks().sort().reverse();
+  const currentWeek = getISOWeek();
+  
+  let weeksSinceLast = 0;
+  if (deloadWeeks.length > 0 && deloadWeeks[0] !== currentWeek) {
+    // Calculate weeks since last deload (approximate)
+    const lastYear = parseInt(deloadWeeks[0].split('-W')[0]);
+    const lastWeekNum = parseInt(deloadWeeks[0].split('-W')[1]);
+    const currentYear = parseInt(currentWeek.split('-W')[0]);
+    const currentWeekNum = parseInt(currentWeek.split('-W')[1]);
+    weeksSinceLast = (currentYear - lastYear) * 52 + (currentWeekNum - lastWeekNum);
+  }
+  
+  return {
+    total: deloadWeeks.length,
+    lastDeload: deloadWeeks.length > 0 ? deloadWeeks[0] : null,
+    weeksSinceLast,
+  };
+}
