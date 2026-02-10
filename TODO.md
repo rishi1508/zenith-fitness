@@ -119,13 +119,16 @@ Show visual indicators during active workout:
 - [x] Displayed with notes in blue callout box
 - [x] Icon: ▶️ Watch Form Video
 
-### 🎯 Deload Week Tracking
+### ✅ v2.25.0 - Deload Week Tracking
+**Status:** Completed 2026-02-11  
 **Impact:** Low — Periodization support  
 **Complexity:** Medium
 
-- Mark weeks as deload
-- Auto-suggest 60-70% volume reduction
-- Track deload frequency
+- [x] Toggle deload mode in Week View
+- [x] Track deload history (ISO week format)
+- [x] Show weeks since last deload
+- [x] Recommend deload after 4+ weeks
+- [x] Visual indicators (teal theme)
 
 ---
 
@@ -153,6 +156,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-11 04:00 IST  
-**Current Version:** v2.23.0  
-**Next Target:** Superset Support UI, Deload Week Tracking
+**Last Updated:** 2026-02-11 04:30 IST  
+**Current Version:** v2.25.0  
+**Next Target:** Export as Image, Volume Goals

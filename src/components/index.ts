@@ -7,3 +7,4 @@ export { WeeklyInsightsCard } from './WeeklyInsightsCard';
 export { WeeklyPlanSelector } from './WeeklyPlanSelector';
 export { PlateCalculator } from './PlateCalculator';
 export { OneRMCalculator } from './OneRMCalculator';
+export { ShareWorkout } from './ShareWorkout';
