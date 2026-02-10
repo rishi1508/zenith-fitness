@@ -80,13 +80,16 @@ Show visual indicators during active workout:
 - [x] Adds as Day 1 + Rest Day template
 - [x] Toast confirmation
 
-### 🎯 Comparison View
+### ✅ v2.21.0 - Comparison View
+**Status:** Completed 2026-02-11  
 **Impact:** Medium — Analysis tool  
 **Complexity:** Medium
 
-- Select two workouts/weeks to compare
-- Side-by-side stats: volume, exercises, PRs
-- Visual diff highlighting changes
+- [x] New ComparisonView component with workout selector
+- [x] Side-by-side stats: volume, sets, avg weight, duration
+- [x] Exercise-by-exercise breakdown with diff indicators
+- [x] Summary card showing overall improvement/decline
+- [x] Accessible from Progress view (Compare button)
 
 ---
 

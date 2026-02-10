@@ -5,3 +5,4 @@ export { WorkoutTimer } from './WorkoutTimer';
 export { StatCard } from './StatCard';
 export { WeeklyInsightsCard } from './WeeklyInsightsCard';
 export { WeeklyPlanSelector } from './WeeklyPlanSelector';
+export { PlateCalculator } from './PlateCalculator';

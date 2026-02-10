@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
-  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2
+  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator
 } from 'lucide-react';
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
 import * as sync from '../sync';
 import { BodyWeightChart } from '../BodyWeightChart';
+import { PlateCalculator } from '../components';
 
 declare const __APP_VERSION__: string;
 
@@ -215,6 +216,9 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
   const [pendingCount, setPendingCount] = useState(() => sync.getPendingCount());
   
+  // Utilities state
+  const [showPlateCalculator, setShowPlateCalculator] = useState(false);
+  
   // Refresh pending count periodically
   useEffect(() => {
     const interval = setInterval(() => {
@@ -333,6 +337,37 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
           </div>
           <ChevronRight className="w-5 h-5" />
         </button>
+      )}
+
+      {/* Plate Calculator */}
+      <button
+        onClick={() => setShowPlateCalculator(true)}
+        className={`w-full py-4 px-4 rounded-xl flex items-center justify-between transition-colors border ${
+          isDark 
+            ? 'bg-[#1a1a1a] border-[#2e2e2e] hover:border-cyan-500/50' 
+            : 'bg-white border-gray-200 hover:border-cyan-400'
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${isDark ? 'bg-cyan-500/20' : 'bg-cyan-100'}`}>
+            <Calculator className="w-5 h-5 text-cyan-400" />
+          </div>
+          <div className="text-left">
+            <span className="font-medium">Plate Calculator</span>
+            <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+              Calculate what plates to load
+            </div>
+          </div>
+        </div>
+        <ChevronRight className={`w-5 h-5 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
+      </button>
+      
+      {/* Plate Calculator Modal */}
+      {showPlateCalculator && (
+        <PlateCalculator
+          onClose={() => setShowPlateCalculator(false)}
+          isDark={isDark}
+        />
       )}
 
       {/* Import from Google Sheets */}
