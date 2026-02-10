@@ -136,7 +136,7 @@ Show visual indicators during active workout:
 
 - [ ] Two-way Google Sheets sync (OAuth)
 - [ ] Workout reminders/notifications
-- [ ] Workout sharing (export/import JSON)
+- [x] ~~Workout sharing (export/import JSON)~~ ✅ v2.31.0 - Full data backup!
 - [ ] Wear OS companion app
 - [ ] Exercise form videos (hosted)
 - [ ] Community templates library
@@ -156,6 +156,6 @@ Show visual indicators during active workout:
 
 ---
 
-**Last Updated:** 2026-02-11 04:15 IST  
-**Current Version:** v2.30.0  
+**Last Updated:** 2026-02-11 04:30 IST  
+**Current Version:** v2.31.0  
 **Next Target:** Swipe Gestures, Long-press Menu
