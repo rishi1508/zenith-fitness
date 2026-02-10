@@ -8,3 +8,4 @@ export { WeeklyPlanSelector } from './WeeklyPlanSelector';
 export { PlateCalculator } from './PlateCalculator';
 export { OneRMCalculator } from './OneRMCalculator';
 export { ShareWorkout } from './ShareWorkout';
+export { VolumeGoals } from './VolumeGoals';

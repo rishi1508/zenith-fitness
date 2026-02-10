@@ -1,4 +1,4 @@
-import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry } from './types';
+import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from './types';
 import { syncWorkout, syncExercise, syncPlan, isSyncEnabled } from './sync';
 
 const STORAGE_KEYS = {
@@ -1217,4 +1217,79 @@ export function setSoundSettings(settings: Partial<SoundSettings>): void {
 export function isSoundEnabled(type: 'celebration' | 'timer'): boolean {
   const settings = getSoundSettings();
   return settings.enabled && settings[type];
+}
+
+// Volume Goals per Muscle Group
+
+const DEFAULT_VOLUME_GOALS: VolumeGoal[] = [
+  { muscleGroup: 'chest', targetSets: 12, enabled: false },
+  { muscleGroup: 'back', targetSets: 15, enabled: false },
+  { muscleGroup: 'shoulders', targetSets: 12, enabled: false },
+  { muscleGroup: 'biceps', targetSets: 10, enabled: false },
+  { muscleGroup: 'triceps', targetSets: 10, enabled: false },
+  { muscleGroup: 'legs', targetSets: 16, enabled: false },
+  { muscleGroup: 'core', targetSets: 8, enabled: false },
+];
+
+export function getVolumeGoals(): VolumeGoal[] {
+  return getItem<VolumeGoal[]>('zenith_volume_goals', DEFAULT_VOLUME_GOALS);
+}
+
+export function setVolumeGoals(goals: VolumeGoal[]): void {
+  setItem('zenith_volume_goals', goals);
+}
+
+export function updateVolumeGoal(muscleGroup: MuscleGroup, updates: Partial<VolumeGoal>): void {
+  const goals = getVolumeGoals();
+  const index = goals.findIndex(g => g.muscleGroup === muscleGroup);
+  if (index >= 0) {
+    goals[index] = { ...goals[index], ...updates };
+    setVolumeGoals(goals);
+  }
+}
+
+export function getWeeklyVolumeProgress(): WeeklyVolumeProgress[] {
+  const goals = getVolumeGoals().filter(g => g.enabled);
+  if (goals.length === 0) return [];
+  
+  const workouts = getWorkouts();
+  const exercises = getExercises();
+  
+  // Get this week's completed workouts
+  const today = new Date();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - today.getDay()); // Sunday
+  startOfWeek.setHours(0, 0, 0, 0);
+  
+  const thisWeekWorkouts = workouts.filter(w => {
+    const workoutDate = new Date(w.date);
+    return w.completed && w.type !== 'rest' && workoutDate >= startOfWeek;
+  });
+  
+  // Build exercise -> muscle group map
+  const exerciseMuscleMap = new Map<string, MuscleGroup>();
+  exercises.forEach(ex => {
+    exerciseMuscleMap.set(ex.id, ex.muscleGroup);
+  });
+  
+  // Count sets per muscle group
+  const setsByMuscle = new Map<MuscleGroup, number>();
+  
+  thisWeekWorkouts.forEach(workout => {
+    workout.exercises.forEach(ex => {
+      const muscleGroup = exerciseMuscleMap.get(ex.exerciseId);
+      if (muscleGroup && muscleGroup !== 'full_body' && muscleGroup !== 'other') {
+        const completedSets = ex.sets.filter(s => s.completed).length;
+        setsByMuscle.set(muscleGroup, (setsByMuscle.get(muscleGroup) || 0) + completedSets);
+      }
+    });
+  });
+  
+  // Build progress array
+  return goals.map(goal => ({
+    muscleGroup: goal.muscleGroup,
+    targetSets: goal.targetSets,
+    completedSets: setsByMuscle.get(goal.muscleGroup) || 0,
+    percentComplete: Math.min(100, Math.round(((setsByMuscle.get(goal.muscleGroup) || 0) / goal.targetSets) * 100)),
+  }));
 }
