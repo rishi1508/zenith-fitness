@@ -32,6 +32,7 @@ export interface WorkoutExercise {
   exerciseName: string;
   sets: WorkoutSet[];
   notes?: string;
+  supersetGroup?: string; // e.g., "A", "B", "C" - exercises with same group are supersets
 }
 
 export interface Workout {
@@ -63,6 +64,7 @@ export interface TemplateExercise {
   exerciseName: string;
   defaultSets: number;
   defaultReps: number;
+  supersetGroup?: string; // e.g., "A", "B", "C" - exercises with same group are supersets
 }
 
 // A single day's workout within a weekly plan
