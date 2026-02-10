@@ -1293,3 +1293,33 @@ export function getWeeklyVolumeProgress(): WeeklyVolumeProgress[] {
     percentComplete: Math.min(100, Math.round(((setsByMuscle.get(goal.muscleGroup) || 0) / goal.targetSets) * 100)),
   }));
 }
+
+// Theme Settings
+interface ThemeSettings {
+  mode: 'dark' | 'light' | 'auto';
+  autoLightStart: number; // Hour (0-23), default 7
+  autoLightEnd: number;   // Hour (0-23), default 19
+}
+
+const DEFAULT_THEME_SETTINGS: ThemeSettings = {
+  mode: 'dark',
+  autoLightStart: 7,
+  autoLightEnd: 19,
+};
+
+export function getThemeSettings(): ThemeSettings {
+  return getItem<ThemeSettings>('zenith_theme_settings', DEFAULT_THEME_SETTINGS);
+}
+
+export function setThemeSettings(settings: Partial<ThemeSettings>): void {
+  const current = getThemeSettings();
+  setItem('zenith_theme_settings', { ...current, ...settings });
+}
+
+export function getEffectiveTheme(): 'dark' | 'light' {
+  const settings = getThemeSettings();
+  if (settings.mode !== 'auto') return settings.mode;
+  
+  const hour = new Date().getHours();
+  return (hour >= settings.autoLightStart && hour < settings.autoLightEnd) ? 'light' : 'dark';
+}

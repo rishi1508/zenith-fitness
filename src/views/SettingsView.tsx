@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
-  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2
+  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2, Palette, Sun, Moon
 } from 'lucide-react';
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
@@ -126,6 +126,95 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
                 }`} />
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Theme Settings Section
+function ThemeSettingsSection({ isDark, onThemeChange }: { isDark: boolean; onThemeChange: (theme: 'dark' | 'light') => void }) {
+  const [settings, setSettings] = useState(() => storage.getThemeSettings());
+  
+  const updateMode = (mode: 'dark' | 'light' | 'auto') => {
+    storage.setThemeSettings({ mode });
+    setSettings(prev => ({ ...prev, mode }));
+    // Apply immediately
+    const effective = mode === 'auto' ? storage.getEffectiveTheme() : mode;
+    onThemeChange(effective);
+  };
+  
+  const updateSchedule = (field: 'autoLightStart' | 'autoLightEnd', value: number) => {
+    storage.setThemeSettings({ [field]: value });
+    setSettings(prev => ({ ...prev, [field]: value }));
+    if (settings.mode === 'auto') {
+      onThemeChange(storage.getEffectiveTheme());
+    }
+  };
+  
+  return (
+    <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+      <div className="flex items-center gap-2 mb-4">
+        <Palette className="w-5 h-5 text-violet-400" />
+        <span className="font-medium">Theme</span>
+      </div>
+      
+      {/* Mode Selection */}
+      <div className="flex gap-2 mb-4">
+        {(['dark', 'light', 'auto'] as const).map(mode => (
+          <button
+            key={mode}
+            onClick={() => updateMode(mode)}
+            className={`flex-1 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 transition-colors ${
+              settings.mode === mode
+                ? 'bg-violet-500 text-white'
+                : isDark ? 'bg-[#252525] text-zinc-400' : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {mode === 'dark' && <Moon className="w-4 h-4" />}
+            {mode === 'light' && <Sun className="w-4 h-4" />}
+            {mode === 'auto' && '⏰'}
+            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+          </button>
+        ))}
+      </div>
+      
+      {/* Auto Schedule */}
+      {settings.mode === 'auto' && (
+        <div className={`pt-3 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+          <div className={`text-xs mb-3 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+            Light mode schedule
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-2">
+              <Sun className="w-4 h-4 text-yellow-400" />
+              <select
+                value={settings.autoLightStart}
+                onChange={(e) => updateSchedule('autoLightStart', parseInt(e.target.value))}
+                className={`rounded-lg px-2 py-1.5 ${isDark ? 'bg-[#252525] text-white' : 'bg-gray-100'}`}
+              >
+                {Array.from({length: 24}, (_, i) => (
+                  <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>
+                ))}
+              </select>
+            </div>
+            <span className={isDark ? 'text-zinc-500' : 'text-gray-500'}>to</span>
+            <div className="flex items-center gap-2">
+              <Moon className="w-4 h-4 text-blue-400" />
+              <select
+                value={settings.autoLightEnd}
+                onChange={(e) => updateSchedule('autoLightEnd', parseInt(e.target.value))}
+                className={`rounded-lg px-2 py-1.5 ${isDark ? 'bg-[#252525] text-white' : 'bg-gray-100'}`}
+              >
+                {Array.from({length: 24}, (_, i) => (
+                  <option key={i} value={i}>{i.toString().padStart(2, '0')}:00</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className={`text-xs mt-2 ${isDark ? 'text-zinc-600' : 'text-gray-400'}`}>
+            Currently: {isDark ? '🌙 Dark' : '☀️ Light'} mode
           </div>
         </div>
       )}
@@ -320,9 +409,10 @@ function BodyWeightSection({ isDark }: { isDark: boolean }) {
 }
 
 // Settings View
-export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDark }: {
+export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDark, onThemeChange }: {
   onBack: () => void;
   onDataChange: () => void;
+  onThemeChange: (theme: 'dark' | 'light') => void;
   onNavigateToExercises?: () => void;
   isDark: boolean;
 }) {
@@ -526,6 +616,9 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
 
       {/* Sound Settings */}
       <SoundSettingsSection isDark={isDark} />
+
+      {/* Theme Settings */}
+      <ThemeSettingsSection isDark={isDark} onThemeChange={onThemeChange} />
 
       {/* Import from Google Sheets */}
       <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>

@@ -26,9 +26,23 @@ function App() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationData, setCelebrationData] = useState<{name: string; exercises: number; duration?: number} | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
-    try { return (localStorage.getItem('zenith_theme') as Theme) || 'dark'; } 
+    try { return storage.getEffectiveTheme(); } 
     catch { return 'dark'; }
   });
+  
+  // Auto-theme check every minute when in auto mode
+  useEffect(() => {
+    const settings = storage.getThemeSettings();
+    if (settings.mode !== 'auto') return;
+    
+    const checkTheme = () => {
+      const effective = storage.getEffectiveTheme();
+      if (effective !== theme) setTheme(effective);
+    };
+    
+    const interval = setInterval(checkTheme, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [theme]);
   
   // Navigation history for back button support
   const navigationHistory = useRef<View[]>(['home']);
@@ -445,6 +459,7 @@ function App() {
             onDataChange={loadData}
             onNavigateToExercises={() => navigateTo('exercises')}
             isDark={isDark}
+            onThemeChange={(newTheme) => setTheme(newTheme)}
           />
         )}
         {view === 'weekly' && (
