@@ -12,6 +12,8 @@ dist
 dist-ssr
 *.local
 
+CLAUDE.md
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,3 +25,6 @@ dist-ssr
 *.sln
 *.sw?
 *.keystore
+
+# Firebase
+.firebase

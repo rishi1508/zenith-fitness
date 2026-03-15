@@ -1,5 +1,6 @@
 import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from './types';
 import { syncWorkout, syncExercise, syncPlan, isSyncEnabled } from './sync';
+import { queueFirestoreSync, addToSharedExerciseLibrary } from './firestoreSync';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'zenith_workouts',
@@ -28,6 +29,8 @@ function getItem<T>(key: string, defaultValue: T): T {
 function setItem<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    // Fire-and-forget sync to Firestore (debounced, no-op if not logged in)
+    queueFirestoreSync(key, value);
     return true;
   } catch (e) {
     console.error('[Storage] Failed to save:', key, e);
@@ -67,6 +70,11 @@ export function saveWorkout(workout: Workout): void {
       })),
     }).catch(err => console.error('[Storage] Sync failed:', err));
   }
+}
+
+// Save the full workouts array (for bulk operations like import)
+export function saveWorkouts(workouts: Workout[]): void {
+  setItem(STORAGE_KEYS.WORKOUTS, workouts);
 }
 
 export function deleteWorkout(id: string): void {
@@ -120,7 +128,29 @@ export function setLastUsedTemplateId(templateId: string): void {
 
 // Get all weekly plans
 export function getWeeklyPlans(): WeeklyPlan[] {
-  return getItem<WeeklyPlan[]>(STORAGE_KEYS.WEEKLY_PLANS, [defaultWeeklyPlan]);
+  const plans = getItem<WeeklyPlan[]>(STORAGE_KEYS.WEEKLY_PLANS, [defaultWeeklyPlan]);
+
+  // One-time cleanup: fix imported plans with ghost "(Rest)" days from trailing CSV columns
+  let needsSave = false;
+  for (const plan of plans) {
+    if (plan.isImported) {
+      const originalLength = plan.days.length;
+      // Remove days that have "(Rest)" in the name, zero exercises, and are marked rest
+      // but only if the plan also has real workout days (to avoid deleting intentional rest days)
+      const realDays = plan.days.filter(d => d.exercises.length > 0 || (d.isRestDay && !d.name.endsWith('(Rest)')));
+      if (realDays.length > 0 && realDays.length < originalLength) {
+        plan.days = realDays;
+        // Re-number days
+        plan.days.forEach((d, i) => { d.dayNumber = i + 1; });
+        needsSave = true;
+      }
+    }
+  }
+  if (needsSave) {
+    setItem(STORAGE_KEYS.WEEKLY_PLANS, plans);
+  }
+
+  return plans;
 }
 
 // Save a weekly plan
@@ -147,6 +177,11 @@ export function saveWeeklyPlan(plan: WeeklyPlan): void {
       })),
     }).catch(err => console.error('[Storage] Sync plan failed:', err));
   }
+}
+
+// Save the full weekly plans array (for bulk operations like import)
+export function saveWeeklyPlans(plans: WeeklyPlan[]): void {
+  setItem(STORAGE_KEYS.WEEKLY_PLANS, plans);
 }
 
 // Delete a weekly plan
@@ -318,11 +353,16 @@ export function addCustomExercise(name: string, muscleGroup: string): Exercise {
     id: `custom_${Date.now()}`,
     name: name.trim(),
     muscleGroup: muscleGroup.toLowerCase().replace(' ', '_') as Exercise['muscleGroup'],
-    isCompound: false, // Custom exercises default to isolation
+    isCompound: false,
   };
   exercises.push(newExercise);
   setItem(STORAGE_KEYS.EXERCISES, exercises);
-  
+
+  // Push to shared exercise library (all users)
+  addToSharedExerciseLibrary(newExercise).catch(err =>
+    console.error('[Storage] Shared library sync failed:', err)
+  );
+
   // Auto-sync to Google Sheets
   if (isSyncEnabled()) {
     syncExercise({
@@ -330,13 +370,23 @@ export function addCustomExercise(name: string, muscleGroup: string): Exercise {
       muscleGroup: newExercise.muscleGroup,
     }).catch(err => console.error('[Storage] Sync exercise failed:', err));
   }
-  
+
   return newExercise;
+}
+
+// Save the full exercises array (for bulk operations like delete or import)
+export function saveExercises(exercises: Exercise[]): void {
+  setItem(STORAGE_KEYS.EXERCISES, exercises);
 }
 
 // Personal Records
 export function getPersonalRecords(): PersonalRecord[] {
   return getItem<PersonalRecord[]>(STORAGE_KEYS.RECORDS, []);
+}
+
+// Save the full personal records array (for bulk operations like import)
+export function savePersonalRecords(records: PersonalRecord[]): void {
+  setItem(STORAGE_KEYS.RECORDS, records);
 }
 
 export function checkAndUpdatePR(exerciseId: string, exerciseName: string, weight: number, reps: number): boolean {
@@ -595,12 +645,20 @@ function importExercisesFromSheet(csvText: string, _errors: string[]): void {
 function importWorkoutPlanFromSheet(csvText: string, _errors: string[]): void {
   const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
   if (lines.length < 2) return;
-  
+
   // First row: Day 1, Day 2, Day 3, etc.
-  const headerRow = parseCSVLine(lines[0]);
+  // Google Sheets CSV often has trailing empty columns ("","","") — only keep columns with actual header text
+  const rawHeaderRow = parseCSVLine(lines[0]);
+  const headerRow = rawHeaderRow.filter(h => h.trim().length > 0);
   const numDays = headerRow.length;
+  if (numDays === 0) return;
+
+  // Build a mapping from filtered column index to original column index
+  const colMapping: number[] = [];
+  rawHeaderRow.forEach((h, i) => { if (h.trim().length > 0) colMapping.push(i); });
+
   const exercises = getExercises();
-  
+
   // Initialize days array
   const days: DayPlan[] = [];
   for (let col = 0; col < numDays; col++) {
@@ -612,15 +670,18 @@ function importWorkoutPlanFromSheet(csvText: string, _errors: string[]): void {
       isRestDay: false,
     });
   }
-  
-  // Parse each row - each cell goes to its respective day
+
+  // Parse each row - map from original column positions to our filtered days
   for (let row = 1; row < lines.length; row++) {
     const rowValues = parseCSVLine(lines[row]);
+    // Skip rows that are entirely empty
+    if (rowValues.every(v => !v.trim())) continue;
     for (let col = 0; col < numDays; col++) {
-      const exerciseName = rowValues[col]?.trim();
+      const originalCol = colMapping[col];
+      const exerciseName = rowValues[originalCol]?.trim();
       if (exerciseName) {
         // Find matching exercise in database (case-insensitive)
-        let exercise = exercises.find(e => 
+        let exercise = exercises.find(e =>
           e.name.toLowerCase() === exerciseName.toLowerCase()
         );
         

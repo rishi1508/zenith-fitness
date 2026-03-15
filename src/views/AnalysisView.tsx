@@ -1,0 +1,215 @@
+import { useState } from 'react';
+import {
+  Calendar, ChevronLeft, ChevronRight, Check, Target, Dumbbell, Zap,
+  AlertTriangle, Trophy, Flame
+} from 'lucide-react';
+import type { Workout, UserStats } from '../types';
+import * as storage from '../storage';
+import { WeeklyInsightsCard, StatCard } from '../components';
+
+interface AnalysisViewProps {
+  stats: UserStats | null;
+  workouts: Workout[];
+  isDark: boolean;
+  onBack: () => void;
+  onStartDay: (dayIndex: number) => void;
+}
+
+export function AnalysisView({ stats, workouts, isDark, onBack, onStartDay }: AnalysisViewProps) {
+  const activePlan = storage.getActivePlan();
+  const [isDeload, setIsDeload] = useState(() => storage.isCurrentWeekDeload());
+  const deloadStats = storage.getDeloadStats();
+
+  const toggleDeload = () => {
+    const newValue = !isDeload;
+    storage.setCurrentWeekDeload(newValue);
+    setIsDeload(newValue);
+  };
+
+  // Weekly plan progress
+  const today = new Date();
+  const startOfWeek = new Date(today);
+  startOfWeek.setDate(today.getDate() - 6);
+
+  const thisWeekWorkouts = workouts.filter(w => {
+    const workoutDate = new Date(w.date);
+    return workoutDate >= startOfWeek && workoutDate <= today && w.completed;
+  });
+
+  const workoutsByDayName = new Map<string, typeof workouts>();
+  if (activePlan) {
+    thisWeekWorkouts.forEach(w => {
+      const dayName = activePlan.days.find(d => w.name.includes(d.name))?.name || '';
+      if (dayName) {
+        const existing = workoutsByDayName.get(dayName) || [];
+        workoutsByDayName.set(dayName, [...existing, w]);
+      }
+    });
+  }
+
+  const lastUsedDay = storage.getLastUsedDay() ?? 0;
+  const workoutDays = activePlan?.days.filter(d => !d.isRestDay) || [];
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <h1 className="text-xl font-bold">Analysis</h1>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard
+          icon={<Target className="text-emerald-400" />}
+          value={stats?.thisWeekWorkouts || 0}
+          label="This Week"
+          suffix="/5"
+          color="emerald"
+        />
+        <StatCard
+          icon={<Trophy className="text-orange-400" />}
+          value={stats?.totalWorkouts || 0}
+          label="Total Workouts"
+          color="orange"
+        />
+      </div>
+
+      {/* Weekly Insights */}
+      <WeeklyInsightsCard workouts={workouts} />
+
+      {/* Deload Week Toggle */}
+      <div className={`p-4 rounded-xl border ${
+        isDeload
+          ? 'bg-teal-500/10 border-teal-500/30'
+          : isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${isDeload ? 'bg-teal-500/20' : isDark ? 'bg-[#252525]' : 'bg-gray-100'}`}>
+              <Zap className={`w-5 h-5 ${isDeload ? 'text-teal-400' : isDark ? 'text-zinc-400' : 'text-gray-500'}`} />
+            </div>
+            <div>
+              <div className="font-medium flex items-center gap-2">
+                Deload Week
+                {isDeload && <span className="text-xs bg-teal-500 text-white px-1.5 py-0.5 rounded">ACTIVE</span>}
+              </div>
+              <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                {isDeload
+                  ? 'Lower intensity this week (60-70% volume)'
+                  : deloadStats.weeksSinceLast > 0
+                    ? `${deloadStats.weeksSinceLast} weeks since last deload`
+                    : 'Track recovery weeks'
+                }
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={toggleDeload}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              isDeload
+                ? 'bg-teal-500 text-white'
+                : isDark ? 'bg-[#252525] text-zinc-300 hover:bg-[#303030]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {isDeload ? 'End Deload' : 'Start Deload'}
+          </button>
+        </div>
+
+        {!isDeload && deloadStats.weeksSinceLast >= 4 && (
+          <div className={`mt-3 pt-3 border-t flex items-center gap-2 text-xs ${isDark ? 'border-[#3e3e3e] text-yellow-400' : 'border-gray-200 text-yellow-600'}`}>
+            <AlertTriangle className="w-4 h-4" />
+            Consider a deload week — it's been {deloadStats.weeksSinceLast} weeks!
+          </div>
+        )}
+      </div>
+
+      {/* Weekly Plan Schedule */}
+      {activePlan ? (
+        <>
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Weekly Schedule</h2>
+            <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{activePlan.name}</span>
+          </div>
+
+          {/* Week Progress Bar */}
+          <div className={`p-3 rounded-xl border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+            <div className="flex justify-between items-center mb-1.5">
+              <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>This Week</span>
+              <span className="text-xs font-medium text-orange-400">
+                {thisWeekWorkouts.length}/{workoutDays.length} done
+              </span>
+            </div>
+            <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-[#2e2e2e]' : 'bg-gray-200'}`}>
+              <div
+                className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all"
+                style={{ width: `${workoutDays.length > 0 ? (thisWeekWorkouts.length / workoutDays.length) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Day Cards */}
+          <div className="space-y-2">
+            {activePlan.days.map((day, index) => {
+              const isRestDay = day.isRestDay;
+              const isNext = index === lastUsedDay;
+              const workoutsForDay = workoutsByDayName.get(day.name) || [];
+              const completedToday = workoutsForDay.length > 0;
+
+              return (
+                <button
+                  key={index}
+                  onClick={() => !isRestDay && onStartDay(index)}
+                  disabled={isRestDay}
+                  className={`w-full p-3 rounded-xl border text-left transition-all flex items-center gap-3 ${
+                    isRestDay
+                      ? isDark ? 'bg-[#1a1a1a]/50 border-[#2e2e2e] opacity-50' : 'bg-gray-50 border-gray-200 opacity-50'
+                      : completedToday
+                      ? isDark ? 'bg-green-500/10 border-green-500/30' : 'bg-green-50 border-green-200'
+                      : isNext
+                      ? isDark ? 'bg-orange-500/10 border-orange-500/30' : 'bg-orange-50 border-orange-200'
+                      : isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] hover:border-orange-500/50' : 'bg-white border-gray-200 hover:border-orange-200'
+                  }`}
+                >
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                    isRestDay ? isDark ? 'bg-zinc-700' : 'bg-gray-200'
+                      : completedToday ? 'bg-green-500/20'
+                      : isNext ? 'bg-orange-500/20'
+                      : isDark ? 'bg-[#252525]' : 'bg-gray-100'
+                  }`}>
+                    {isRestDay ? <span className="text-base">😴</span>
+                      : completedToday ? <Check className="w-4 h-4 text-green-400" />
+                      : isNext ? <Flame className="w-4 h-4 text-orange-400" />
+                      : <Dumbbell className={`w-4 h-4 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm flex items-center gap-2">
+                      <span className="truncate">{day.name}</span>
+                      {isNext && <span className="text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded shrink-0">Next</span>}
+                      {completedToday && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded shrink-0">Done</span>}
+                    </div>
+                    <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                      {isRestDay ? 'Rest & Recovery' : `${day.exercises.length} exercises`}
+                    </div>
+                  </div>
+                  {!isRestDay && <ChevronRight className={`w-4 h-4 shrink-0 ${isDark ? 'text-zinc-600' : 'text-gray-400'}`} />}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div className={`p-8 rounded-xl border text-center ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+          <Calendar className={`w-12 h-12 mx-auto mb-3 ${isDark ? 'text-zinc-600' : 'text-gray-400'}`} />
+          <p className={`font-medium mb-2 ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>No Active Plan</p>
+          <p className={`text-sm ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+            Set an active plan in Templates to see your weekly schedule here.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

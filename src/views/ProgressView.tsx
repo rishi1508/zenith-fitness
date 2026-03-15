@@ -179,7 +179,7 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
         </div>
 
         {/* Volume Line Chart */}
-        <VolumeLineChart sessions={exerciseData.sessions} />
+        <VolumeLineChart sessions={exerciseData.sessions} isDark={isDark} />
 
         {/* Recent Sessions */}
         <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
@@ -293,15 +293,13 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
               <button
                 key={exercise.id}
                 onClick={() => setSelectedExercise(exercise.id)}
-                className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-50'}`}
+                className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-50'}`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
-                    <Dumbbell className="w-4 h-4 text-orange-400" />
-                  </div>
-                  <span className="text-sm">{exercise.name}</span>
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0">
+                  <Dumbbell className="w-4 h-4 text-orange-400" />
                 </div>
-                <div className="flex items-center gap-2">
+                <span className="text-sm text-left flex-1 truncate">{exercise.name}</span>
+                <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{exercise.sessionCount} sessions</span>
                   <ChevronRight className={`w-4 h-4 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />
                 </div>

@@ -7,4 +7,6 @@ export { HomeView } from './HomeView';
 export { ActiveWorkoutView } from './ActiveWorkoutView';
 export { WeeklyPlansView } from './WeeklyPlansView';
 export { WeeklyOverviewView } from './WeeklyOverviewView';
+export { AnalysisView } from './AnalysisView';
 export { ComparisonView } from './ComparisonView';
+export { LoginView } from './LoginView';

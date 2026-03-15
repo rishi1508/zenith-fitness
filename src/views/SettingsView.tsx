@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   ChevronLeft, ChevronRight, Dumbbell, FileSpreadsheet, Download, Upload,
-  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2, Palette, Sun, Moon, Clock
+  CheckCircle2, Copy, X, Scale, Plus, Trash2, Cloud, RefreshCw, Link2, Calculator, Trophy, Volume2, Palette, Sun, Moon, Clock, User, LogOut, LogIn
 } from 'lucide-react';
 import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
 import * as sync from '../sync';
 import { BodyWeightChart } from '../BodyWeightChart';
 import { PlateCalculator, OneRMCalculator } from '../components';
+import { useAuth } from '../auth/AuthContext';
 
 declare const __APP_VERSION__: string;
 
@@ -198,7 +199,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
         const existingIds = new Set(existing.map(w => w.id));
         const newWorkouts = data.workouts.filter((w: any) => !existingIds.has(w.id));
         if (newWorkouts.length > 0) {
-          localStorage.setItem('zenith_workouts', JSON.stringify([...existing, ...newWorkouts]));
+          storage.saveWorkouts([...existing, ...newWorkouts]);
         }
       }
       
@@ -208,7 +209,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
         const existingIds = new Set(existing.map(e => e.id));
         const newExercises = data.exercises.filter((e: any) => !existingIds.has(e.id));
         if (newExercises.length > 0) {
-          localStorage.setItem('zenith_exercises', JSON.stringify([...existing, ...newExercises]));
+          storage.saveExercises([...existing, ...newExercises]);
         }
       }
       
@@ -218,7 +219,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
         const existingIds = new Set(existing.map(p => p.id));
         const newPlans = data.weeklyPlans.filter((p: any) => !existingIds.has(p.id));
         if (newPlans.length > 0) {
-          localStorage.setItem('zenith_weekly_plans', JSON.stringify([...existing, ...newPlans]));
+          storage.saveWeeklyPlans([...existing, ...newPlans]);
         }
       }
       
@@ -234,7 +235,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
             merged.push(pr);
           }
         }
-        localStorage.setItem('zenith_prs', JSON.stringify(merged));
+        storage.savePersonalRecords(merged);
       }
       
       alert('✓ Import successful! Data merged.');
@@ -803,6 +804,8 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
     setTimeout(() => setSyncResult(null), 3000);
   };
 
+  const { user, isGuest, signOut, exitGuestMode } = useAuth();
+
   return (
     <div className="space-y-6 animate-fadeIn">
       <div className="flex items-center gap-4">
@@ -810,6 +813,57 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">Settings</h1>
+      </div>
+
+      {/* Account Section */}
+      <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+        <div className="flex items-center gap-2 mb-3">
+          <User className="w-5 h-5 text-blue-400" />
+          <span className="font-medium">Account</span>
+        </div>
+        {user ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" />
+              ) : (
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isDark ? 'bg-blue-500/20' : 'bg-blue-100'}`}>
+                  <User className="w-5 h-5 text-blue-400" />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                {user.displayName && <div className="font-medium truncate">{user.displayName}</div>}
+                <div className={`text-sm truncate ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>{user.email || 'No email'}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Cloud className="w-3.5 h-3.5 text-green-400" />
+              <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Data synced to cloud</span>
+            </div>
+            <button
+              onClick={() => { if (confirm('Sign out? Your data is safely stored in the cloud.')) signOut(); }}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                isDark ? 'bg-[#252525] hover:bg-[#303030] text-zinc-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+              }`}
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          </div>
+        ) : isGuest ? (
+          <div className="space-y-3">
+            <div className={`flex items-center gap-2 ${isDark ? 'text-yellow-400/80' : 'text-yellow-600'}`}>
+              <span className="text-xs">Guest mode — data stored on this device only</span>
+            </div>
+            <button
+              onClick={exitGuestMode}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
+            >
+              <LogIn className="w-4 h-4" />
+              Sign In to Sync Data
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* Exercise Library Button */}

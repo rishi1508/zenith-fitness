@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { TrendingUp, Flame, Trophy } from 'lucide-react';
 import type { Workout } from '../types';
 import { formatVolume } from '../utils';
@@ -11,46 +12,49 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - now.getDay());
   weekStart.setHours(0, 0, 0, 0);
-  
+
   const lastWeekStart = new Date(weekStart);
   lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  
-  const thisWeekWorkouts = workouts.filter(w => 
+
+  const thisWeekWorkouts = useMemo(() => workouts.filter(w =>
     w.completed && w.type !== 'rest' && new Date(w.date) >= weekStart
-  );
-  
-  const lastWeekWorkouts = workouts.filter(w => {
+  ), [workouts]);
+
+  const lastWeekWorkouts = useMemo(() => workouts.filter(w => {
     const d = new Date(w.date);
     return w.completed && w.type !== 'rest' && d >= lastWeekStart && d < weekStart;
-  });
-  
-  const calculateVolume = (ws: Workout[]) => ws.reduce((total, w) => 
-    total + w.exercises.reduce((et, e) => 
+  }), [workouts]);
+
+  const calculateVolume = (ws: Workout[]) => ws.reduce((total, w) =>
+    total + w.exercises.reduce((et, e) =>
       et + e.sets.reduce((st, s) => st + (s.completed ? s.weight * s.reps : 0), 0), 0), 0);
-  
-  const thisWeekVolume = calculateVolume(thisWeekWorkouts);
-  const lastWeekVolume = calculateVolume(lastWeekWorkouts);
-  const volumeChange = lastWeekVolume > 0 ? ((thisWeekVolume - lastWeekVolume) / lastWeekVolume * 100) : 0;
+
+  const { thisWeekVolume, volumeChange } = useMemo(() => {
+    const twv = calculateVolume(thisWeekWorkouts);
+    const lwv = calculateVolume(lastWeekWorkouts);
+    const vc = lwv > 0 ? ((twv - lwv) / lwv * 100) : 0;
+    return { thisWeekVolume: twv, lastWeekVolume: lwv, volumeChange: vc };
+  }, [thisWeekWorkouts, lastWeekWorkouts]);
   
   // Calculate current streak (consecutive workout days)
-  const calculateStreak = () => {
+  const calculateStreak = useMemo(() => {
     const completedWorkouts = workouts
       .filter(w => w.completed && w.type !== 'rest')
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
+
     if (completedWorkouts.length === 0) return 0;
-    
+
     let streak = 0;
     let currentDate = new Date();
     currentDate.setHours(0, 0, 0, 0);
-    
+
     // Check if worked out today or yesterday to start the streak
     const lastWorkoutDate = new Date(completedWorkouts[0].date);
     lastWorkoutDate.setHours(0, 0, 0, 0);
-    
+
     const daysSinceLastWorkout = Math.floor((currentDate.getTime() - lastWorkoutDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysSinceLastWorkout > 1) return 0; // Streak broken
-    
+
     // Count unique workout dates
     const uniqueDates = new Set<string>();
     completedWorkouts.forEach(w => {
@@ -58,14 +62,14 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
       d.setHours(0, 0, 0, 0);
       uniqueDates.add(d.toISOString().split('T')[0]);
     });
-    
+
     const sortedDates = Array.from(uniqueDates).sort().reverse();
-    
+
     for (let i = 0; i < sortedDates.length; i++) {
       const checkDate = new Date(sortedDates[i]);
       const expectedDate = new Date(currentDate);
       expectedDate.setDate(expectedDate.getDate() - i);
-      
+
       // Allow for 1 day gap (rest days count)
       const diff = Math.abs(checkDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24);
       if (diff <= 1) {
@@ -74,15 +78,15 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
         break;
       }
     }
-    
+
     return streak;
-  };
+  }, [workouts]);
   
   // Count PRs this week (exercises with higher weight than any previous)
-  const countPRsThisWeek = () => {
+  const countPRsThisWeek = useMemo(() => {
     let prCount = 0;
     const exerciseMaxes = new Map<string, number>();
-    
+
     // Build historical maxes (before this week)
     workouts
       .filter(w => w.completed && new Date(w.date) < weekStart)
@@ -93,7 +97,7 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
           if (maxWeight > current) exerciseMaxes.set(e.exerciseName, maxWeight);
         });
       });
-    
+
     // Check this week for PRs
     thisWeekWorkouts.forEach(w => {
       w.exercises.forEach(e => {
@@ -105,16 +109,16 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
         }
       });
     });
-    
+
     return prCount;
-  };
+  }, [workouts, thisWeekWorkouts]);
   
   // Calculate weekly goal progress (assume 4-5 workouts is the goal)
   const weeklyGoal = 5;
   const goalProgress = Math.min((thisWeekWorkouts.length / weeklyGoal) * 100, 100);
   
-  const streak = calculateStreak();
-  const prCount = countPRsThisWeek();
+  const streak = calculateStreak;
+  const prCount = countPRsThisWeek;
   
   if (thisWeekWorkouts.length === 0 && lastWeekWorkouts.length === 0) return null;
   

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { 
-  Calendar, ChevronLeft, ChevronRight, Clock, 
-  Copy, Dumbbell, Trash2, CheckCircle2, Share2
+import {
+  Calendar, ChevronLeft, ChevronRight, Clock,
+  Copy, Dumbbell, Trash2, CheckCircle2, Share2, Edit3, Save, X
 } from 'lucide-react';
 import type { Workout, WeeklyPlan } from '../types';
 import * as storage from '../storage';
@@ -13,12 +13,37 @@ interface HistoryWorkoutCardProps {
   onDelete: () => void;
   onSaveAsTemplate: () => void;
   onShare: () => void;
+  onSave: (workout: Workout) => void;
 }
 
-function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onShare }: HistoryWorkoutCardProps) {
+function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onShare, onSave }: HistoryWorkoutCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editWorkout, setEditWorkout] = useState<Workout>(workout);
   const isImported = workout.type === 'imported';
   const isRest = workout.type === 'rest';
+
+  const startEditing = () => {
+    setEditWorkout(JSON.parse(JSON.stringify(workout)));
+    setEditing(true);
+    setExpanded(true);
+  };
+
+  const saveEdits = () => {
+    onSave(editWorkout);
+    setEditing(false);
+  };
+
+  const cancelEditing = () => {
+    setEditWorkout(JSON.parse(JSON.stringify(workout)));
+    setEditing(false);
+  };
+
+  const updateSet = (exIndex: number, setIndex: number, field: 'weight' | 'reps', value: number) => {
+    const updated = JSON.parse(JSON.stringify(editWorkout)) as Workout;
+    updated.exercises[exIndex].sets[setIndex][field] = value;
+    setEditWorkout(updated);
+  };
   
   const completedSets = workout.exercises.reduce((acc, ex) => 
     acc + ex.sets.filter(s => s.completed).length, 0
@@ -70,7 +95,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {!isRest && workout.exercises.length > 0 && (
               <ChevronRight className={`w-5 h-5 text-zinc-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
             )}
@@ -83,7 +108,19 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
                 className="p-2 text-zinc-500 hover:text-purple-400"
                 title="Share workout"
               >
-                <Share2 className="w-5 h-5" />
+                <Share2 className="w-4 h-4" />
+              </button>
+            )}
+            {!isRest && workout.exercises.length > 0 && !editing && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startEditing();
+                }}
+                className="p-2 text-zinc-500 hover:text-blue-400"
+                title="Edit workout"
+              >
+                <Edit3 className="w-4 h-4" />
               </button>
             )}
             {!isRest && workout.exercises.length > 0 && (
@@ -95,7 +132,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
                 className="p-2 text-zinc-500 hover:text-orange-400"
                 title="Save as template"
               >
-                <Copy className="w-5 h-5" />
+                <Copy className="w-4 h-4" />
               </button>
             )}
             <button
@@ -107,7 +144,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
               }}
               className="p-2 text-zinc-500 hover:text-red-400"
             >
-              <Trash2 className="w-5 h-5" />
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -115,27 +152,70 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
       
       {/* Expanded exercise details */}
       {expanded && workout.exercises.length > 0 && (
-        <div className="px-4 pb-4 border-t border-[#2e2e2e] pt-3">
+        <div className={`px-4 pb-4 border-t pt-3 ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+          {editing && (
+            <div className="flex items-center justify-end gap-2 mb-3">
+              <button
+                onClick={cancelEditing}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 ${isDark ? 'bg-[#252525] text-zinc-300' : 'bg-gray-100 text-gray-600'}`}
+              >
+                <X className="w-3 h-3" />
+                Cancel
+              </button>
+              <button
+                onClick={saveEdits}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white flex items-center gap-1"
+              >
+                <Save className="w-3 h-3" />
+                Save
+              </button>
+            </div>
+          )}
           <div className="space-y-3">
-            {workout.exercises.map((exercise, i) => {
+            {(editing ? editWorkout : workout).exercises.map((exercise, exIdx) => {
               const completedSets = exercise.sets.filter(s => s.completed);
               return (
-                <div key={i} className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-zinc-300">{exercise.exerciseName}</div>
-                    <div className="text-xs text-zinc-500 mt-0.5">
+                <div key={exIdx}>
+                  <div className={`text-sm font-medium ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>{exercise.exerciseName}</div>
+                  {editing ? (
+                    <div className="mt-2 space-y-1.5">
+                      {exercise.sets.map((set, setIdx) => (
+                        <div key={setIdx} className="flex items-center gap-2 text-sm">
+                          <span className={`w-6 text-center text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>{setIdx + 1}</span>
+                          <input
+                            type="number"
+                            value={set.weight || ''}
+                            onChange={(e) => updateSet(exIdx, setIdx, 'weight', parseFloat(e.target.value) || 0)}
+                            className={`w-20 px-2 py-1.5 rounded text-center text-sm border ${isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:border-orange-500`}
+                            placeholder="kg"
+                          />
+                          <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>kg</span>
+                          <span className={`text-xs ${isDark ? 'text-zinc-600' : 'text-gray-300'}`}>x</span>
+                          <input
+                            type="number"
+                            value={set.reps || ''}
+                            onChange={(e) => updateSet(exIdx, setIdx, 'reps', parseInt(e.target.value) || 0)}
+                            className={`w-16 px-2 py-1.5 rounded text-center text-sm border ${isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-gray-50 border-gray-200'} focus:outline-none focus:border-orange-500`}
+                            placeholder="reps"
+                          />
+                          <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>reps</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={`text-xs mt-0.5 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
                       {completedSets.length > 0 ? (
                         completedSets.map((set, j) => (
                           <span key={j}>
-                            {j > 0 && ' • '}
-                            {set.weight}kg × {set.reps}
+                            {j > 0 && ' \u2022 '}
+                            {set.weight}kg x {set.reps}
                           </span>
                         ))
                       ) : (
                         `${exercise.sets.length} sets`
                       )}
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -190,9 +270,7 @@ export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewP
     };
     
     // Save to storage
-    const existingPlans = storage.getWeeklyPlans();
-    existingPlans.push(newPlan);
-    localStorage.setItem('zenith_weekly_plans', JSON.stringify(existingPlans));
+    storage.saveWeeklyPlan(newPlan);
     
     setToastMessage(`✓ Saved as "${templateName}"`);
     setShowToast(true);
@@ -248,13 +326,19 @@ export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewP
               </div>
               <div className="space-y-2">
                 {grouped[date].map(workout => (
-                  <HistoryWorkoutCard 
+                  <HistoryWorkoutCard
                     key={workout.id}
                     workout={workout}
                     isDark={isDark}
                     onDelete={() => onDelete(workout.id)}
                     onSaveAsTemplate={() => handleSaveAsTemplate(workout)}
                     onShare={() => setWorkoutToShare(workout)}
+                    onSave={(updated) => {
+                      storage.saveWorkout(updated);
+                      setToastMessage('Workout updated');
+                      setShowToast(true);
+                      setTimeout(() => setShowToast(false), 2000);
+                    }}
                   />
                 ))}
               </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-  Dumbbell, Calendar, TrendingUp, 
+import {
+  Dumbbell, Calendar, TrendingUp, BarChart3,
   Flame, Settings, ClipboardList, Sun, Moon
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats } from './types';
@@ -10,12 +10,14 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer } from './components';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView } from './views';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView } from './views';
+import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis';
 type Theme = 'dark' | 'light';
 
 function App() {
+  const { user, loading: authLoading, isGuest } = useAuth();
   const [view, setView] = useState<View>('home');
   const [stats, setStats] = useState<UserStats | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
@@ -93,6 +95,13 @@ function App() {
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  // Listen for data refresh events from auth/sync layer
+  useEffect(() => {
+    const handler = () => loadData();
+    window.addEventListener('zenith-data-refresh', handler);
+    return () => window.removeEventListener('zenith-data-refresh', handler);
   }, [loadData]);
   
   // CRITICAL: Persist active workout to localStorage on every change (screen timeout fix)
@@ -215,24 +224,34 @@ function App() {
 
   const finishWorkout = () => {
     if (activeWorkout) {
+      // Validate: every exercise must have at least one set with reps > 0
+      const exercisesWithNoReps = activeWorkout.exercises.filter(ex =>
+        !ex.sets.some(s => s.reps > 0)
+      );
+      if (exercisesWithNoReps.length > 0) {
+        alert(`Please log at least one set for: ${exercisesWithNoReps.map(e => e.exerciseName).join(', ')}`);
+        return;
+      }
+
       const completedAt = new Date().toISOString();
-      const duration = activeWorkout.startedAt 
+      const duration = activeWorkout.startedAt
         ? Math.floor((Date.now() - new Date(activeWorkout.startedAt).getTime()) / 60000)
         : undefined;
-      
-      // Auto-complete all sets that have weight and reps filled in
-      const exercisesWithCompletedSets = activeWorkout.exercises.map(ex => ({
+
+      // Filter out empty sets (0 reps) and mark valid sets as completed
+      const exercisesClean = activeWorkout.exercises.map(ex => ({
         ...ex,
-        sets: ex.sets.map(set => ({
-          ...set,
-          // Mark set as completed if it has valid data (weight > 0 OR reps > 0)
-          completed: set.completed || (set.weight > 0 || set.reps > 0),
-        })),
+        sets: ex.sets
+          .filter(set => set.reps > 0)
+          .map(set => ({
+            ...set,
+            completed: true,
+          })),
       }));
-      
+
       const finished = {
         ...activeWorkout,
-        exercises: exercisesWithCompletedSets,
+        exercises: exercisesClean,
         completed: true,
         completedAt,
         duration,
@@ -279,12 +298,17 @@ function App() {
     setMissingDays([]);
   };
 
-  // Show splash screen
-  if (showSplash) {
+  // Show splash while loading auth or data
+  if (showSplash || authLoading) {
     return <SplashScreen />;
   }
 
   const isDark = theme === 'dark';
+
+  // Show login if not authenticated and not in guest mode
+  if (!user && !isGuest) {
+    return <LoginView isDark={isDark} />;
+  }
   
   return (
     <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
@@ -404,12 +428,12 @@ function App() {
       {/* Content */}
       <main className="px-4 py-4">
         {view === 'home' && (
-          <HomeView 
-            stats={stats} 
+          <HomeView
             workouts={workoutHistory}
             isDark={isDark}
             onStartWorkout={startWorkout}
             onViewHistory={() => navigateTo('history')}
+            onManagePlans={() => navigateTo('templates')}
           />
         )}
         {view === 'active' && activeWorkout && (
@@ -484,6 +508,30 @@ function App() {
             }}
           />
         )}
+        {view === 'analysis' && (
+          <AnalysisView
+            stats={stats}
+            workouts={workoutHistory}
+            isDark={isDark}
+            onBack={() => goBack()}
+            onStartDay={(dayIndex) => {
+              const activePlan = storage.getActivePlan();
+              if (activePlan && activePlan.days[dayIndex]) {
+                storage.setLastUsedDay(dayIndex);
+                const dayPlan = activePlan.days[dayIndex];
+                const template: WorkoutTemplate = {
+                  id: `${activePlan.id}_day${dayIndex}`,
+                  name: `${activePlan.name} - ${dayPlan.name}`,
+                  type: 'custom',
+                  exercises: dayPlan.exercises,
+                  dayOfWeek: dayIndex,
+                  weeklyPlanId: activePlan.id,
+                };
+                startWorkout(template);
+              }
+            }}
+          />
+        )}
         {view === 'exercises' && (
           <ExerciseManagerView
             isDark={isDark}
@@ -503,11 +551,11 @@ function App() {
               active={view === 'home'} 
               onClick={() => { navigationHistory.current = ['home']; setView('home'); }} 
             />
-            <NavButton 
-              icon={<Calendar />} 
-              label="Week" 
-              active={view === 'weekly'} 
-              onClick={() => navigateTo('weekly')} 
+            <NavButton
+              icon={<BarChart3 />}
+              label="Analysis"
+              active={view === 'analysis'}
+              onClick={() => navigateTo('analysis')}
             />
             <NavButton 
               icon={<ClipboardList />} 

@@ -145,12 +145,9 @@ export function WeeklyPlanSelector({ isDark, onStartWorkout }: WeeklyPlanSelecto
               
               {/* Exercise list preview */}
               <div className={`text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
-                {selectedDay.exercises.slice(0, 5).map((ex, i) => (
+                {selectedDay.exercises.map((ex, i) => (
                   <div key={i}>• {ex.exerciseName}</div>
                 ))}
-                {selectedDay.exercises.length > 5 && (
-                  <div>+ {selectedDay.exercises.length - 5} more</div>
-                )}
               </div>
             </div>
           )}

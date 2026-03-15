@@ -51,7 +51,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   const handleDelete = (id: string, name: string) => {
     if (confirm(`Delete exercise "${name}"?\n\nWarning: This will affect all templates and workouts using this exercise.`)) {
       const allExercises = storage.getExercises().filter(e => e.id !== id);
-      localStorage.setItem('zenith_exercises', JSON.stringify(allExercises));
+      storage.saveExercises(allExercises);
       setExercises(allExercises);
       onExercisesChange();
     }
@@ -66,7 +66,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
         notes: editingNotes?.trim() || undefined,
         videoUrl: editingVideoUrl?.trim() || undefined,
       };
-      localStorage.setItem('zenith_exercises', JSON.stringify(allExercises));
+      storage.saveExercises(allExercises);
       setExercises(allExercises);
       setEditingNotes(null);
       setEditingVideoUrl(null);

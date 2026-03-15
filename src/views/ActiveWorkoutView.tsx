@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { 
-  Dumbbell, ChevronRight, Check, Clock, Search, X, Edit3, Trash2
+import {
+  Dumbbell, ChevronRight, Check, Clock, Search, X, Edit3, Trash2, Plus
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
@@ -105,6 +105,34 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
     } catch (e) {}
   };
   
+  // Add exercise to current workout
+  const [showAddExercise, setShowAddExercise] = useState(false);
+  const [addSearchQuery, setAddSearchQuery] = useState('');
+  const allExercises = useMemo(() => storage.getExercises(), []);
+
+  const addExercise = (exercise: Exercise) => {
+    const lastSession = storage.getLastExerciseSession(exercise.id);
+    const defaultSets = 3;
+    const newExercise: WorkoutExercise = {
+      id: crypto.randomUUID(),
+      exerciseId: exercise.id,
+      exerciseName: exercise.name,
+      sets: Array.from({ length: defaultSets }, (_, i) => ({
+        id: crypto.randomUUID(),
+        weight: lastSession && lastSession[i] ? lastSession[i].weight : 0,
+        reps: 0,
+        completed: false,
+      })),
+    };
+    const newWorkout = {
+      ...workout,
+      exercises: [...workout.exercises, newExercise],
+    };
+    onUpdate(newWorkout);
+    setShowAddExercise(false);
+    setAddSearchQuery('');
+  };
+
   // Delete exercise from current workout
   const deleteExercise = (exerciseIndex: number) => {
     if (workout.exercises.length <= 1) {
@@ -358,7 +386,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
           const nextExercise = workout.exercises[exIndex + 1];
           const isFirstInSuperset = isSuperset && (!prevExercise || prevExercise.supersetGroup !== exercise.supersetGroup);
           const isLastInSuperset = isSuperset && (!nextExercise || nextExercise.supersetGroup !== exercise.supersetGroup);
-          
+
           return (
             <div key={exercise.id} className="relative">
               {/* Superset connector line */}
@@ -368,7 +396,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
               {isSuperset && !isLastInSuperset && (
                 <div className="absolute left-5 -bottom-4 w-0.5 h-4 bg-purple-500/50 z-10" />
               )}
-              
+
               {/* Superset group label for first exercise */}
               {isFirstInSuperset && (
                 <div className="text-xs text-purple-400 font-medium mb-2 flex items-center gap-2">
@@ -376,7 +404,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
                   Superset {exercise.supersetGroup}
                 </div>
               )}
-              
+
               <ExerciseCard
                 exercise={exercise}
                 onUpdateSet={(setIndex, updates) => updateSet(exIndex, setIndex, updates)}
@@ -387,7 +415,76 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
             </div>
           );
         })}
+
+        {/* Add Exercise Button */}
+        <button
+          onClick={() => setShowAddExercise(true)}
+          className="w-full py-3 border-2 border-dashed border-[#3e3e3e] rounded-xl text-zinc-400 hover:border-orange-500/50 hover:text-orange-400 transition-colors flex items-center justify-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Add Exercise
+        </button>
       </div>
+
+      {/* Add Exercise Modal */}
+      {showAddExercise && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center animate-fadeIn">
+          <div className="bg-[#1a1a1a] w-full max-h-[80vh] rounded-t-2xl overflow-hidden">
+            <div className="p-4 border-b border-[#2e2e2e]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold">Add Exercise</h3>
+                <button
+                  onClick={() => { setShowAddExercise(false); setAddSearchQuery(''); }}
+                  className="p-2 text-zinc-400 hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                <input
+                  type="text"
+                  value={addSearchQuery}
+                  onChange={(e) => setAddSearchQuery(e.target.value)}
+                  placeholder="Search exercises..."
+                  className="w-full pl-10 pr-4 py-3 bg-[#252525] border border-[#3e3e3e] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="overflow-y-auto max-h-[60vh] p-2">
+              {allExercises
+                .filter(ex =>
+                  ex.name.toLowerCase().includes(addSearchQuery.toLowerCase()) &&
+                  !workout.exercises.some(we => we.exerciseId === ex.id)
+                )
+                .map(ex => {
+                  const lastData = storage.getLastExerciseSession(ex.id);
+                  return (
+                    <button
+                      key={ex.id}
+                      onClick={() => addExercise(ex)}
+                      className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-medium">{ex.name}</div>
+                        <div className="text-xs text-zinc-500">
+                          {ex.muscleGroup.replace('_', ' ')}
+                          {lastData && lastData[0] && (
+                            <span className="text-orange-400 ml-2">
+                              Last: {lastData[0].weight}kg x {lastData[0].reps}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Plus className="w-4 h-4 text-orange-400" />
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,32 +1,32 @@
-import { Target, Trophy, ChevronRight, CloudOff, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import type { Workout, WorkoutTemplate, UserStats } from '../types';
-import * as storage from '../storage';
+import { CloudOff, RefreshCw, ChevronRight, Settings } from 'lucide-react';
+import type { Workout, WorkoutTemplate } from '../types';
 import * as sync from '../sync';
-import { StatCard, WeeklyInsightsCard } from '../components';
 import { WeeklyPlanSelector } from '../components/WeeklyPlanSelector';
 import { VersionInfo } from '../UpdateChecker';
+import { useAuth } from '../auth/AuthContext';
 
 interface HomeViewProps {
-  stats: UserStats | null;
   workouts: Workout[];
   isDark: boolean;
   onStartWorkout: (template: WorkoutTemplate) => void;
   onViewHistory: () => void;
+  onManagePlans?: () => void;
 }
 
-export function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistory }: HomeViewProps) {
+export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onManagePlans }: HomeViewProps) {
+  const { user } = useAuth();
+  const firstName = user?.displayName?.split(' ')[0] || 'Champ';
   const [pendingCount, setPendingCount] = useState(() => sync.getPendingCount());
   const [syncing, setSyncing] = useState(false);
-  
-  // Check pending count periodically
+
   useEffect(() => {
     const interval = setInterval(() => {
       setPendingCount(sync.getPendingCount());
     }, 5000);
     return () => clearInterval(interval);
   }, []);
-  
+
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
@@ -37,11 +37,10 @@ export function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistor
     }
     setSyncing(false);
   };
-  
+
   const today = new Date();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  
-  // Daily motivation quotes
+
   const quotes = [
     "The only bad workout is the one that didn't happen.",
     "Your body can stand almost anything. It's your mind you have to convince.",
@@ -58,38 +57,9 @@ export function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistor
   ];
   const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000);
   const todaysQuote = quotes[dayOfYear % quotes.length];
-  
-  // Check for consecutive workout days (suggest rest)
-  const getConsecutiveWorkoutDays = () => {
-    const sortedWorkouts = workouts
-      .filter(w => w.completed && w.type !== 'rest')
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    let consecutiveDays = 0;
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
-    
-    for (const workout of sortedWorkouts) {
-      const workoutDate = new Date(workout.date);
-      workoutDate.setHours(0, 0, 0, 0);
-      
-      const daysDiff = Math.floor((todayDate.getTime() - workoutDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (daysDiff === consecutiveDays) {
-        consecutiveDays++;
-      } else {
-        break;
-      }
-    }
-    
-    return consecutiveDays;
-  };
-  
-  const consecutiveDays = getConsecutiveWorkoutDays();
-  const shouldSuggestRest = consecutiveDays >= 3;
-  
+
   return (
-    <div className="space-y-6 animate-fadeIn">
+    <div className="space-y-4 animate-fadeIn">
       {/* Pending Sync Banner */}
       {pendingCount > 0 && (
         <div className={`rounded-xl p-3 border flex items-center justify-between ${
@@ -113,88 +83,50 @@ export function HomeView({ stats, workouts, isDark, onStartWorkout, onViewHistor
           </button>
         </div>
       )}
-      
-      {/* Rest Day Suggestion */}
-      {shouldSuggestRest && (
-        <div className={`rounded-xl p-4 border ${
-          isDark ? 'bg-blue-500/10 border-blue-500/30' : 'bg-blue-50 border-blue-200'
-        }`}>
-          <div className="flex items-start gap-3">
-            <div className="text-2xl">💤</div>
-            <div className="flex-1">
-              <div className={`font-medium mb-1 ${isDark ? 'text-blue-300' : 'text-blue-900'}`}>
-                Consider Taking a Rest Day
-              </div>
-              <div className={`text-sm ${isDark ? 'text-blue-400/80' : 'text-blue-700'}`}>
-                You've worked out {consecutiveDays} days in a row. Recovery is when muscles grow!
-              </div>
-              <button
-                onClick={() => {
-                  const workout: Workout = {
-                    id: `rest_${Date.now()}`,
-                    date: new Date().toISOString(),
-                    name: 'Rest Day',
-                    type: 'rest',
-                    exercises: [],
-                    completed: true,
-                  };
-                  storage.saveWorkout(workout);
-                  window.location.reload();
-                }}
-                className={`mt-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  isDark ? 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                }`}
-              >
-                Log Rest Day
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Greeting */}
+
+      {/* Greeting — compact */}
       <div>
-        <h1 className="text-2xl font-bold">Hey Rishi! 💪</h1>
-        <p className={`${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>{dayNames[today.getDay()]}, {today.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' })}</p>
-        <p className="text-sm text-orange-400/80 mt-1 italic">"{todaysQuote}"</p>
+        <h1 className="text-2xl font-bold">Hey {firstName}! 💪</h1>
+        <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+          {dayNames[today.getDay()]}, {today.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' })}
+        </p>
+        <p className="text-xs text-orange-400/80 mt-0.5 italic">"{todaysQuote}"</p>
       </div>
 
-      {/* Stats Cards - simplified to useful metrics */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard 
-          icon={<Target className="text-emerald-400" />}
-          value={stats?.thisWeekWorkouts || 0}
-          label="This Week"
-          suffix="/5"
-          color="emerald"
-        />
-        <StatCard 
-          icon={<Trophy className="text-orange-400" />}
-          value={stats?.totalWorkouts || 0}
-          label="Total Workouts"
-          color="orange"
-        />
-      </div>
-
-      {/* Weekly Insights */}
-      <WeeklyInsightsCard workouts={workouts} />
-
-      {/* Weekly Plan Selection & Start */}
-      <WeeklyPlanSelector 
+      {/* Plan Selection & Start Workout — the main action */}
+      <WeeklyPlanSelector
         isDark={isDark}
         onStartWorkout={onStartWorkout}
       />
 
-      {/* Recent History */}
-      {stats?.lastWorkoutDate && (
+      {/* Manage Plans */}
+      {onManagePlans && (
         <button
-          onClick={onViewHistory}
-          className="w-full text-left text-sm text-zinc-500 flex items-center gap-2"
+          onClick={onManagePlans}
+          className={`w-full flex items-center justify-center gap-2 text-sm py-2 rounded-lg transition-colors ${
+            isDark ? 'text-zinc-500 hover:text-zinc-300 hover:bg-[#1a1a1a]' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+          }`}
         >
-          Last workout: {new Date(stats.lastWorkoutDate).toLocaleDateString()}
-          <ChevronRight className="w-4 h-4" />
+          <Settings className="w-4 h-4" />
+          Manage Plans
         </button>
       )}
+
+      {/* Last Workout */}
+      {(() => {
+        const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
+        if (completedWorkouts.length === 0) return null;
+        const last = completedWorkouts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+        return (
+          <button
+            onClick={onViewHistory}
+            className={`w-full text-left text-sm flex items-center gap-2 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}
+          >
+            Last workout: {new Date(last.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        );
+      })()}
 
       {/* Version Info */}
       <VersionInfo />

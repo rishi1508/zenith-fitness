@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build & Deploy
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,6 +39,13 @@ jobs:
       - name: Build web app
         run: npm run build
 
+      # ---- Firebase Hosting Deploy ----
+      - name: Deploy to Firebase Hosting
+        run: npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+      # ---- Android APK Build ----
       - name: Sync Capacitor
         run: npx cap sync android
 
