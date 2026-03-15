@@ -4,7 +4,7 @@ import { getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence } fr
 
 const firebaseConfig = {
   apiKey: "AIzaSyBUuyPSwfCVm98ArAY1wCZioBXn2mqFCrs",
-  authDomain: "zenith-fitness-18e2a.firebaseapp.com",
+  authDomain: "zenith-fitness-18e2a.web.app",
   projectId: "zenith-fitness-18e2a",
   storageBucket: "zenith-fitness-18e2a.firebasestorage.app",
   messagingSenderId: "263741998199",

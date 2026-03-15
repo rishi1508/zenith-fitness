@@ -4,6 +4,8 @@ import type { User } from 'firebase/auth';
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
@@ -44,6 +46,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isGuest, setIsGuest] = useState(() => {
     try { return localStorage.getItem(GUEST_MODE_KEY) === 'true'; } catch { return false; }
   });
+
+  // Handle Google redirect result (for Capacitor/native where popup doesn't work)
+  useEffect(() => {
+    getRedirectResult(auth).catch((err) => {
+      console.error('[Auth] Redirect result error:', err);
+    });
+  }, []);
 
   // Handle email link sign-in completion (user clicked the magic link)
   useEffect(() => {
@@ -102,7 +111,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    // Try popup first (works on web browsers)
+    // Falls back to redirect for environments where popups are blocked (Capacitor WebView)
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err: unknown) {
+      const firebaseErr = err as { code?: string };
+      if (firebaseErr.code === 'auth/popup-blocked' ||
+          firebaseErr.code === 'auth/popup-closed-by-user' ||
+          firebaseErr.code === 'auth/cancelled-popup-request') {
+        // Popup didn't work, try redirect
+        await signInWithRedirect(auth, provider);
+      } else {
+        throw err;
+      }
+    }
   }, []);
 
   const sendEmailLink = useCallback(async (email: string) => {

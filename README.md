@@ -1,16 +1,16 @@
-# Zenith Fitness 🔥
+# Zenith Fitness
 
-Your personal workout tracker — built by Zenith ⚡ for Rishi
+Your personal workout tracker — built by Zenith
 
 **Track. Improve. Dominate.**
 
-![Version](https://img.shields.io/badge/version-2.18.0-orange)
+![Version](https://img.shields.io/badge/version-3.0.0-orange)
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20PWA-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-## ✨ Features
+## Features
 
-### 📅 Weekly Plans (v2.0+)
+### Weekly Plans (v2.0+)
 The core concept: **A "plan" is a full week** — not a single workout.
 
 - **Weekly Plan Architecture** — Create plans like "4FB+1Arms" or "PPL" with multiple days
@@ -19,7 +19,7 @@ The core concept: **A "plan" is a full week** — not a single workout.
 - **Active Plan Tracking** — Set any plan as active, app remembers where you left off
 - **Day Selector** — Pick which day of your weekly plan you're doing today
 
-### 🏋️ Core Tracking
+### Core Tracking
 - **Exercise Library** — Centralized list of all exercises (Settings → Exercise Library)
 - **Custom Exercises** — Create your own with name and muscle group
 - **Active Workout Mode** — Log weight, reps, mark sets complete in real-time
@@ -27,41 +27,46 @@ The core concept: **A "plan" is a full week** — not a single workout.
 - **Rest Timer** — Preset buttons (1:00, 1:30, 2:00, 3:00) with vibration alerts
 - **Auto Rest Day Detection** — Prompts to log missed days as rest days
 
-### 📊 Progress & Stats
+### Progress & Stats
 - **Weekly Insights** — Volume and workout comparisons vs. last week
 - **Exercise Progress** — Interactive line charts with clickable data points
-- **Personal Record Notifications** — Toast + vibration when you hit a new PR 🏆
+- **Personal Record Notifications** — Toast + vibration when you hit a new PR
 - **Estimated 1RM** — Epley formula calculation for each exercise
 - **Full Exercise List** — See progress for ALL exercises in your library
 
-### ⚖️ Body Tracking
+### Body Tracking
 - **Body Weight Logger** — Track weight with optional notes (morning, post-workout, etc.)
 - **Trend Analysis** — 7-day and 30-day change with color coding
 - **Mini Trend Chart** — Visual weight history (last 10 entries)
 - **Full History View** — Review and delete past entries
 
-### 📥 Google Sheets Integration
+### Firebase Auth & Cloud Sync (v3.0+)
+- **Firebase Authentication** — Sign in with Google for secure cloud-backed accounts
+- **Firestore Cloud Sync** — Automatically sync workout data across devices
+- **Offline-first with sync** — Works offline, syncs when connection is available
+
+### Google Sheets Integration
 - **Import Exercises** — Load from "Exercise Data" sheet (reads first column)
 - **Import Workout Plan** — Creates full weekly plan from "Workout Plan" sheet
 - **Import History** — Pull workout logs from "Log Sheet"
 - **Smart Data Handling** — Handles empty dates (same workout grouping)
 - **Export Data** — Backup your data to clipboard (JSON format)
 
-### 🎨 UI/UX
+### UI/UX
 - **Splash Screen** — Animated loading with app branding
 - **Dark/Light Mode** — Toggle in Settings, persists across sessions
 - **Daily Motivational Quotes** — Fresh inspiration on the home screen
-- **Workout Celebration** — Confetti animation when you complete a workout 🎉
+- **Workout Celebration** — Confetti animation when you complete a workout
 - **Search** — Find exercises in Progress view and template editors
 - **Hardware Back Button** — Proper Android back navigation
 
-### ⚙️ Technical
+### Technical
 - **Offline Support** — Full PWA capability, works without internet
 - **Auto-Updates** — Notification when new versions are available
 - **Local Storage** — All data stored on device (privacy-first)
 - **Capacitor Native** — Android APK with native features
 
-## 📱 Installation
+## Installation
 
 ### Option 1: Download APK (Recommended)
 1. Go to [Releases](https://github.com/rishi1508/zenith-fitness/releases)
@@ -71,10 +76,10 @@ The core concept: **A "plan" is a full week** — not a single workout.
 
 ### Option 2: PWA (Browser)
 1. Visit the app URL in Chrome on your phone
-2. Tap the menu (⋮) → "Add to Home Screen"
+2. Tap the menu → "Add to Home Screen"
 3. Use like a native app!
 
-## 🛠️ Development
+## Development
 
 ```bash
 # Install dependencies
@@ -90,7 +95,7 @@ npm run build
 npx cap sync android
 ```
 
-## 📦 Building APK Locally
+## Building APK Locally
 
 Requires Java 17+ and Android SDK.
 
@@ -108,7 +113,7 @@ cd android
 # APK location: android/app/build/outputs/apk/release/app-release.apk
 ```
 
-## 🚀 GitHub Actions
+## GitHub Actions
 
 The repo includes automated APK builds:
 - Push a version tag (e.g., `v2.4.0`) to trigger a release
@@ -116,7 +121,7 @@ The repo includes automated APK builds:
 - Uses secure signing key from GitHub Secrets
 
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 zenith-fitness/
@@ -135,9 +140,9 @@ zenith-fitness/
 └── package.json
 ```
 
-> 📘 See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed technical documentation.
+> See [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed technical documentation.
 
-## 📊 Data Format
+## Data Format
 
 ### Weekly Plan Structure
 
@@ -179,7 +184,7 @@ interface Workout {
 }
 ```
 
-## 🔗 Google Sheets Format
+## Google Sheets Format
 
 For importing, your Google Sheet should have these sheets:
 
@@ -212,7 +217,7 @@ For importing, your Google Sheet should have these sheets:
 ```
 *(Empty date = same workout as row above)*
 
-## 🎯 Roadmap
+## Roadmap
 
 - [ ] Two-way Google Sheets sync (read + write via OAuth)
 - [ ] Workout reminders / notifications
@@ -220,22 +225,22 @@ For importing, your Google Sheet should have these sheets:
 - [ ] Workout sharing
 - [ ] Wear OS support
 
-## 📝 Changelog
+## Changelog
 
 See [Releases](https://github.com/rishi1508/zenith-fitness/releases) for full version history.
 
 ### v2.x (Major Architecture Refactor)
-- **v2.18.0** — 🔥 Weekly Insights Enhanced: Day streak counter, PRs this week, goal progress bar, offline sync indicator, interactive body weight chart with tooltips
-- **v2.17.0** — 📊 Google Sheets Auto-Sync: Workout data syncs to Google Sheets via Apps Script webhook (requires setup)
-- **v2.16.0** — 🏆 PR Tracking: Personal Records displayed in weekly insights with celebration indicator
-- **v2.15.0** — ⚖️ Body Weight Tracking: Log weight with notes, 7/30-day trends, mini chart, color-coded changes
-- **v2.14.0** — 💪 Estimated 1RM Calculator: Epley formula display alongside PRs in Progress view
-- **v2.13.0** — ▶️ Exercise Video Links: Add YouTube/form guide URLs to exercises, accessible during workouts
-- **v2.12.0** — 💤 Smart Rest Day Reminders: Banner on home screen after 3+ consecutive workout days with one-tap rest logging
-- **v2.11.0** — 💾 Save Workout as Template: Tap copy icon in history to convert any workout into a reusable weekly plan
-- **v2.10.0** — 📅 Weekly Overview Calendar: 7-day grid view showing active plan, completion status, and progress tracking
-- **v2.9.0** — 📝 Exercise Notes: Add personal notes (form cues, pain points, RPE) to any exercise, visible during workouts
-- **v2.8.0** — 🔥 Progressive Overload Tracker: Shows last session stats + visual indicators (🔺 improved, ➡️ same, 🔻 lower)
+- **v2.18.0** — Weekly Insights Enhanced: Day streak counter, PRs this week, goal progress bar, offline sync indicator, interactive body weight chart with tooltips
+- **v2.17.0** — Google Sheets Auto-Sync: Workout data syncs to Google Sheets via Apps Script webhook (requires setup)
+- **v2.16.0** — PR Tracking: Personal Records displayed in weekly insights with celebration indicator
+- **v2.15.0** — Body Weight Tracking: Log weight with notes, 7/30-day trends, mini chart, color-coded changes
+- **v2.14.0** — Estimated 1RM Calculator: Epley formula display alongside PRs in Progress view
+- **v2.13.0** — Exercise Video Links: Add YouTube/form guide URLs to exercises, accessible during workouts
+- **v2.12.0** — Smart Rest Day Reminders: Banner on home screen after 3+ consecutive workout days with one-tap rest logging
+- **v2.11.0** — Save Workout as Template: Tap copy icon in history to convert any workout into a reusable weekly plan
+- **v2.10.0** — Weekly Overview Calendar: 7-day grid view showing active plan, completion status, and progress tracking
+- **v2.9.0** — Exercise Notes: Add personal notes (form cues, pain points, RPE) to any exercise, visible during workouts
+- **v2.8.0** — Progressive Overload Tracker: Shows last session stats + visual indicators (improved, same, lower)
 - **v2.7.0** — UI improvements: Exercise Library button alignment, distinct Active state (green badge + ring), renamed default template
 - **v2.6.0** — Fixed PR calculation (max reps at max weight), exact set pattern auto-fill, header safe area
 - **v2.5.0** — Comprehensive import fix (exercise ID matching), Progress view height fix
@@ -253,13 +258,13 @@ See [Releases](https://github.com/rishi1508/zenith-fitness/releases) for full ve
 - **v1.18.x** — Complete light mode support
 - **v1.15.0** — Bug fixes + exercise search
 - **v1.14.0** — Rest timer presets
-- **v1.11.0** — PR notifications 🏆
-- **v1.10.0** — Workout celebration 🎉
+- **v1.11.0** — PR notifications
+- **v1.10.0** — Workout celebration
 - **v1.9.0** — Smart templates + auto rest day
 - **v1.5.1** — Release signing (updates work without uninstall)
 
 ---
 
-Built with ❤️ by **Zenith** ⚡ for **Rishi**
+Built by **Zenith**
 
 *"The only bad workout is the one that didn't happen."*
