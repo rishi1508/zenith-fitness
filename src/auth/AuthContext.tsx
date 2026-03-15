@@ -3,14 +3,16 @@ import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
   onAuthStateChanged,
-  signInWithRedirect,
-  getRedirectResult,
+  signInWithPopup,
+  signInWithCredential,
   GoogleAuthProvider,
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '../firebase';
 import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, pullSharedExercises } from '../firestoreSync';
 
@@ -45,13 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isGuest, setIsGuest] = useState(() => {
     try { return localStorage.getItem(GUEST_MODE_KEY) === 'true'; } catch { return false; }
   });
-
-  // Handle Google redirect result (for Capacitor/native where popup doesn't work)
-  useEffect(() => {
-    getRedirectResult(auth).catch((err) => {
-      console.error('[Auth] Redirect result error:', err);
-    });
-  }, []);
 
   // Handle email link sign-in completion (user clicked the magic link)
   useEffect(() => {
@@ -109,9 +104,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [onDataRefresh]);
 
   const signInWithGoogle = useCallback(async () => {
-    const provider = new GoogleAuthProvider();
-    // Use redirect on all platforms — works in both browser and Capacitor WebView
-    await signInWithRedirect(auth, provider);
+    if (Capacitor.isNativePlatform()) {
+      // Native: use Capacitor plugin for native Google Sign-In dialog
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = result.credential?.idToken;
+      if (idToken) {
+        const credential = GoogleAuthProvider.credential(idToken);
+        await signInWithCredential(auth, credential);
+      }
+    } else {
+      // Web browser: use popup
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    }
   }, []);
 
   const sendEmailLink = useCallback(async (email: string) => {

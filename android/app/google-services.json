@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "263741998199",
+    "project_id": "zenith-fitness-18e2a",
+    "storage_bucket": "zenith-fitness-18e2a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:263741998199:android:a294d878ea54986483f272",
+        "android_client_info": {
+          "package_name": "com.zenith.fitness"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "263741998199-likkov4lr3qcek8u3ceddnor1j5rvquk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.zenith.fitness",
+            "certificate_hash": "fa2921d0dcd29bb749180160c9add54963053ced"
+          }
+        },
+        {
+          "client_id": "263741998199-ah3sfn55tkpc1iqcdofblk8r051u2arn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIQE9kMtuqs-tZ9t2ODoj_7SkDljYZEh4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "263741998199-ah3sfn55tkpc1iqcdofblk8r051u2arn.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
