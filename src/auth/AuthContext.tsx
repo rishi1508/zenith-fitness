@@ -111,21 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     const provider = new GoogleAuthProvider();
-    // Try popup first (works on web browsers)
-    // Falls back to redirect for environments where popups are blocked (Capacitor WebView)
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (err: unknown) {
-      const firebaseErr = err as { code?: string };
-      if (firebaseErr.code === 'auth/popup-blocked' ||
-          firebaseErr.code === 'auth/popup-closed-by-user' ||
-          firebaseErr.code === 'auth/cancelled-popup-request') {
-        // Popup didn't work, try redirect
-        await signInWithRedirect(auth, provider);
-      } else {
-        throw err;
-      }
-    }
+    // Use redirect on all platforms — works in both browser and Capacitor WebView
+    await signInWithRedirect(auth, provider);
   }, []);
 
   const sendEmailLink = useCallback(async (email: string) => {
