@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Dumbbell, ChevronRight, Check, Clock, Search, X, Edit3, Trash2, Plus
+  Dumbbell, ChevronRight, Check, Clock, Search, X, Edit3, Trash2, Plus,
+  TrendingUp, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
@@ -271,7 +272,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
               ? 'bg-gradient-to-r from-purple-500 to-blue-500 shadow-purple-500/30'
               : 'bg-gradient-to-r from-yellow-500 to-orange-500 shadow-orange-500/30'
           }`}>
-            <div className="text-3xl">{prAchievement.isVolumePR ? '📈' : '🏆'}</div>
+            <div className="text-3xl">{prAchievement.isVolumePR ? <TrendingUp className="w-8 h-8 text-white" /> : <Trophy className="w-8 h-8 text-white" />}</div>
             <div className="flex-1 text-white">
               <div className="font-bold">
                 {prAchievement.isVolumePR ? 'Volume PR!' : 'New Personal Record!'}
@@ -537,14 +538,14 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
     
     // Improved: either weight or reps increased (or both)
     if (weightDiff > 0 || repsDiff > 0) {
-      return { icon: '🔺', color: 'text-green-400', label: 'Improved!' };
+      return { icon: 'up', color: 'text-green-400', label: 'Improved!' };
     }
     // Same
     if (weightDiff === 0 && repsDiff === 0) {
-      return { icon: '➡️', color: 'text-zinc-400', label: 'Same as last' };
+      return { icon: 'right', color: 'text-zinc-400', label: 'Same as last' };
     }
     // Decreased
-    return { icon: '🔻', color: 'text-red-400', label: 'Lower' };
+    return { icon: 'down', color: 'text-red-400', label: 'Lower' };
   };
 
   return (
@@ -675,7 +676,7 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
               {exerciseData.notes && (
                 <div className="mb-2">
-                  <div className="text-xs font-medium text-blue-400 mb-1">📝 Notes</div>
+                  <div className="text-xs font-medium text-blue-400 mb-1 flex items-center gap-1"><FileText className="w-3 h-3" /> Notes</div>
                   <div className="text-sm text-zinc-300">{exerciseData.notes}</div>
                 </div>
               )}
@@ -686,7 +687,7 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300 transition-colors"
                 >
-                  <span>▶️</span>
+                  <Play className="w-4 h-4" />
                   <span>Watch Form Video</span>
                 </a>
               )}
@@ -754,7 +755,7 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
                     </span>
                     {indicator && (
                       <span className={`flex items-center gap-1 ${indicator.color} font-medium`}>
-                        <span>{indicator.icon}</span>
+                        <span>{indicator.icon === 'up' ? <ArrowUp className="w-3 h-3" /> : indicator.icon === 'right' ? <ArrowRight className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}</span>
                         <span>{indicator.label}</span>
                       </span>
                     )}

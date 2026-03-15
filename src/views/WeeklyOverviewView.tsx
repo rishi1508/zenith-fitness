@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, ChevronLeft, ChevronRight, Check, Target, Dumbbell, Zap, AlertTriangle } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Check, Target, Dumbbell, Zap, AlertTriangle, Moon } from 'lucide-react';
 import * as storage from '../storage';
 
 // Weekly Overview View - 7-day calendar grid
@@ -173,7 +173,7 @@ export function WeeklyOverviewView({ isDark, onBack, onStartDay }: {
                       : isDark ? 'bg-[#252525]' : 'bg-gray-100'
                   }`}>
                     {isRestDay ? (
-                      <span className="text-lg">😴</span>
+                      <Moon className="w-5 h-5 text-zinc-400" />
                     ) : completedToday ? (
                       <Check className="w-5 h-5 text-green-400" />
                     ) : isToday ? (
@@ -189,7 +189,7 @@ export function WeeklyOverviewView({ isDark, onBack, onStartDay }: {
                         <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded">Next Up</span>
                       )}
                       {completedToday && (
-                        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">✓ Done</span>
+                        <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">Done</span>
                       )}
                     </div>
                     <div className={`text-sm ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Calendar, ChevronLeft, ChevronRight, Check, Target, Dumbbell, Zap,
-  AlertTriangle, Trophy, Flame
+  AlertTriangle, Trophy, Flame, Moon
 } from 'lucide-react';
 import type { Workout, UserStats } from '../types';
 import * as storage from '../storage';
@@ -179,7 +179,7 @@ export function AnalysisView({ stats, workouts, isDark, onBack, onStartDay }: An
                       : isNext ? 'bg-orange-500/20'
                       : isDark ? 'bg-[#252525]' : 'bg-gray-100'
                   }`}>
-                    {isRestDay ? <span className="text-base">😴</span>
+                    {isRestDay ? <Moon className="w-4 h-4 text-zinc-400" />
                       : completedToday ? <Check className="w-4 h-4 text-green-400" />
                       : isNext ? <Flame className="w-4 h-4 text-orange-400" />
                       : <Dumbbell className={`w-4 h-4 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`} />

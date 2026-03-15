@@ -19,16 +19,16 @@ const MUSCLE_LABELS: Record<MuscleGroup, string> = {
   other: 'Other',
 };
 
-const MUSCLE_EMOJIS: Record<MuscleGroup, string> = {
-  chest: '💪',
-  back: '🔙',
-  shoulders: '🏋️',
-  biceps: '💪',
-  triceps: '💪',
-  legs: '🦵',
-  core: '🎯',
-  full_body: '🏃',
-  other: '❓',
+const MUSCLE_SHORT: Record<MuscleGroup, string> = {
+  chest: 'CH',
+  back: 'BK',
+  shoulders: 'SH',
+  biceps: 'BI',
+  triceps: 'TR',
+  legs: 'LG',
+  core: 'CO',
+  full_body: 'FB',
+  other: '??',
 };
 
 export function VolumeGoals({ isDark }: VolumeGoalsProps) {
@@ -104,7 +104,7 @@ export function VolumeGoals({ isDark }: VolumeGoalsProps) {
               {progress.map(p => (
                 <div key={p.muscleGroup} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
-                    <span>{MUSCLE_EMOJIS[p.muscleGroup]} {MUSCLE_LABELS[p.muscleGroup]}</span>
+                    <span>{MUSCLE_SHORT[p.muscleGroup]} {MUSCLE_LABELS[p.muscleGroup]}</span>
                     <span className={`font-medium ${p.percentComplete >= 100 ? 'text-emerald-400' : ''}`}>
                       {p.completedSets}/{p.targetSets} sets
                       {p.percentComplete >= 100 && <Check className="inline w-4 h-4 ml-1" />}
@@ -145,7 +145,7 @@ export function VolumeGoals({ isDark }: VolumeGoalsProps) {
                     }`}>
                       {goal.enabled && <Check className="w-3 h-3 text-white" />}
                     </div>
-                    <span className="text-sm">{MUSCLE_EMOJIS[goal.muscleGroup]} {MUSCLE_LABELS[goal.muscleGroup]}</span>
+                    <span className="text-sm">{MUSCLE_SHORT[goal.muscleGroup]} {MUSCLE_LABELS[goal.muscleGroup]}</span>
                   </button>
                   
                   {goal.enabled && (

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dumbbell, Calendar, TrendingUp, BarChart3,
-  Flame, Settings, ClipboardList, Sun, Moon
+  Flame, Settings, ClipboardList, Sun, Moon, PartyPopper
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats } from './types';
 import * as storage from './storage';
@@ -362,7 +362,7 @@ function App() {
       {showCelebration && celebrationData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className={`max-w-sm w-full rounded-2xl p-6 text-center space-y-4 ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'} animate-fadeIn`}>
-            <div className="text-6xl mb-2">🎉</div>
+            <div className="mb-2"><PartyPopper className="w-16 h-16 text-orange-400 mx-auto" /></div>
             <h2 className="text-2xl font-bold">Workout Complete!</h2>
             <p className={`${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
               Great job finishing <span className="font-semibold text-orange-400">{celebrationData.name}</span>!

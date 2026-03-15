@@ -67,7 +67,7 @@ export function ShareWorkout({ workout, onClose, isDark }: ShareWorkoutProps) {
         await navigator.share({
           files: [file],
           title: 'My Workout',
-          text: `Crushed it! 💪 ${exerciseCount} exercises, ${totalSets} sets, ${(totalVolume/1000).toFixed(1)} tonnes lifted!`,
+          text: `Crushed it! ${exerciseCount} exercises, ${totalSets} sets, ${(totalVolume/1000).toFixed(1)} tonnes lifted!`,
         });
       } else {
         // Fallback: download
@@ -173,7 +173,7 @@ export function ShareWorkout({ workout, onClose, isDark }: ShareWorkoutProps) {
             {workout.completed && (
               <div className="mt-4 text-center">
                 <span className="inline-block bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-bold px-4 py-2 rounded-full">
-                  💪 WORKOUT COMPLETED
+                  WORKOUT COMPLETED
                 </span>
               </div>
             )}

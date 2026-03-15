@@ -272,7 +272,7 @@ export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewP
     // Save to storage
     storage.saveWeeklyPlan(newPlan);
     
-    setToastMessage(`✓ Saved as "${templateName}"`);
+    setToastMessage(`Saved as "${templateName}"`);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
   };

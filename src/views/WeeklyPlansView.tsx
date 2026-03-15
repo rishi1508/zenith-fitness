@@ -554,7 +554,7 @@ export function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
                       <div className="font-medium flex items-center gap-2">
                         {plan.name}
                         {isActive && (
-                          <span className="text-sm bg-green-500/20 text-green-400 px-3 py-1 rounded-lg font-semibold">✓ Active</span>
+                          <span className="text-sm bg-green-500/20 text-green-400 px-3 py-1 rounded-lg font-semibold">Active</span>
                         )}
                         {plan.isImported && (
                           <span className={`text-xs px-2 py-0.5 rounded ${isDark ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>Imported</span>

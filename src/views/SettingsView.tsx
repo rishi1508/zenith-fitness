@@ -76,7 +76,7 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
           {/* Celebration Sound */}
           <div className={`flex items-center justify-between py-2 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
             <div>
-              <div className="text-sm font-medium">Celebration 🎉</div>
+              <div className="text-sm font-medium">Celebration</div>
               <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
                 Play sound on workout completion & PRs
               </div>
@@ -104,7 +104,7 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
           {/* Timer Sound */}
           <div className={`flex items-center justify-between py-2 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
             <div>
-              <div className="text-sm font-medium">Timer Beep ⏱️</div>
+              <div className="text-sm font-medium">Timer Beep</div>
               <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
                 Play sound when rest timer ends
               </div>
@@ -238,7 +238,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
         storage.savePersonalRecords(merged);
       }
       
-      alert('✓ Import successful! Data merged.');
+      alert('Import successful! Data merged.');
       onDataChange();
     } catch (err) {
       alert(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -449,7 +449,7 @@ function ThemeSettingsSection({ isDark, onThemeChange }: { isDark: boolean; onTh
           >
             {mode === 'dark' && <Moon className="w-4 h-4" />}
             {mode === 'light' && <Sun className="w-4 h-4" />}
-            {mode === 'auto' && '⏰'}
+            {mode === 'auto' && <Clock className="w-4 h-4" />}
             {mode.charAt(0).toUpperCase() + mode.slice(1)}
           </button>
         ))}
@@ -489,7 +489,7 @@ function ThemeSettingsSection({ isDark, onThemeChange }: { isDark: boolean; onTh
             </div>
           </div>
           <div className={`text-xs mt-2 ${isDark ? 'text-zinc-600' : 'text-gray-400'}`}>
-            Currently: {isDark ? '🌙 Dark' : '☀️ Light'} mode
+            Currently: {isDark ? 'Dark' : 'Light'} mode
           </div>
         </div>
       )}
@@ -1142,7 +1142,7 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
       {/* App Info */}
       <div className={`text-center text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
         <p>Zenith Fitness v{__APP_VERSION__}</p>
-        <p>Built with ⚡ by Zenith</p>
+        <p>Built by Zenith</p>
       </div>
     </div>
   );

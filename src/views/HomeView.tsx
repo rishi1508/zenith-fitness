@@ -86,7 +86,7 @@ export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onMa
 
       {/* Greeting — compact */}
       <div>
-        <h1 className="text-2xl font-bold">Hey {firstName}! 💪</h1>
+        <h1 className="text-2xl font-bold">Hey {firstName}!</h1>
         <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
           {dayNames[today.getDay()]}, {today.toLocaleDateString('en-IN', { month: 'long', day: 'numeric' })}
         </p>
