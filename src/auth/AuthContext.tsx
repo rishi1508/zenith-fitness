@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
   onAuthStateChanged,
-  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   GoogleAuthProvider,
