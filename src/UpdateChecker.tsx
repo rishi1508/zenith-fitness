@@ -7,7 +7,6 @@ const CURRENT_VERSION = __APP_VERSION__;
 interface Release {
   tag_name: string;
   html_url: string;
-  assets: { browser_download_url: string; name: string }[];
 }
 
 export function UpdateChecker() {
@@ -50,10 +49,10 @@ export function UpdateChecker() {
     return false;
   };
 
-  const getApkUrl = (): string | null => {
+  const getDownloadUrl = (): string | null => {
     if (!update) return null;
-    const apk = update.assets.find(a => a.name.endsWith('.apk'));
-    return apk?.browser_download_url || update.html_url;
+    // Always link to the release page — direct APK download URLs fail on Android browsers
+    return update.html_url;
   };
 
   if (!update || dismissed) return null;
@@ -71,7 +70,7 @@ export function UpdateChecker() {
           </div>
         </div>
         <a
-          href={getApkUrl() || '#'}
+          href={getDownloadUrl() || '#'}
           target="_blank"
           rel="noopener noreferrer"
           className="px-4 py-2 bg-white text-orange-600 rounded-lg font-medium text-sm flex-shrink-0"
