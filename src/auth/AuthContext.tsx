@@ -4,12 +4,14 @@ import type { User } from 'firebase/auth';
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithCredential,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   GoogleAuthProvider,
-  sendSignInLinkToEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink,
   signOut as firebaseSignOut,
+  fetchSignInMethodsForEmail,
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
@@ -17,14 +19,13 @@ import { auth } from '../firebase';
 import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, pullSharedExercises } from '../firestoreSync';
 
 const GUEST_MODE_KEY = 'zenith_guest_mode';
-const EMAIL_FOR_SIGNIN_KEY = 'zenith_email_for_signin';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isGuest: boolean;
   signInWithGoogle: () => Promise<void>;
-  sendEmailLink: (email: string) => Promise<void>;
+  signInOrRegisterWithEmail: (email: string, password: string) => Promise<{ isNewUser: boolean }>;
   signOut: () => Promise<void>;
   enterGuestMode: () => void;
   exitGuestMode: () => void;
@@ -39,8 +40,12 @@ export function useAuth(): AuthContextType {
   return ctx;
 }
 
+function isIOS(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Use custom event to notify App to refresh data after auth sync
   const onDataRefresh = useCallback(() => window.dispatchEvent(new Event('zenith-data-refresh')), []);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,56 +53,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { return localStorage.getItem(GUEST_MODE_KEY) === 'true'; } catch { return false; }
   });
 
-  // Handle email link sign-in completion (user clicked the magic link)
+  // Handle Google redirect result (for iOS where popup doesn't work)
   useEffect(() => {
-    if (isSignInWithEmailLink(auth, window.location.href)) {
-      let email = localStorage.getItem(EMAIL_FOR_SIGNIN_KEY);
-      if (!email) {
-        email = window.prompt('Please provide your email for confirmation');
+    getRedirectResult(auth).catch((err) => {
+      if (err?.code !== 'auth/redirect-cancelled-by-user') {
+        console.error('[Auth] Redirect result error:', err);
       }
-      if (email) {
-        signInWithEmailLink(auth, email, window.location.href)
-          .then(() => {
-            localStorage.removeItem(EMAIL_FOR_SIGNIN_KEY);
-            // Clean up the URL
-            window.history.replaceState(null, '', window.location.pathname);
-          })
-          .catch((err) => {
-            console.error('[Auth] Email link sign-in failed:', err);
-          });
-      }
-    }
+    });
   }, []);
 
   // Listen for auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
         setIsGuest(false);
+        setLoading(false);
         try { localStorage.removeItem(GUEST_MODE_KEY); } catch { /* ignore */ }
 
-        // Migration / sync logic
-        try {
-          const didMigrate = await migrateLocalStorageToFirestore(firebaseUser.uid);
-          if (!didMigrate) {
-            await pullFirestoreToLocalStorage(firebaseUser.uid);
+        // Background sync
+        (async () => {
+          try {
+            const didMigrate = await migrateLocalStorageToFirestore(firebaseUser.uid);
+            if (!didMigrate) {
+              await pullFirestoreToLocalStorage(firebaseUser.uid);
+            }
+            await pullSharedExercises();
+            onDataRefresh?.();
+          } catch (err) {
+            console.error('[Auth] Migration/sync error:', err);
           }
-          // Pull shared exercise library from all users
-          await pullSharedExercises();
-          onDataRefresh?.();
-        } catch (err) {
-          console.error('[Auth] Migration/sync error:', err);
-        }
+        })();
 
-        // Set up real-time listeners for cross-device sync
         setupFirestoreListeners(firebaseUser.uid, () => {
           onDataRefresh?.();
         });
       } else {
         setUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -105,27 +99,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
-      // Native: use Capacitor plugin for native Google Sign-In dialog
+      // Native Android: use Capacitor plugin for native Google Sign-In
       const result = await FirebaseAuthentication.signInWithGoogle();
       const idToken = result.credential?.idToken;
       if (idToken) {
         const credential = GoogleAuthProvider.credential(idToken);
         await signInWithCredential(auth, credential);
       }
+    } else if (isIOS()) {
+      // iOS Safari/PWA: popup is unreliable, use redirect
+      const provider = new GoogleAuthProvider();
+      await signInWithRedirect(auth, provider);
     } else {
-      // Web browser: use popup
+      // Desktop/Android browser: popup works fine
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     }
   }, []);
 
-  const sendEmailLink = useCallback(async (email: string) => {
-    const actionCodeSettings = {
-      url: window.location.origin + window.location.pathname,
-      handleCodeInApp: true,
-    };
-    await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-    localStorage.setItem(EMAIL_FOR_SIGNIN_KEY, email);
+  // Email + password: auto-detects whether to register or sign in.
+  // If user already has a Google account with same email, links the password credential.
+  const signInOrRegisterWithEmail = useCallback(async (email: string, password: string): Promise<{ isNewUser: boolean }> => {
+    try {
+      // Try signing in first
+      await signInWithEmailAndPassword(auth, email, password);
+      return { isNewUser: false };
+    } catch (err: unknown) {
+      const firebaseErr = err as { code?: string };
+
+      if (firebaseErr.code === 'auth/user-not-found' || firebaseErr.code === 'auth/invalid-credential') {
+        // Check if the email exists with a different provider (e.g., Google)
+        const methods = await fetchSignInMethodsForEmail(auth, email);
+
+        if (methods.length > 0 && !methods.includes('password')) {
+          // User exists with Google but not password — they need to sign in with Google first,
+          // then we can link the password. For now, throw a helpful error.
+          throw new Error('This email is registered with Google. Please sign in with Google first, then add a password in Settings.');
+        }
+
+        // No account exists — create one
+        await createUserWithEmailAndPassword(auth, email, password);
+        return { isNewUser: true };
+      }
+
+      if (firebaseErr.code === 'auth/wrong-password') {
+        throw new Error('Incorrect password. Please try again.');
+      }
+
+      if (firebaseErr.code === 'auth/too-many-requests') {
+        throw new Error('Too many failed attempts. Please try again later.');
+      }
+
+      if (firebaseErr.code === 'auth/weak-password') {
+        throw new Error('Password must be at least 6 characters.');
+      }
+
+      if (firebaseErr.code === 'auth/email-already-in-use') {
+        throw new Error('This email is already registered. Please sign in instead.');
+      }
+
+      throw err;
+    }
   }, []);
 
   const signOut = useCallback(async () => {
@@ -145,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, sendEmailLink, signOut, enterGuestMode, exitGuestMode }}>
+    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, signInOrRegisterWithEmail, signOut, enterGuestMode, exitGuestMode }}>
       {children}
     </AuthContext.Provider>
   );

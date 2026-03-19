@@ -59,6 +59,12 @@ function App() {
 
   // Go back in navigation history
   const goBack = useCallback(() => {
+    // If in active workout, pause instead of discarding
+    if (view === 'active' && activeWorkout) {
+      navigationHistory.current = ['home'];
+      setView('home');
+      return true;
+    }
     if (navigationHistory.current.length > 1) {
       navigationHistory.current.pop(); // Remove current
       const previousView = navigationHistory.current[navigationHistory.current.length - 1];
@@ -66,7 +72,7 @@ function App() {
       return true;
     }
     return false; // No history, let app close
-  }, []);
+  }, [view, activeWorkout]);
 
   const loadData = useCallback(() => {
     setStats(storage.calculateStats());
@@ -77,13 +83,13 @@ function App() {
     setMissingDays(missing);
     
     // CRITICAL: Restore active workout if one was in progress (screen timeout fix)
+    // Restored workout stays paused on home screen -- user can resume via banner
     try {
       const savedActiveWorkout = localStorage.getItem('zenith_active_workout');
       if (savedActiveWorkout) {
         const workout = JSON.parse(savedActiveWorkout);
         setActiveWorkout(workout);
-        setView('active');
-        console.log('[Recovery] Restored active workout session');
+        console.log('[Recovery] Restored active workout session (paused on home)');
       }
     } catch (e) {
       console.error('[Recovery] Failed to restore active workout:', e);
@@ -154,6 +160,16 @@ function App() {
   }, [goBack]);
 
   const startWorkout = (template: WorkoutTemplate) => {
+    // If there's already an active (paused) workout, ask to discard it first
+    if (activeWorkout) {
+      if (!confirm('You have an active workout in progress. Discard it and start a new one?')) {
+        return;
+      }
+      // Clear the paused workout
+      localStorage.removeItem('zenith_active_workout');
+      setActiveWorkout(null);
+    }
+
     // Remember this template as last used
     storage.setLastUsedTemplateId(template.id);
     
@@ -277,16 +293,22 @@ function App() {
     }
   };
 
-  const cancelWorkout = () => {
-    if (activeWorkout && confirm('Discard this workout?')) {
+  const pauseWorkout = useCallback(() => {
+    // Navigate to home but keep activeWorkout in state + localStorage
+    navigationHistory.current = ['home'];
+    setView('home');
+  }, []);
+
+  const discardWorkout = useCallback(() => {
+    if (activeWorkout && confirm('Discard this workout? All progress will be lost.')) {
       // Clear the persisted active workout
       localStorage.removeItem('zenith_active_workout');
       setActiveWorkout(null);
-      // Reset navigation history since we cancelled
+      // Reset navigation history since we discarded
       navigationHistory.current = ['home'];
       setView('home');
     }
-  };
+  }, [activeWorkout]);
 
   const handleBackfillRestDays = () => {
     storage.backfillRestDays(missingDays);
@@ -434,14 +456,18 @@ function App() {
             onStartWorkout={startWorkout}
             onViewHistory={() => navigateTo('history')}
             onManagePlans={() => navigateTo('templates')}
+            activeWorkout={activeWorkout}
+            onResumeWorkout={() => navigateTo('active')}
+            onDiscardWorkout={discardWorkout}
           />
         )}
         {view === 'active' && activeWorkout && (
-          <ActiveWorkoutView 
+          <ActiveWorkoutView
             workout={activeWorkout}
             onUpdate={saveActiveWorkout}
             onFinish={finishWorkout}
-            onCancel={cancelWorkout}
+            onPause={pauseWorkout}
+            onDiscard={discardWorkout}
           />
         )}
         {view === 'history' && (

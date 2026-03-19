@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { hapticImpact } from './haptics';
 
 interface Session {
   date: string;
@@ -208,7 +209,7 @@ export function VolumeLineChart({ sessions, isDark = true }: { sessions: Session
         setCrosshairMode(false);
         setActivePoint(null);
         crosshairDragStartXRef.current = null;
-        try { navigator.vibrate?.(30); } catch { /* ignore */ }
+        hapticImpact('light');
       }, 500);
     } else {
       // Not in crosshair mode: long-press to ACTIVATE
@@ -221,7 +222,7 @@ export function VolumeLineChart({ sessions, isDark = true }: { sessions: Session
           if (idx !== null) {
             setCrosshairMode(true);
             setActivePoint(idx);
-            try { navigator.vibrate?.(30); } catch { /* ignore */ }
+            hapticImpact('light');
           }
         }
       }, 500);

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Flame, Mail, Chrome } from 'lucide-react';
+import { Flame, Mail, Chrome, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 
 export function LoginView({ isDark }: { isDark: boolean }) {
-  const { signInWithGoogle, sendEmailLink, enterGuestMode } = useAuth();
+  const { signInWithGoogle, signInOrRegisterWithEmail, enterGuestMode } = useAuth();
   const [email, setEmail] = useState('');
-  const [emailSent, setEmailSent] = useState(false);
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState<'google' | 'email' | null>(null);
 
@@ -16,7 +17,7 @@ export function LoginView({ isDark }: { isDark: boolean }) {
       await signInWithGoogle();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Google sign-in failed';
-      if (!msg.includes('popup-closed-by-user')) {
+      if (!msg.includes('popup-closed-by-user') && !msg.includes('redirect-cancelled')) {
         setError(msg);
       }
     } finally {
@@ -24,18 +25,21 @@ export function LoginView({ isDark }: { isDark: boolean }) {
     }
   };
 
-  const handleEmailLink = async () => {
+  const handleEmailPassword = async () => {
     if (!email.trim() || !email.includes('@')) {
       setError('Please enter a valid email address');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
     setError('');
     setLoading('email');
     try {
-      await sendEmailLink(email.trim());
-      setEmailSent(true);
+      await signInOrRegisterWithEmail(email.trim(), password);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to send email link');
+      setError(err instanceof Error ? err.message : 'Sign-in failed');
     } finally {
       setLoading(null);
     }
@@ -76,53 +80,60 @@ export function LoginView({ isDark }: { isDark: boolean }) {
         {/* Divider */}
         <div className="flex items-center gap-3">
           <div className={`flex-1 h-px ${isDark ? 'bg-zinc-700' : 'bg-gray-200'}`} />
-          <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>or</span>
+          <span className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}>or sign in with email</span>
           <div className={`flex-1 h-px ${isDark ? 'bg-zinc-700' : 'bg-gray-200'}`} />
         </div>
 
-        {/* Email Magic Link */}
-        {emailSent ? (
-          <div className={`rounded-xl p-4 text-center ${isDark ? 'bg-green-500/10 border border-green-500/20' : 'bg-green-50 border border-green-200'}`}>
-            <Mail className="w-8 h-8 text-green-400 mx-auto mb-2" />
-            <p className="font-medium text-green-400">Check your email!</p>
-            <p className={`text-sm mt-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-              We sent a sign-in link to <strong>{email}</strong>
-            </p>
-            <button
-              onClick={() => { setEmailSent(false); setEmail(''); }}
-              className={`text-xs mt-3 ${isDark ? 'text-zinc-500 hover:text-zinc-300' : 'text-gray-400 hover:text-gray-600'}`}
-            >
-              Use a different email
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
+        {/* Email + Password */}
+        <div className="space-y-3">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
+            className={`w-full rounded-xl px-4 py-3.5 text-sm border focus:outline-none focus:border-orange-500 ${
+              isDark
+                ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white placeholder-zinc-500'
+                : 'bg-white border-gray-200 placeholder-gray-400'
+            }`}
+          />
+          <div className="relative">
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleEmailLink()}
-              placeholder="Enter your email"
-              className={`w-full rounded-xl px-4 py-3.5 text-sm border focus:outline-none focus:border-orange-500 ${
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleEmailPassword()}
+              placeholder="Password (min 6 characters)"
+              className={`w-full rounded-xl px-4 py-3.5 pr-12 text-sm border focus:outline-none focus:border-orange-500 ${
                 isDark
                   ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white placeholder-zinc-500'
                   : 'bg-white border-gray-200 placeholder-gray-400'
               }`}
             />
             <button
-              onClick={handleEmailLink}
-              disabled={loading !== null}
-              className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 p-1 ${isDark ? 'text-zinc-500' : 'text-gray-400'}`}
             >
-              {loading === 'email' ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Mail className="w-5 h-5" />
-              )}
-              Send Sign-in Link
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
-        )}
+          <button
+            onClick={handleEmailPassword}
+            disabled={loading !== null}
+            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {loading === 'email' ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <Mail className="w-5 h-5" />
+            )}
+            Sign In / Register
+          </button>
+          <p className={`text-xs text-center ${isDark ? 'text-zinc-600' : 'text-gray-400'}`}>
+            New users are automatically registered
+          </p>
+        </div>
 
         {/* Error */}
         {error && (

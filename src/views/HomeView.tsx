@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CloudOff, RefreshCw, ChevronRight, Settings } from 'lucide-react';
+import { CloudOff, RefreshCw, ChevronRight, Settings, Trash2, ArrowRight, Clock } from 'lucide-react';
 import type { Workout, WorkoutTemplate } from '../types';
 import * as sync from '../sync';
 import { WeeklyPlanSelector } from '../components/WeeklyPlanSelector';
@@ -12,13 +12,37 @@ interface HomeViewProps {
   onStartWorkout: (template: WorkoutTemplate) => void;
   onViewHistory: () => void;
   onManagePlans?: () => void;
+  activeWorkout?: Workout | null;
+  onResumeWorkout?: () => void;
+  onDiscardWorkout?: () => void;
 }
 
-export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onManagePlans }: HomeViewProps) {
+export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onManagePlans, activeWorkout, onResumeWorkout, onDiscardWorkout }: HomeViewProps) {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'Champ';
   const [pendingCount, setPendingCount] = useState(() => sync.getPendingCount());
   const [syncing, setSyncing] = useState(false);
+
+  // Elapsed timer for paused workout banner
+  const [pausedElapsed, setPausedElapsed] = useState('');
+  useEffect(() => {
+    if (!activeWorkout?.startedAt) {
+      setPausedElapsed('');
+      return;
+    }
+    const formatElapsed = () => {
+      const startTime = new Date(activeWorkout.startedAt!).getTime();
+      const diffMs = Date.now() - startTime;
+      const totalMinutes = Math.floor(diffMs / 60000);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (hours > 0) return `${hours}h ${minutes}m`;
+      return `${minutes}m`;
+    };
+    setPausedElapsed(formatElapsed());
+    const interval = setInterval(() => setPausedElapsed(formatElapsed()), 10000);
+    return () => clearInterval(interval);
+  }, [activeWorkout?.startedAt]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -60,6 +84,44 @@ export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onMa
 
   return (
     <div className="space-y-4 animate-fadeIn">
+      {/* Paused Workout Banner */}
+      {activeWorkout && onResumeWorkout && onDiscardWorkout && (
+        <div className={`rounded-xl p-4 border-2 ${
+          isDark ? 'bg-orange-500/10 border-orange-500/50' : 'bg-orange-50 border-orange-300'
+        }`}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold text-orange-400">Workout in progress</div>
+            <div className={`flex items-center gap-1 text-sm font-mono ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+              <Clock className="w-3.5 h-3.5" />
+              {pausedElapsed}
+            </div>
+          </div>
+          <div className={`text-sm mb-3 ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>
+            {activeWorkout.name} &middot; {activeWorkout.exercises.length} exercise{activeWorkout.exercises.length !== 1 ? 's' : ''}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onDiscardWorkout}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                isDark
+                  ? 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <Trash2 className="w-4 h-4" />
+              Discard
+            </button>
+            <button
+              onClick={onResumeWorkout}
+              className="flex-1 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              <ArrowRight className="w-4 h-4" />
+              Resume
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Pending Sync Banner */}
       {pendingCount > 0 && (
         <div className={`rounded-xl p-3 border flex items-center justify-between ${

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Dumbbell, Search, TrendingUp, Trophy, Scale } from 'lucide-react';
 import type { Workout } from '../types';
 import * as storage from '../storage';
@@ -16,6 +16,12 @@ interface ProgressViewProps {
 export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: ProgressViewProps) {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleSessions, setVisibleSessions] = useState(5);
+
+  // Reset visible sessions when exercise changes
+  useEffect(() => {
+    setVisibleSessions(5);
+  }, [selectedExercise]);
   const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
   
   // Get ALL exercises from library, with session counts
@@ -185,7 +191,7 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
         <div className={`rounded-xl p-4 ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
           <div className="text-sm font-medium mb-3">Recent Sessions</div>
           <div className="space-y-3">
-            {exerciseData.sessions.slice(-5).reverse().map((session, i) => (
+            {exerciseData.sessions.slice(-visibleSessions).reverse().map((session, i) => (
               <div key={i} className={`flex items-center justify-between py-2 border-b last:border-0 ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
                 <div>
                   <div className="text-sm">{new Date(session.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
@@ -200,6 +206,16 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
               </div>
             ))}
           </div>
+          {exerciseData.sessions.length > visibleSessions && (
+            <button
+              onClick={() => setVisibleSessions(v => v + 5)}
+              className={`w-full mt-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                isDark ? 'text-orange-400 bg-orange-500/10 hover:bg-orange-500/20' : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+              }`}
+            >
+              Load more ({exerciseData.sessions.length - visibleSessions} remaining)
+            </button>
+          )}
         </div>
       </div>
     );

@@ -1,17 +1,19 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Dumbbell, ChevronRight, Check, Clock, Search, X, Edit3, Trash2, Plus,
+  Dumbbell, ChevronRight, ChevronLeft, Check, Clock, Search, X, Edit3, Trash2, Plus,
   TrendingUp, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
+import { hapticImpact, hapticNotification } from '../haptics';
 
 // Active Workout View
-export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
+export function ActiveWorkoutView({ workout, onUpdate, onFinish, onPause, onDiscard }: {
   workout: Workout;
   onUpdate: (workout: Workout) => void;
   onFinish: () => void;
-  onCancel: () => void;
+  onPause: () => void;
+  onDiscard: () => void;
 }) {
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
@@ -78,13 +80,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
       // Play timer sound
       playSound('timer');
       // Strong vibration pattern when timer ends
-      try {
-        if ('vibrate' in navigator) {
-          navigator.vibrate([300, 100, 300, 100, 500]); // Strong pattern
-        }
-      } catch (e) {
-        console.log('Vibration not supported:', e);
-      }
+      hapticNotification('warning');
       return;
     }
 
@@ -99,17 +95,15 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
     setRestTimer(seconds);
     setRestTimeLeft(seconds);
     // Quick haptic feedback when starting timer
-    try {
-      if ('vibrate' in navigator) {
-        navigator.vibrate(50);
-      }
-    } catch (e) {}
+    hapticImpact('light');
   };
   
   // Add exercise to current workout
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addSearchQuery, setAddSearchQuery] = useState('');
-  const allExercises = useMemo(() => storage.getExercises(), []);
+  const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
+
+  const refreshExercises = () => setAllExercises(storage.getExercises());
 
   const addExercise = (exercise: Exercise) => {
     const lastSession = storage.getLastExerciseSession(exercise.id);
@@ -137,7 +131,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
   // Delete exercise from current workout
   const deleteExercise = (exerciseIndex: number) => {
     if (workout.exercises.length <= 1) {
-      alert('Cannot delete the last exercise. Use Cancel to discard the entire workout.');
+      alert('Cannot delete the last exercise. Use the trash button to discard the entire workout.');
       return;
     }
     
@@ -147,11 +141,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
       newWorkout.exercises = workout.exercises.filter((_, i) => i !== exerciseIndex);
       onUpdate(newWorkout);
       // Haptic feedback for deletion
-      try {
-        if ('vibrate' in navigator) {
-          navigator.vibrate([50, 50, 50]);
-        }
-      } catch (e) {}
+      hapticImpact('medium');
     }
   };
 
@@ -232,11 +222,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
           setTimeout(() => setPrAchievement(null), 3500);
           // Play celebration sound
           playSound('celebration');
-          try {
-            if ('vibrate' in navigator) {
-              navigator.vibrate([100, 50, 100, 50, 200]); // PR vibration!
-            }
-          } catch (e) {}
+          hapticNotification('success');
         } else if (isVolumePR && setIndex === exercise.sets.length - 1) {
           // Volume PR - only show on last set to avoid spam
           setPrAchievement({
@@ -246,11 +232,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
             isVolumePR: true,
           });
           setTimeout(() => setPrAchievement(null), 3500);
-          try {
-            if ('vibrate' in navigator) {
-              navigator.vibrate([50, 30, 50, 30, 100]); // Lighter volume PR vibration
-            }
-          } catch (e) {}
+          hapticNotification('success');
         }
       }
     }
@@ -296,8 +278,8 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
       
       {/* Header */}
       <div className="flex items-center justify-between">
-        <button onClick={onCancel} className="p-2 -ml-2 text-zinc-400">
-          <X className="w-6 h-6" />
+        <button onClick={onPause} className="p-2 -ml-2 text-zinc-400" title="Pause workout">
+          <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="text-center">
           <h1 className="text-lg font-bold">{workout.name}</h1>
@@ -306,12 +288,21 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
             {formatDuration(elapsedSeconds)}
           </div>
         </div>
-        <button
-          onClick={onFinish}
-          className="px-4 py-2 bg-emerald-600 rounded-lg text-sm font-medium"
-        >
-          Finish
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onDiscard}
+            className="p-2 text-zinc-500 hover:text-red-400 transition-colors"
+            title="Discard workout"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+          <button
+            onClick={onFinish}
+            className="px-4 py-2 bg-emerald-600 rounded-lg text-sm font-medium"
+          >
+            Finish
+          </button>
+        </div>
       </div>
 
       {/* Progress Bar */}
@@ -412,6 +403,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
                 onSwapExercise={(newExercise) => swapExercise(exIndex, newExercise)}
                 onDelete={() => deleteExercise(exIndex)}
                 canDelete={workout.exercises.length > 1}
+                onExerciseCreated={refreshExercises}
               />
             </div>
           );
@@ -482,6 +474,22 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
                     </button>
                   );
                 })}
+              {addSearchQuery.trim() && (
+                <div className="mt-3 pt-3 border-t border-[#2e2e2e]">
+                  <div className="text-xs text-zinc-500 mb-2 px-3">Can't find what you're looking for?</div>
+                  <button
+                    onClick={() => {
+                      const created = storage.addCustomExercise(addSearchQuery.trim(), 'other');
+                      refreshExercises();
+                      addExercise(created);
+                    }}
+                    className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center gap-2 text-orange-400"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create "{addSearchQuery.trim()}"</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -491,12 +499,13 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onCancel }: {
 }
 
 // Exercise Card
-function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDelete }: {
+function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDelete, onExerciseCreated }: {
   exercise: WorkoutExercise;
   onUpdateSet: (setIndex: number, updates: Partial<WorkoutSet>) => void;
   onSwapExercise: (newExercise: Exercise) => void;
   onDelete: () => void;
   canDelete: boolean;
+  onExerciseCreated: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -504,9 +513,9 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
   const completedCount = exercise.sets.filter(s => s.completed).length;
   
   // Get all exercises for the selector
-  const allExercises = useMemo(() => storage.getExercises(), []);
-  const filteredExercises = useMemo(() => 
-    allExercises.filter(ex => 
+  const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
+  const filteredExercises = useMemo(() =>
+    allExercises.filter(ex =>
       ex.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
       ex.id !== exercise.exerciseId // Exclude current exercise
     ),
@@ -524,6 +533,12 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
     const exercises = storage.getExercises();
     const ex = exercises.find(e => e.id === exercise.exerciseId);
     return { notes: ex?.notes, videoUrl: ex?.videoUrl };
+  }, [exercise.exerciseId]);
+
+  // Get PR for this exercise
+  const exercisePR = useMemo(() => {
+    const records = storage.getPersonalRecords();
+    return records.find(r => r.exerciseId === exercise.exerciseId) ?? null;
   }, [exercise.exerciseId]);
   
   // Helper to get comparison indicator for a set
@@ -580,7 +595,7 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
               </div>
             </div>
             <div className="overflow-y-auto max-h-[60vh] p-2">
-              {filteredExercises.length === 0 ? (
+              {filteredExercises.length === 0 && !searchQuery.trim() ? (
                 <div className="text-center py-8 text-zinc-500">
                   No exercises found
                 </div>
@@ -613,6 +628,25 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
                       </button>
                     );
                   })}
+                </div>
+              )}
+              {searchQuery.trim() && (
+                <div className="mt-3 pt-3 border-t border-[#2e2e2e]">
+                  <div className="text-xs text-zinc-500 mb-2 px-3">Can't find what you're looking for?</div>
+                  <button
+                    onClick={() => {
+                      const created = storage.addCustomExercise(searchQuery.trim(), 'other');
+                      setAllExercises(storage.getExercises());
+                      onExerciseCreated();
+                      onSwapExercise(created);
+                      setShowExerciseSelector(false);
+                      setSearchQuery('');
+                    }}
+                    className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center gap-2 text-orange-400"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create "{searchQuery.trim()}"</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -764,6 +798,14 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
               </div>
             );
           })}
+
+          {/* Personal Record */}
+          {exercisePR && exercisePR.weight > 0 && (
+            <div className="flex items-center gap-2 px-2 pt-2 text-sm text-yellow-500">
+              <Trophy className="w-4 h-4" />
+              <span>PR: {exercisePR.weight}kg x {exercisePR.reps}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
