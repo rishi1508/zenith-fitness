@@ -34,8 +34,6 @@ export function LoginView({ isDark }: { isDark: boolean }) {
       : 'bg-white border-gray-200 placeholder-gray-400'
   }`;
 
-  const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
-  const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
   const subtleText = isDark ? 'text-zinc-400' : 'text-gray-500';
 
   // ---- Handlers ----
