@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dumbbell, Calendar, TrendingUp, BarChart3,
-  Flame, Settings, ClipboardList, Sun, Moon, PartyPopper
+  Flame, Settings, ClipboardList, Sun, Moon, PartyPopper, Users,
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats } from './types';
 import * as storage from './storage';
@@ -10,10 +10,11 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer } from './components';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView } from './views';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView } from './views';
+import * as buddyService from './buddyService';
 import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -32,6 +33,9 @@ function App() {
     catch { return 'dark'; }
   });
   
+  // Buddy view context (which buddy are we viewing / chatting with)
+  const [buddyContext, setBuddyContext] = useState<{ uid: string; name: string; chatId?: string }>({ uid: '', name: '' });
+
   // Auto-theme check every minute when in auto mode
   useEffect(() => {
     const settings = storage.getThemeSettings();
@@ -102,6 +106,13 @@ function App() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Sync public profile when user is authenticated and stats change
+  useEffect(() => {
+    if (user && stats) {
+      buddyService.upsertUserProfile(stats);
+    }
+  }, [user, stats]);
 
   // Listen for data refresh events from auth/sync layer
   useEffect(() => {
@@ -201,6 +212,12 @@ function App() {
     };
     setActiveWorkout(workout);
     navigateTo('active');
+
+    // Notify buddies & set working-out status
+    if (user) {
+      buddyService.setWorkingOutStatus(true, workout.name, workout.startedAt);
+      buddyService.notifyBuddiesWorkoutStarted(workout.name);
+    }
   };
   
   // Helper: Get last weights used for each exercise - returns EXACT sets pattern
@@ -273,9 +290,14 @@ function App() {
         duration,
       };
       storage.saveWorkout(finished);
-      
+
       // Clear the persisted active workout (session is done)
       localStorage.removeItem('zenith_active_workout');
+
+      // Clear working-out status for buddies
+      if (user) {
+        buddyService.setWorkingOutStatus(false);
+      }
       
       // Show celebration
       setCelebrationData({
@@ -304,11 +326,13 @@ function App() {
       // Clear the persisted active workout
       localStorage.removeItem('zenith_active_workout');
       setActiveWorkout(null);
+      // Clear working-out status
+      if (user) buddyService.setWorkingOutStatus(false);
       // Reset navigation history since we discarded
       navigationHistory.current = ['home'];
       setView('home');
     }
-  }, [activeWorkout]);
+  }, [activeWorkout, user]);
 
   const handleBackfillRestDays = () => {
     storage.backfillRestDays(missingDays);
@@ -565,6 +589,48 @@ function App() {
             onExercisesChange={loadData}
           />
         )}
+        {view === 'buddies' && (
+          <BuddyView
+            isDark={isDark}
+            onBack={() => goBack()}
+            onViewProfile={(uid, name) => {
+              setBuddyContext({ uid, name });
+              navigateTo('buddy-profile');
+            }}
+            onOpenChat={(chatId, name) => {
+              setBuddyContext((prev) => ({ ...prev, chatId, name }));
+              navigateTo('buddy-chat');
+            }}
+          />
+        )}
+        {view === 'buddy-profile' && buddyContext.uid && (
+          <BuddyProfileView
+            buddyUid={buddyContext.uid}
+            buddyName={buddyContext.name}
+            isDark={isDark}
+            onBack={() => goBack()}
+            onOpenChat={(chatId, name) => {
+              setBuddyContext((prev) => ({ ...prev, chatId, name }));
+              navigateTo('buddy-chat');
+            }}
+            onStartWorkoutTogether={(uid, name) => {
+              // Navigate to home so user can pick a workout — the buddy gets an invite via chat
+              if (buddyContext.chatId) {
+                buddyService.sendWorkoutInvite(buddyContext.chatId, 'a workout', 0);
+              }
+              navigationHistory.current = ['home'];
+              setView('home');
+            }}
+          />
+        )}
+        {view === 'buddy-chat' && buddyContext.chatId && (
+          <BuddyChatView
+            chatId={buddyContext.chatId}
+            buddyName={buddyContext.name}
+            isDark={isDark}
+            onBack={() => goBack()}
+          />
+        )}
       </main>
 
       {/* Bottom Navigation */}
@@ -589,12 +655,20 @@ function App() {
               active={view === 'history'} 
               onClick={() => navigateTo('history')} 
             />
-            <NavButton 
-              icon={<TrendingUp />} 
-              label="Progress" 
-              active={view === 'progress'} 
-              onClick={() => navigateTo('progress')} 
+            <NavButton
+              icon={<TrendingUp />}
+              label="Progress"
+              active={view === 'progress'}
+              onClick={() => navigateTo('progress')}
             />
+            {!isGuest && (
+              <NavButton
+                icon={<Users />}
+                label="Buddies"
+                active={view === 'buddies' || view === 'buddy-profile' || view === 'buddy-chat'}
+                onClick={() => navigateTo('buddies')}
+              />
+            )}
           </div>
         </nav>
       )}

@@ -135,3 +135,67 @@ export interface WeeklyVolumeProgress {
   completedSets: number;
   percentComplete: number;
 }
+
+// ============ BUDDY SYSTEM ============
+
+/** Public user profile (searchable by other users) */
+export interface UserProfile {
+  uid: string;
+  displayName: string;
+  email: string;
+  photoURL?: string;
+  joinedAt: string;
+  totalWorkouts: number;
+  currentStreak: number;
+  isWorkingOut: boolean;
+  activeWorkoutName?: string;
+  activeWorkoutStartedAt?: string;
+}
+
+/** Buddy request between two users */
+export interface BuddyRequest {
+  id: string;
+  fromUid: string;
+  fromName: string;
+  fromPhoto?: string;
+  toUid: string;
+  toName: string;
+  toPhoto?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
+}
+
+/** Mutual buddy relationship */
+export interface BuddyRelationship {
+  id: string;
+  users: [string, string];
+  userNames: Record<string, string>;
+  userPhotos: Record<string, string>;
+  createdAt: string;
+  chatId: string;
+}
+
+/** Chat message between buddies */
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: string;
+  type: 'text' | 'workout_invite' | 'workout_update';
+  workoutData?: {
+    workoutName?: string;
+    exerciseCount?: number;
+  };
+}
+
+/** In-app buddy notification */
+export interface BuddyNotification {
+  id: string;
+  type: 'buddy_request' | 'buddy_accepted' | 'workout_started' | 'workout_invite';
+  fromUid: string;
+  fromName: string;
+  message: string;
+  createdAt: string;
+  read: boolean;
+}
