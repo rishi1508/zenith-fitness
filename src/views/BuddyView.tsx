@@ -216,30 +216,33 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                     key={profile.uid}
                     className={`flex items-center justify-between p-3 border-b last:border-b-0 ${cardBorder}`}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-sm">
+                    <button
+                      onClick={() => onViewProfile(profile.uid, profile.displayName)}
+                      className="flex items-center gap-3 flex-1 text-left min-w-0"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                         {profile.displayName.charAt(0).toUpperCase()}
                       </div>
-                      <div>
-                        <div className="font-medium text-sm">{profile.displayName}</div>
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">{profile.displayName}</div>
                         <div className={`text-xs ${subtleText}`}>
                           {profile.totalWorkouts || 0} workouts
                         </div>
                       </div>
-                    </div>
+                    </button>
                     {isBuddy ? (
-                      <span className="text-xs text-emerald-400 font-medium flex items-center gap-1">
+                      <span className="text-xs text-emerald-400 font-medium flex items-center gap-1 flex-shrink-0">
                         <UserCheck className="w-3.5 h-3.5" /> Buddy
                       </span>
                     ) : isPending ? (
-                      <span className={`text-xs ${subtleText} font-medium flex items-center gap-1`}>
+                      <span className={`text-xs ${subtleText} font-medium flex items-center gap-1 flex-shrink-0`}>
                         <Clock className="w-3.5 h-3.5" /> Pending
                       </span>
                     ) : (
                       <button
                         onClick={() => handleSendRequest(profile)}
                         disabled={actionLoading === profile.uid}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex-shrink-0"
                       >
                         {actionLoading === profile.uid ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />

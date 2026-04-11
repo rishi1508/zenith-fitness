@@ -107,19 +107,19 @@ function App() {
     loadData();
   }, [loadData]);
 
-  // Sync public profile when user is authenticated and stats change
-  useEffect(() => {
-    if (user && stats) {
-      buddyService.upsertUserProfile(stats);
-    }
-  }, [user, stats]);
-
   // Listen for data refresh events from auth/sync layer
+  // Profile upsert happens HERE (after sync) to avoid stale stats from previous account
   useEffect(() => {
-    const handler = () => loadData();
+    const handler = () => {
+      loadData();
+      if (user) {
+        const freshStats = storage.calculateStats();
+        buddyService.upsertUserProfile(freshStats);
+      }
+    };
     window.addEventListener('zenith-data-refresh', handler);
     return () => window.removeEventListener('zenith-data-refresh', handler);
-  }, [loadData]);
+  }, [loadData, user]);
   
   // CRITICAL: Persist active workout to localStorage on every change (screen timeout fix)
   useEffect(() => {
