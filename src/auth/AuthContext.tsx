@@ -7,15 +7,18 @@ import {
   signInWithRedirect,
   getRedirectResult,
   signInWithCredential,
+  signInWithCustomToken,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  updateProfile,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   fetchSignInMethodsForEmail,
 } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { auth } from '../firebase';
+import { auth, functions } from '../firebase';
 import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, pullSharedExercises } from '../firestoreSync';
 
 const GUEST_MODE_KEY = 'zenith_guest_mode';
@@ -26,6 +29,9 @@ interface AuthContextType {
   isGuest: boolean;
   signInWithGoogle: () => Promise<void>;
   signInOrRegisterWithEmail: (email: string, password: string) => Promise<{ isNewUser: boolean }>;
+  sendEmailOTP: (email: string) => Promise<void>;
+  verifyEmailOTP: (email: string, code: string) => Promise<{ isNewUser: boolean }>;
+  completeProfile: (displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   enterGuestMode: () => void;
   exitGuestMode: () => void;
@@ -162,6 +168,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Email OTP: send a verification code
+  const sendEmailOTP = useCallback(async (email: string) => {
+    const callable = httpsCallable(functions, 'sendOTP');
+    await callable({ email });
+  }, []);
+
+  // Email OTP: verify the code and sign in
+  const verifyEmailOTP = useCallback(async (email: string, code: string): Promise<{ isNewUser: boolean }> => {
+    const callable = httpsCallable<{ email: string; code: string }, { token: string; isNewUser: boolean }>(functions, 'verifyOTP');
+    const result = await callable({ email, code });
+    const { token, isNewUser } = result.data;
+    await signInWithCustomToken(auth, token);
+    return { isNewUser };
+  }, []);
+
+  // Complete profile after OTP registration (set display name)
+  const completeProfile = useCallback(async (displayName: string) => {
+    if (!auth.currentUser) throw new Error('Not authenticated');
+    await updateProfile(auth.currentUser, { displayName });
+    // Force refresh the user object so displayName is available immediately
+    setUser({ ...auth.currentUser } as User);
+  }, []);
+
   const signOut = useCallback(async () => {
     teardownFirestoreListeners();
     await firebaseSignOut(auth);
@@ -179,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, signInOrRegisterWithEmail, signOut, enterGuestMode, exitGuestMode }}>
+    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, signInOrRegisterWithEmail, sendEmailOTP, verifyEmailOTP, completeProfile, signOut, enterGuestMode, exitGuestMode }}>
       {children}
     </AuthContext.Provider>
   );
