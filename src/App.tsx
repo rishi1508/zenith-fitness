@@ -613,7 +613,7 @@ function App() {
               setBuddyContext((prev) => ({ ...prev, chatId, name }));
               navigateTo('buddy-chat');
             }}
-            onStartWorkoutTogether={(uid, name) => {
+            onStartWorkoutTogether={() => {
               // Navigate to home so user can pick a workout — the buddy gets an invite via chat
               if (buddyContext.chatId) {
                 buddyService.sendWorkoutInvite(buddyContext.chatId, 'a workout', 0);

@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import {
-  ArrowLeft, Dumbbell, Flame, TrendingUp, Calendar,
-  MessageCircle, Trash2, Clock, Target, Loader2, Zap, UserMinus,
+  ArrowLeft, Dumbbell, Flame, TrendingUp,
+  MessageCircle, Clock, Target, Loader2, Zap, UserMinus,
 } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
 
@@ -13,13 +12,12 @@ interface BuddyProfileViewProps {
   isDark: boolean;
   onBack: () => void;
   onOpenChat: (chatId: string, buddyName: string) => void;
-  onStartWorkoutTogether: (buddyUid: string, buddyName: string) => void;
+  onStartWorkoutTogether: () => void;
 }
 
 export function BuddyProfileView({
   buddyUid, buddyName, isDark, onBack, onOpenChat, onStartWorkoutTogether,
 }: BuddyProfileViewProps) {
-  const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -139,7 +137,7 @@ export function BuddyProfileView({
             <MessageCircle className="w-4 h-4" /> Chat
           </button>
           <button
-            onClick={() => onStartWorkoutTogether(buddyUid, buddyName)}
+            onClick={() => onStartWorkoutTogether()}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
           >
             <Dumbbell className="w-4 h-4" /> Workout Together

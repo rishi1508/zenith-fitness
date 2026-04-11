@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Search, UserPlus, Users, Bell, Check, X,
   Dumbbell, Flame, MessageCircle, ChevronRight, Loader2, UserCheck, Clock,
