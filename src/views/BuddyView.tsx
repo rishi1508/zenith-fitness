@@ -89,9 +89,9 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
     };
   }, [user]);
 
-  // Search with debounce
+  // Load all users when search panel opens; filter with debounce on type
   useEffect(() => {
-    if (searchQuery.trim().length < 2) {
+    if (!showSearch) {
       setSearchResults([]);
       return;
     }
@@ -106,10 +106,10 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
       } finally {
         setSearching(false);
       }
-    }, 400);
+    }, searchQuery.trim().length > 0 ? 400 : 0);
 
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, showSearch]);
 
   const handleSendRequest = async (profile: UserProfile) => {
     setActionLoading(profile.uid);
@@ -255,8 +255,10 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
             </div>
           )}
 
-          {searchQuery.trim().length >= 2 && !searching && searchResults.length === 0 && (
-            <p className={`text-sm text-center py-4 ${subtleText}`}>No users found</p>
+          {!searching && searchResults.length === 0 && (
+            <p className={`text-sm text-center py-4 ${subtleText}`}>
+              No users found. If your Firestore rules don't allow reads on the "userProfiles" collection, search won't work.
+            </p>
           )}
         </div>
       )}

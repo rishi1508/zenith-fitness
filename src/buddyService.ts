@@ -17,30 +17,34 @@ export async function upsertUserProfile(stats?: UserStats): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
 
-  const ref = doc(db, 'userProfiles', user.uid);
-  const existing = await getDoc(ref);
+  try {
+    const ref = doc(db, 'userProfiles', user.uid);
+    const existing = await getDoc(ref);
 
-  const profile: Partial<UserProfile> = {
-    uid: user.uid,
-    displayName: user.displayName || 'Anonymous',
-    email: user.email || '',
-    photoURL: user.photoURL || undefined,
-  };
+    const profile: Record<string, unknown> = {
+      uid: user.uid,
+      displayName: user.displayName || 'Anonymous',
+      displayNameLower: (user.displayName || 'anonymous').toLowerCase(),
+      email: user.email || '',
+      photoURL: user.photoURL || null,
+    };
 
-  if (!existing.exists()) {
-    profile.joinedAt = new Date().toISOString();
-    profile.totalWorkouts = stats?.totalWorkouts ?? 0;
-    profile.currentStreak = stats?.currentStreak ?? 0;
-    profile.isWorkingOut = false;
-  } else {
-    // Update stats if provided
-    if (stats) {
-      profile.totalWorkouts = stats.totalWorkouts;
-      profile.currentStreak = stats.currentStreak;
+    if (!existing.exists()) {
+      profile.joinedAt = new Date().toISOString();
+      profile.totalWorkouts = stats?.totalWorkouts ?? 0;
+      profile.currentStreak = stats?.currentStreak ?? 0;
+      profile.isWorkingOut = false;
+    } else {
+      if (stats) {
+        profile.totalWorkouts = stats.totalWorkouts;
+        profile.currentStreak = stats.currentStreak;
+      }
     }
-  }
 
-  await setDoc(ref, profile, { merge: true });
+    await setDoc(ref, profile, { merge: true });
+  } catch (err) {
+    console.error('[Buddy] Failed to upsert profile — check Firestore rules for userProfiles collection:', err);
+  }
 }
 
 /** Set "working out" status on current user's profile. */
@@ -63,45 +67,78 @@ export async function setWorkingOutStatus(
 /** Search users by display name (case-insensitive prefix match). */
 export async function searchUsers(searchTerm: string): Promise<UserProfile[]> {
   const user = auth.currentUser;
-  if (!user || searchTerm.trim().length < 2) return [];
+  if (!user) return [];
 
-  const term = searchTerm.trim();
-  // Firestore range query for prefix match
-  const q = query(
-    collection(db, 'userProfiles'),
-    where('displayName', '>=', term),
-    where('displayName', '<=', term + '\uf8ff'),
-    limit(20),
-  );
+  // If no search term, return all users
+  if (searchTerm.trim().length === 0) {
+    return getAllUsers();
+  }
 
-  const snap = await getDocs(q);
-  const results: UserProfile[] = [];
-  snap.forEach((d) => {
-    const data = d.data() as UserProfile;
-    if (data.uid !== user.uid) {
-      results.push(data);
-    }
-  });
+  const lowerTerm = searchTerm.trim().toLowerCase();
 
-  // Also try lowercase search
-  if (results.length === 0) {
-    const lowerTerm = term.toLowerCase();
-    const q2 = query(
+  try {
+    // Query on the lowercase field for case-insensitive search
+    const q = query(
       collection(db, 'userProfiles'),
-      where('displayName', '>=', lowerTerm),
-      where('displayName', '<=', lowerTerm + '\uf8ff'),
+      where('displayNameLower', '>=', lowerTerm),
+      where('displayNameLower', '<=', lowerTerm + '\uf8ff'),
       limit(20),
     );
-    const snap2 = await getDocs(q2);
-    snap2.forEach((d) => {
+
+    const snap = await getDocs(q);
+    const results: UserProfile[] = [];
+    snap.forEach((d) => {
       const data = d.data() as UserProfile;
       if (data.uid !== user.uid) {
         results.push(data);
       }
     });
-  }
 
-  return results;
+    // Fallback: also try on displayName (for profiles created before displayNameLower existed)
+    if (results.length === 0) {
+      const term = searchTerm.trim();
+      const q2 = query(
+        collection(db, 'userProfiles'),
+        where('displayName', '>=', term),
+        where('displayName', '<=', term + '\uf8ff'),
+        limit(20),
+      );
+      const snap2 = await getDocs(q2);
+      snap2.forEach((d) => {
+        const data = d.data() as UserProfile;
+        if (data.uid !== user.uid) {
+          results.push(data);
+        }
+      });
+    }
+
+    return results;
+  } catch (err) {
+    console.error('[Buddy] Search failed — check Firestore rules for userProfiles collection:', err);
+    return [];
+  }
+}
+
+/** Get all registered users (for browsing). */
+export async function getAllUsers(): Promise<UserProfile[]> {
+  const user = auth.currentUser;
+  if (!user) return [];
+
+  try {
+    const q = query(collection(db, 'userProfiles'), limit(50));
+    const snap = await getDocs(q);
+    const results: UserProfile[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as UserProfile;
+      if (data.uid !== user.uid) {
+        results.push(data);
+      }
+    });
+    return results;
+  } catch (err) {
+    console.error('[Buddy] Failed to load users — check Firestore rules for userProfiles collection:', err);
+    return [];
+  }
 }
 
 /** Get a specific user's profile. */
