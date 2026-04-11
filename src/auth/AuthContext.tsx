@@ -7,7 +7,6 @@ import {
   signInWithRedirect,
   getRedirectResult,
   signInWithCredential,
-  signInWithCustomToken,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
@@ -15,11 +14,11 @@ import {
   signOut as firebaseSignOut,
   fetchSignInMethodsForEmail,
 } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { auth, functions } from '../firebase';
+import { auth } from '../firebase';
 import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, pullSharedExercises } from '../firestoreSync';
+import * as otpService from '../otpService';
 
 const GUEST_MODE_KEY = 'zenith_guest_mode';
 
@@ -168,19 +167,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Email OTP: send a verification code
+  // Email OTP: send a verification code via EmailJS
   const sendEmailOTP = useCallback(async (email: string) => {
-    const callable = httpsCallable(functions, 'sendOTP');
-    await callable({ email });
+    await otpService.sendOTP(email);
   }, []);
 
-  // Email OTP: verify the code and sign in
+  // Email OTP: verify the code and sign in with email/password
   const verifyEmailOTP = useCallback(async (email: string, code: string): Promise<{ isNewUser: boolean }> => {
-    const callable = httpsCallable<{ email: string; code: string }, { token: string; isNewUser: boolean }>(functions, 'verifyOTP');
-    const result = await callable({ email, code });
-    const { token, isNewUser } = result.data;
-    await signInWithCustomToken(auth, token);
-    return { isNewUser };
+    // Verify the OTP code (client-side, in-memory hash comparison)
+    await otpService.verifyOTP(email, code);
+
+    // OTP valid — now sign in or register with a deterministic password
+    const password = await otpService.derivePassword(email);
+    try {
+      await signInWithEmailAndPassword(auth, email.toLowerCase().trim(), password);
+      return { isNewUser: false };
+    } catch (err: unknown) {
+      const firebaseErr = err as { code?: string };
+      if (firebaseErr.code === 'auth/user-not-found' || firebaseErr.code === 'auth/invalid-credential') {
+        await createUserWithEmailAndPassword(auth, email.toLowerCase().trim(), password);
+        return { isNewUser: true };
+      }
+      throw err;
+    }
   }, []);
 
   // Complete profile after OTP registration (set display name)
