@@ -7,9 +7,9 @@
 
 // ──── EmailJS Configuration ────
 // Replace these after creating your EmailJS account + template
-const EMAILJS_SERVICE_ID = 'service_zenith';   // EmailJS > Email Services > Service ID
-const EMAILJS_TEMPLATE_ID = 'template_otp';    // EmailJS > Email Templates > Template ID
-const EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';   // EmailJS > Account > Public Key
+const EMAILJS_SERVICE_ID = 'service_xjn65cq';
+const EMAILJS_TEMPLATE_ID = 'template_ojmy1hk';
+const EMAILJS_PUBLIC_KEY = 'w4EjFkYqLthlVG-LP';
 
 // ──── OTP helpers ────
 
