@@ -30,7 +30,7 @@ interface AuthContextType {
   signInOrRegisterWithEmail: (email: string, password: string) => Promise<{ isNewUser: boolean }>;
   sendEmailOTP: (email: string) => Promise<void>;
   verifyEmailOTP: (email: string, code: string) => Promise<{ isNewUser: boolean }>;
-  completeProfile: (displayName: string) => Promise<void>;
+  completeOTPRegistration: (email: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   enterGuestMode: () => void;
   exitGuestMode: () => void;
@@ -172,32 +172,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await otpService.sendOTP(email);
   }, []);
 
-  // Email OTP: verify the code and sign in with email/password
+  // Email OTP: verify the code and try to sign in.
+  // For NEW users, returns { isNewUser: true } WITHOUT creating the account
+  // so LoginView can collect name first. completeOTPRegistration finishes it.
   const verifyEmailOTP = useCallback(async (email: string, code: string): Promise<{ isNewUser: boolean }> => {
-    // Verify the OTP code (client-side, in-memory hash comparison)
     await otpService.verifyOTP(email, code);
 
-    // OTP valid — now sign in or register with a deterministic password
+    const normalizedEmail = email.toLowerCase().trim();
     const password = await otpService.derivePassword(email);
+
     try {
-      await signInWithEmailAndPassword(auth, email.toLowerCase().trim(), password);
+      await signInWithEmailAndPassword(auth, normalizedEmail, password);
       return { isNewUser: false };
     } catch (err: unknown) {
       const firebaseErr = err as { code?: string };
-      if (firebaseErr.code === 'auth/user-not-found' || firebaseErr.code === 'auth/invalid-credential') {
-        await createUserWithEmailAndPassword(auth, email.toLowerCase().trim(), password);
+
+      if (firebaseErr.code === 'auth/user-not-found') {
+        // Brand new email — don't create yet, let LoginView collect name first
         return { isNewUser: true };
       }
+
+      if (firebaseErr.code === 'auth/invalid-credential' || firebaseErr.code === 'auth/wrong-password') {
+        // Email exists but was registered via Google or old password flow.
+        // OTP proved they own the email, so try creating password provider.
+        // This will fail with email-already-in-use if user exists with any provider.
+        try {
+          await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+          return { isNewUser: false };
+        } catch (innerErr: unknown) {
+          const innerCode = (innerErr as { code?: string }).code;
+          if (innerCode === 'auth/email-already-in-use') {
+            throw new Error('This email is registered with Google. Please use "Continue with Google" to sign in.');
+          }
+          throw innerErr;
+        }
+      }
+
       throw err;
     }
   }, []);
 
-  // Complete profile after OTP registration (set display name)
-  const completeProfile = useCallback(async (displayName: string) => {
-    if (!auth.currentUser) throw new Error('Not authenticated');
-    await updateProfile(auth.currentUser, { displayName });
-    // Force refresh the user object so displayName is available immediately
-    setUser({ ...auth.currentUser } as User);
+  // Complete OTP registration: creates account with displayName already set.
+  // Called AFTER name is collected so onAuthStateChanged navigates with name ready.
+  const completeOTPRegistration = useCallback(async (email: string, displayName: string) => {
+    const normalizedEmail = email.toLowerCase().trim();
+    const password = await otpService.derivePassword(email);
+    const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+    await updateProfile(credential.user, { displayName });
+    // Force context to pick up the displayName immediately
+    setUser({ ...credential.user } as User);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -217,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, signInOrRegisterWithEmail, sendEmailOTP, verifyEmailOTP, completeProfile, signOut, enterGuestMode, exitGuestMode }}>
+    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, signInOrRegisterWithEmail, sendEmailOTP, verifyEmailOTP, completeOTPRegistration, signOut, enterGuestMode, exitGuestMode }}>
       {children}
     </AuthContext.Provider>
   );

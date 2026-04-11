@@ -7,7 +7,7 @@ type Step = 'main' | 'otp-email' | 'otp-code' | 'otp-name';
 export function LoginView({ isDark }: { isDark: boolean }) {
   const {
     signInWithGoogle,
-    sendEmailOTP, verifyEmailOTP, completeProfile,
+    sendEmailOTP, verifyEmailOTP, completeOTPRegistration,
     enterGuestMode,
   } = useAuth();
 
@@ -118,7 +118,7 @@ export function LoginView({ isDark }: { isDark: boolean }) {
     setLoading('otp-name');
     try {
       const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
-      await completeProfile(displayName);
+      await completeOTPRegistration(email.trim(), displayName);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save profile');
     } finally {
