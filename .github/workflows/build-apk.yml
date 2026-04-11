@@ -38,6 +38,23 @@ jobs:
       - name: Build web app
         run: npm run build
 
+      # ---- Cloud Functions Deploy ----
+      - name: Install Cloud Functions dependencies
+        run: cd functions && npm ci
+
+      - name: Build Cloud Functions
+        run: cd functions && npm run build
+
+      - name: Write functions .env (SMTP secrets)
+        run: |
+          echo "SMTP_EMAIL=${{ secrets.SMTP_EMAIL }}" > functions/.env
+          echo "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" >> functions/.env
+
+      - name: Deploy Cloud Functions
+        run: npx firebase-tools deploy --only functions --token "$FIREBASE_TOKEN"
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
       # ---- Firebase Hosting Deploy ----
       - name: Deploy to Firebase Hosting
         run: npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"

@@ -6,15 +6,23 @@ import * as crypto from "crypto";
 admin.initializeApp();
 const db = admin.firestore();
 
-// SMTP transporter — configure via:
-//   firebase functions:config:set smtp.email="you@gmail.com" smtp.password="your-app-password"
+// SMTP transporter — reads from process.env (set via functions/.env or CI secrets)
 function getTransporter() {
-  const config = functions.config();
+  const smtpEmail = process.env.SMTP_EMAIL;
+  const smtpPassword = process.env.SMTP_PASSWORD;
+
+  if (!smtpEmail || !smtpPassword) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "SMTP credentials not configured. Set SMTP_EMAIL and SMTP_PASSWORD."
+    );
+  }
+
   return nodemailer.createTransport({
     service: "gmail",
     auth: {
-      user: config.smtp.email,
-      pass: config.smtp.password,
+      user: smtpEmail,
+      pass: smtpPassword,
     },
   });
 }
@@ -32,7 +40,7 @@ export const sendOTP = functions.https.onCall(async (data) => {
   const normalizedEmail = email.toLowerCase().trim();
   const docRef = db.collection("otpCodes").doc(normalizedEmail);
 
-  // Rate limit: max 5 OTPs per email per hour
+  // Rate limit: wait at least 1 minute between codes
   const existing = await docRef.get();
   if (existing.exists) {
     const d = existing.data()!;
@@ -59,15 +67,16 @@ export const sendOTP = functions.https.onCall(async (data) => {
   });
 
   // Send email
+  const smtpEmail = process.env.SMTP_EMAIL!;
   const transporter = getTransporter();
   await transporter.sendMail({
-    from: `"Zenith Fitness" <${functions.config().smtp.email}>`,
+    from: `"Zenith Fitness" <${smtpEmail}>`,
     to: normalizedEmail,
     subject: "Your Zenith Fitness Login Code",
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 420px; margin: 0 auto; padding: 24px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #f97316, #dc2626); line-height: 48px; font-size: 24px; color: white;">🔥</div>
+          <div style="display: inline-block; width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #f97316, #dc2626); line-height: 48px; font-size: 24px; color: white;">&#128293;</div>
           <h2 style="margin: 12px 0 4px; color: #1a1a1a;">Zenith Fitness</h2>
         </div>
         <p style="color: #555; text-align: center;">Your verification code is:</p>
