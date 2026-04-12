@@ -8,7 +8,7 @@ import type {
   WorkoutSession, SessionParticipant, SessionProgress,
   SessionReaction, TemplateExercise, WorkoutType, WorkoutExercise,
 } from './types';
-import { notifyBuddiesWorkoutStarted } from './buddyService';
+
 
 // ============ SESSION CRUD ============
 

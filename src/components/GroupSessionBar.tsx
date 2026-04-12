@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, ChevronUp, Dumbbell, Check, Flame } from 'lucide-react';
+import { ChevronDown, ChevronUp, Dumbbell, Check } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { useAuth } from '../auth/AuthContext';
 import type { WorkoutSession, SessionParticipant, SessionReaction } from '../types';
@@ -15,7 +15,7 @@ export function GroupSessionBar({ sessionId }: GroupSessionBarProps) {
   const { user } = useAuth();
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [reactions, setReactions] = useState<SessionReaction[]>([]);
+  const [, setReactions] = useState<SessionReaction[]>([]);
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; fromName: string }[]>([]);
   const seenReactionIds = useRef<Set<string>>(new Set());
 

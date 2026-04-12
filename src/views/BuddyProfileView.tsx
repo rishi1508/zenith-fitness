@@ -3,7 +3,6 @@ import {
   ArrowLeft, Dumbbell, Flame, TrendingUp,
   MessageCircle, Clock, Target, Loader2, Zap, UserMinus,
 } from 'lucide-react';
-import { Avatar } from '../components';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
 import * as sessionService from '../workoutSessionService';
