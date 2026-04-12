@@ -34,7 +34,7 @@ function App() {
   });
   
   // Buddy view context (which buddy are we viewing / chatting with)
-  const [buddyContext, setBuddyContext] = useState<{ uid: string; name: string; chatId?: string }>({ uid: '', name: '' });
+  const [buddyContext, setBuddyContext] = useState<{ uid: string; name: string; chatId?: string; photoURL?: string | null }>({ uid: '', name: '' });
 
   // Auto-theme check every minute when in auto mode
   useEffect(() => {
@@ -593,12 +593,12 @@ function App() {
           <BuddyView
             isDark={isDark}
             onBack={() => goBack()}
-            onViewProfile={(uid, name) => {
-              setBuddyContext({ uid, name });
+            onViewProfile={(uid, name, photoURL) => {
+              setBuddyContext({ uid, name, photoURL });
               navigateTo('buddy-profile');
             }}
-            onOpenChat={(chatId, name) => {
-              setBuddyContext((prev) => ({ ...prev, chatId, name }));
+            onOpenChat={(chatId, name, photoURL) => {
+              setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL }));
               navigateTo('buddy-chat');
             }}
           />
@@ -610,7 +610,7 @@ function App() {
             isDark={isDark}
             onBack={() => goBack()}
             onOpenChat={(chatId, name) => {
-              setBuddyContext((prev) => ({ ...prev, chatId, name }));
+              setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL: prev.photoURL }));
               navigateTo('buddy-chat');
             }}
             onStartWorkoutTogether={() => {
@@ -627,6 +627,7 @@ function App() {
           <BuddyChatView
             chatId={buddyContext.chatId}
             buddyName={buddyContext.name}
+            buddyPhotoURL={buddyContext.photoURL}
             isDark={isDark}
             onBack={() => goBack()}
           />

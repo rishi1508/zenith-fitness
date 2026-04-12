@@ -4,14 +4,15 @@ import {
   Dumbbell, Flame, MessageCircle, ChevronRight, Loader2, UserCheck, Clock,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { Avatar } from '../components';
 import type { UserProfile, BuddyRequest, BuddyRelationship, BuddyNotification } from '../types';
 import * as buddyService from '../buddyService';
 
 interface BuddyViewProps {
   isDark: boolean;
   onBack: () => void;
-  onViewProfile: (buddyUid: string, buddyName: string) => void;
-  onOpenChat: (chatId: string, buddyName: string) => void;
+  onViewProfile: (buddyUid: string, buddyName: string, photoURL?: string | null) => void;
+  onOpenChat: (chatId: string, buddyName: string, photoURL?: string | null) => void;
 }
 
 type Tab = 'buddies' | 'requests' | 'notifications';
@@ -223,12 +224,10 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                     className={`flex items-center justify-between p-3 border-b last:border-b-0 ${cardBorder}`}
                   >
                     <button
-                      onClick={() => onViewProfile(profile.uid, profile.displayName)}
+                      onClick={() => onViewProfile(profile.uid, profile.displayName, profile.photoURL)}
                       className="flex items-center gap-3 flex-1 text-left min-w-0"
                     >
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                        {profile.displayName.charAt(0).toUpperCase()}
-                      </div>
+                      <Avatar name={profile.displayName} photoURL={profile.photoURL} />
                       <div className="min-w-0">
                         <div className="font-medium text-sm truncate">{profile.displayName}</div>
                         <div className={`text-xs ${subtleText}`}>
@@ -339,13 +338,11 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                     >
                       <div className="flex items-center justify-between">
                         <button
-                          onClick={() => onViewProfile(buddyUid, buddyName)}
+                          onClick={() => onViewProfile(buddyUid, buddyName, profile?.photoURL)}
                           className="flex items-center gap-3 flex-1 text-left"
                         >
                           <div className="relative">
-                            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold">
-                              {buddyName.charAt(0).toUpperCase()}
-                            </div>
+                            <Avatar name={buddyName} photoURL={profile?.photoURL} size="lg" />
                             {isWorkingOut && (
                               <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-[#0f0f0f] flex items-center justify-center">
                                 <Dumbbell className="w-2.5 h-2.5 text-white" />
@@ -372,7 +369,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                       {/* Quick Actions */}
                       <div className="flex gap-2 mt-3">
                         <button
-                          onClick={() => onOpenChat(buddy.chatId, buddyName)}
+                          onClick={() => onOpenChat(buddy.chatId, buddyName, profile?.photoURL)}
                           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                             isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
                           }`}
@@ -380,7 +377,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                           <MessageCircle className="w-3.5 h-3.5" /> Chat
                         </button>
                         <button
-                          onClick={() => onViewProfile(buddyUid, buddyName)}
+                          onClick={() => onViewProfile(buddyUid, buddyName, profile?.photoURL)}
                           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                             isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
                           }`}
@@ -410,9 +407,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                       className={`flex items-center justify-between p-3 rounded-xl border ${cardBg} ${cardBorder}`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-sm">
-                          {req.fromName.charAt(0).toUpperCase()}
-                        </div>
+                        <Avatar name={req.fromName} photoURL={req.fromPhoto} />
                         <div>
                           <div className="font-medium text-sm">{req.fromName}</div>
                           <div className={`text-xs ${subtleText}`}>Wants to be your buddy</div>
@@ -457,9 +452,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                       className={`flex items-center justify-between p-3 rounded-xl border ${cardBg} ${cardBorder}`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-zinc-600 to-zinc-700 flex items-center justify-center text-white font-bold text-sm">
-                          {req.toName.charAt(0).toUpperCase()}
-                        </div>
+                        <Avatar name={req.toName} photoURL={req.toPhoto} />
                         <div>
                           <div className="font-medium text-sm">{req.toName}</div>
                           <div className={`text-xs ${subtleText} flex items-center gap-1`}>

@@ -11,6 +11,7 @@ import { PlateCalculator, OneRMCalculator } from '../components';
 import { useAuth } from '../auth/AuthContext';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
+import * as buddyService from '../buddyService';
 
 declare const __APP_VERSION__: string;
 
@@ -25,6 +26,8 @@ function EditNameSection({ isDark }: { isDark: boolean }) {
     setSaving(true);
     try {
       await updateProfile(auth.currentUser, { displayName: name.trim() });
+      // Sync updated name to userProfiles so buddies see the new name
+      await buddyService.upsertUserProfile();
       setEditing(false);
     } catch (err) {
       console.error('[Settings] Failed to update name:', err);

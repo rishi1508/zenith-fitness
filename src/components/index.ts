@@ -9,3 +9,4 @@ export { PlateCalculator } from './PlateCalculator';
 export { OneRMCalculator } from './OneRMCalculator';
 export { ShareWorkout } from './ShareWorkout';
 export { VolumeGoals } from './VolumeGoals';
+export { Avatar } from './Avatar';

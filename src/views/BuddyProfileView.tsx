@@ -3,6 +3,7 @@ import {
   ArrowLeft, Dumbbell, Flame, TrendingUp,
   MessageCircle, Clock, Target, Loader2, Zap, UserMinus,
 } from 'lucide-react';
+import { Avatar } from '../components';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
 
@@ -107,9 +108,13 @@ export function BuddyProfileView({
       {/* Profile Card */}
       <div className={`rounded-2xl border p-5 text-center ${cardBg} ${cardBorder}`}>
         <div className="relative inline-block mb-3">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-3xl mx-auto">
-            {buddyName.charAt(0).toUpperCase()}
-          </div>
+          {profile?.photoURL ? (
+            <img src={profile.photoURL} alt="" className="w-20 h-20 rounded-full object-cover mx-auto" />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-3xl mx-auto">
+              {buddyName.charAt(0).toUpperCase()}
+            </div>
+          )}
           {profile?.isWorkingOut && (
             <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#0f0f0f] flex items-center justify-center">
               <Dumbbell className="w-3.5 h-3.5 text-white" />

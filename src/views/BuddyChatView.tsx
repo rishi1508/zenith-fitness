@@ -3,17 +3,19 @@ import {
   ArrowLeft, Send, Dumbbell, Loader2, Smile,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { Avatar } from '../components';
 import type { ChatMessage } from '../types';
 import * as buddyService from '../buddyService';
 
 interface BuddyChatViewProps {
   chatId: string;
   buddyName: string;
+  buddyPhotoURL?: string | null;
   isDark: boolean;
   onBack: () => void;
 }
 
-export function BuddyChatView({ chatId, buddyName, isDark, onBack }: BuddyChatViewProps) {
+export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack }: BuddyChatViewProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -112,9 +114,7 @@ export function BuddyChatView({ chatId, buddyName, isDark, onBack }: BuddyChatVi
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-2 flex-1">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center text-white font-bold text-sm">
-            {buddyName.charAt(0).toUpperCase()}
-          </div>
+          <Avatar name={buddyName} photoURL={buddyPhotoURL} size="sm" />
           <div>
             <div className="font-semibold text-sm">{buddyName}</div>
           </div>
