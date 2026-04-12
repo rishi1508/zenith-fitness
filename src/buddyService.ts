@@ -442,12 +442,13 @@ export async function getBuddyStats(buddyUid: string): Promise<UserStats | null>
 
 // ============ CHAT ============
 
-/** Send a chat message. */
+/** Send a chat message. Optionally notifies the recipient. */
 export async function sendMessage(
   chatId: string,
   text: string,
   type: ChatMessage['type'] = 'text',
   workoutData?: ChatMessage['workoutData'],
+  recipientUid?: string,
 ): Promise<void> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
@@ -462,6 +463,23 @@ export async function sendMessage(
   };
 
   await addDoc(collection(db, 'chats', chatId, 'messages'), msg);
+
+  // Notify recipient if UID provided
+  if (recipientUid && recipientUid !== user.uid) {
+    const notifType = type === 'workout_invite' ? 'workout_invite' as const : 'buddy_accepted' as const;
+    const notifMessage = type === 'workout_invite'
+      ? `${user.displayName || 'Your buddy'} sent you a workout invite!`
+      : `${user.displayName || 'Your buddy'}: ${text.slice(0, 60)}${text.length > 60 ? '...' : ''}`;
+
+    await addDoc(collection(db, 'notifications', recipientUid, 'items'), {
+      type: notifType,
+      fromUid: user.uid,
+      fromName: user.displayName || 'Anonymous',
+      message: notifMessage,
+      createdAt: new Date().toISOString(),
+      read: false,
+    });
+  }
 }
 
 /** Listen to chat messages in real-time. */
@@ -481,17 +499,24 @@ export function listenToMessages(
   });
 }
 
+/** Delete a chat message (only sender can delete). */
+export async function deleteMessage(chatId: string, messageId: string): Promise<void> {
+  await deleteDoc(doc(db, 'chats', chatId, 'messages', messageId));
+}
+
 /** Send a workout invite to a buddy via chat. */
 export async function sendWorkoutInvite(
   chatId: string,
   workoutName: string,
   exerciseCount: number,
+  recipientUid?: string,
 ): Promise<void> {
   await sendMessage(
     chatId,
     `Hey! Want to do "${workoutName}" together? (${exerciseCount} exercises)`,
     'workout_invite',
     { workoutName, exerciseCount },
+    recipientUid,
   );
 }
 

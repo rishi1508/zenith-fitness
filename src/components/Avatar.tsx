@@ -1,9 +1,13 @@
+import { useState } from 'react';
+
 /** Reusable avatar — shows photo if available, otherwise gradient + initial. */
 export function Avatar({ name, photoURL, size = 'md' }: {
   name: string;
   photoURL?: string | null;
   size?: 'sm' | 'md' | 'lg';
 }) {
+  const [imgError, setImgError] = useState(false);
+
   const sizeClasses = {
     sm: 'w-8 h-8 text-sm',
     md: 'w-10 h-10 text-sm',
@@ -12,8 +16,16 @@ export function Avatar({ name, photoURL, size = 'md' }: {
 
   const cls = `${sizeClasses[size]} rounded-full flex-shrink-0`;
 
-  if (photoURL) {
-    return <img src={photoURL} alt="" className={`${cls} object-cover`} />;
+  if (photoURL && !imgError) {
+    return (
+      <img
+        src={photoURL}
+        alt=""
+        className={`${cls} object-cover`}
+        onError={() => setImgError(true)}
+        referrerPolicy="no-referrer"
+      />
+    );
   }
 
   return (

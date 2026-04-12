@@ -327,8 +327,8 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
               ) : (
                 buddies.map((buddy) => {
                   const buddyUid = buddy.users.find((u) => u !== user?.uid)!;
-                  const buddyName = buddy.userNames[buddyUid] || 'Buddy';
                   const profile = buddyProfiles.get(buddyUid);
+                  const buddyName = profile?.displayName || buddy.userNames[buddyUid] || 'Buddy';
                   const isWorkingOut = profile?.isWorkingOut;
 
                   return (

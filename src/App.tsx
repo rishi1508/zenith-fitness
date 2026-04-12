@@ -656,6 +656,7 @@ function App() {
         {view === 'buddy-chat' && buddyContext.chatId && (
           <BuddyChatView
             chatId={buddyContext.chatId}
+            buddyUid={buddyContext.uid}
             buddyName={buddyContext.name}
             buddyPhotoURL={buddyContext.photoURL}
             isDark={isDark}

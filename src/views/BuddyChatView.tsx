@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  ArrowLeft, Send, Dumbbell, Loader2, Smile,
+  ArrowLeft, Send, Dumbbell, Loader2, Smile, Copy, Trash2, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components';
@@ -10,18 +10,21 @@ import * as storage from '../storage';
 
 interface BuddyChatViewProps {
   chatId: string;
+  buddyUid: string;
   buddyName: string;
   buddyPhotoURL?: string | null;
   isDark: boolean;
   onBack: () => void;
 }
 
-export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack }: BuddyChatViewProps) {
+export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDark, onBack }: BuddyChatViewProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedMsg, setSelectedMsg] = useState<ChatMessage | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,7 +49,7 @@ export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack
     setInput('');
     setSending(true);
     try {
-      await buddyService.sendMessage(chatId, text);
+      await buddyService.sendMessage(chatId, text, 'text', undefined, buddyUid);
     } catch (err) {
       console.error('[Chat] Send failed:', err);
       setInput(text); // Restore on failure
@@ -69,11 +72,33 @@ export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack
       const plan = storage.getActivePlan();
       const workoutName = plan ? plan.name : 'a workout';
       const exerciseCount = plan?.days?.[0]?.exercises?.length ?? 0;
-      await buddyService.sendWorkoutInvite(chatId, workoutName, exerciseCount);
+      await buddyService.sendWorkoutInvite(chatId, workoutName, exerciseCount, buddyUid);
     } catch (err) {
       console.error('[Chat] Invite failed:', err);
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleLongPressStart = (msg: ChatMessage) => {
+    longPressTimer.current = setTimeout(() => setSelectedMsg(msg), 500);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  };
+
+  const handleCopy = async () => {
+    if (selectedMsg) {
+      try { await navigator.clipboard.writeText(selectedMsg.text); } catch { /* ignore */ }
+      setSelectedMsg(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (selectedMsg && selectedMsg.senderId === user?.uid) {
+      await buddyService.deleteMessage(chatId, selectedMsg.id);
+      setSelectedMsg(null);
     }
   };
 
@@ -179,7 +204,10 @@ export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack
                     className={`flex mb-2 ${isMe ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-2xl px-3.5 py-2 ${
+                      onTouchStart={() => handleLongPressStart(msg)}
+                      onTouchEnd={handleLongPressEnd}
+                      onContextMenu={(e) => { e.preventDefault(); setSelectedMsg(msg); }}
+                      className={`max-w-[80%] rounded-2xl px-3.5 py-2 select-none ${
                         isInvite || isUpdate
                           ? isDark
                             ? 'bg-emerald-500/15 border border-emerald-500/30'
@@ -203,7 +231,7 @@ export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack
                       {isInvite && !isMe && (
                         <button
                           onClick={async () => {
-                            await buddyService.sendMessage(chatId, `I'm in! Let's do "${msg.workoutData?.workoutName || 'it'}" together!`, 'workout_update');
+                            await buddyService.sendMessage(chatId, `I'm in! Let's do "${msg.workoutData?.workoutName || 'it'}" together!`, 'workout_update', undefined, buddyUid);
                           }}
                           className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1"
                         >
@@ -224,6 +252,40 @@ export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Long-press Context Menu */}
+      {selectedMsg && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setSelectedMsg(null)}
+        >
+          <div
+            className={`rounded-xl shadow-xl overflow-hidden w-48 ${isDark ? 'bg-[#222] border border-[#333]' : 'bg-white border border-gray-200'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={handleCopy}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${isDark ? 'hover:bg-[#2a2a2a]' : 'hover:bg-gray-50'}`}
+            >
+              <Copy className="w-4 h-4 text-zinc-400" /> Copy
+            </button>
+            {selectedMsg.senderId === user?.uid && (
+              <button
+                onClick={handleDelete}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 transition-colors ${isDark ? 'hover:bg-[#2a2a2a]' : 'hover:bg-gray-50'}`}
+              >
+                <Trash2 className="w-4 h-4" /> Delete
+              </button>
+            )}
+            <button
+              onClick={() => setSelectedMsg(null)}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${isDark ? 'hover:bg-[#2a2a2a] text-zinc-500' : 'hover:bg-gray-50 text-gray-400'}`}
+            >
+              <X className="w-4 h-4" /> Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input Area */}
       <div className="pt-3">
