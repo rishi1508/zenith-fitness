@@ -278,6 +278,11 @@ export async function declineBuddyRequest(requestId: string): Promise<void> {
   await updateDoc(requestRef, { status: 'declined' });
 }
 
+/** Cancel an outgoing buddy request (delete it). */
+export async function cancelBuddyRequest(requestId: string): Promise<void> {
+  await deleteDoc(doc(db, 'buddyRequests', requestId));
+}
+
 /** Get incoming pending buddy requests for the current user. */
 export async function getIncomingRequests(): Promise<BuddyRequest[]> {
   const user = auth.currentUser;

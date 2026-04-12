@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components';
 import type { ChatMessage } from '../types';
 import * as buddyService from '../buddyService';
+import * as storage from '../storage';
 
 interface BuddyChatViewProps {
   chatId: string;
@@ -65,7 +66,10 @@ export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack
   const sendWorkoutInvite = async () => {
     setSending(true);
     try {
-      await buddyService.sendWorkoutInvite(chatId, 'a workout', 0);
+      const plan = storage.getActivePlan();
+      const workoutName = plan ? plan.name : 'a workout';
+      const exerciseCount = plan?.days?.[0]?.exercises?.length ?? 0;
+      await buddyService.sendWorkoutInvite(chatId, workoutName, exerciseCount);
     } catch (err) {
       console.error('[Chat] Invite failed:', err);
     } finally {
@@ -196,6 +200,16 @@ export function BuddyChatView({ chatId, buddyName, buddyPhotoURL, isDark, onBack
                         </div>
                       )}
                       <p className="text-sm leading-relaxed">{msg.text}</p>
+                      {isInvite && !isMe && (
+                        <button
+                          onClick={async () => {
+                            await buddyService.sendMessage(chatId, `I'm in! Let's do "${msg.workoutData?.workoutName || 'it'}" together!`, 'workout_update');
+                          }}
+                          className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Dumbbell className="w-3 h-3" /> Accept & Start
+                        </button>
+                      )}
                       <p className={`text-[10px] mt-1 ${
                         isMe ? 'text-white/60' : subtleText
                       } text-right`}>

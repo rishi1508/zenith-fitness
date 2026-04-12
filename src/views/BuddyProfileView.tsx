@@ -6,6 +6,7 @@ import {
 import { Avatar } from '../components';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
+import * as storage from '../storage';
 
 interface BuddyProfileViewProps {
   buddyUid: string;
@@ -13,11 +14,10 @@ interface BuddyProfileViewProps {
   isDark: boolean;
   onBack: () => void;
   onOpenChat: (chatId: string, buddyName: string) => void;
-  onStartWorkoutTogether: () => void;
 }
 
 export function BuddyProfileView({
-  buddyUid, buddyName, isDark, onBack, onOpenChat, onStartWorkoutTogether,
+  buddyUid, buddyName, isDark, onBack, onOpenChat,
 }: BuddyProfileViewProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -167,7 +167,15 @@ export function BuddyProfileView({
             <MessageCircle className="w-4 h-4" /> Chat
           </button>
           <button
-            onClick={() => onStartWorkoutTogether()}
+            onClick={async () => {
+              const plan = storage.getActivePlan();
+              const workoutName = plan ? plan.name : 'a workout';
+              const exerciseCount = plan?.days?.[0]?.exercises?.length ?? 0;
+              if (buddy?.chatId) {
+                await buddyService.sendWorkoutInvite(buddy.chatId, workoutName, exerciseCount);
+                onOpenChat(buddy.chatId, buddyName);
+              }
+            }}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
           >
             <Dumbbell className="w-4 h-4" /> Workout Together

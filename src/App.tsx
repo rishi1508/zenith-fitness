@@ -9,7 +9,7 @@ import { UpdateChecker } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import { SplashScreen, NavButton, WorkoutTimer } from './components';
+import { SplashScreen, NavButton, WorkoutTimer, NotificationToast } from './components';
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView } from './views';
 import * as buddyService from './buddyService';
 import { useAuth } from './auth/AuthContext';
@@ -360,6 +360,7 @@ function App() {
     <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Update Checker */}
       <UpdateChecker />
+      {user && <NotificationToast />}
       
       {/* Missing Days Prompt */}
       {missingDays.length > 0 && (
@@ -612,14 +613,6 @@ function App() {
             onOpenChat={(chatId, name) => {
               setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL: prev.photoURL }));
               navigateTo('buddy-chat');
-            }}
-            onStartWorkoutTogether={() => {
-              // Navigate to home so user can pick a workout — the buddy gets an invite via chat
-              if (buddyContext.chatId) {
-                buddyService.sendWorkoutInvite(buddyContext.chatId, 'a workout', 0);
-              }
-              navigationHistory.current = ['home'];
-              setView('home');
             }}
           />
         )}

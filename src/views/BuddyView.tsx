@@ -274,14 +274,14 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
       {/* Tabs */}
       <div className={`flex rounded-xl border overflow-hidden ${cardBg} ${cardBorder}`}>
         {([
-          { key: 'buddies' as Tab, label: 'My Buddies', icon: <Users className="w-4 h-4" />, count: buddies.length },
+          { key: 'buddies' as Tab, label: 'Buddies', icon: <Users className="w-4 h-4" />, count: buddies.length },
           { key: 'requests' as Tab, label: 'Requests', icon: <UserPlus className="w-4 h-4" />, count: requestCount },
           { key: 'notifications' as Tab, label: 'Alerts', icon: <Bell className="w-4 h-4" />, count: notifCount },
         ]).map(({ key, label, icon, count }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors relative ${
+            className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-colors ${
               tab === key
                 ? 'text-orange-400 bg-orange-500/10'
                 : subtleText + ' ' + hoverBg
@@ -290,7 +290,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
             {icon}
             {label}
             {count > 0 && (
-              <span className={`absolute top-1.5 right-2 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${
+              <span className={`ml-1 min-w-[18px] h-[18px] rounded-full text-[10px] font-bold inline-flex items-center justify-center px-1 ${
                 tab === key ? 'bg-orange-500 text-white' : isDark ? 'bg-zinc-700 text-zinc-300' : 'bg-gray-200 text-gray-600'
               }`}>
                 {count}
@@ -384,6 +384,19 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                         >
                           <Dumbbell className="w-3.5 h-3.5" /> Profile
                         </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Remove ${buddyName} as a buddy?`)) return;
+                            try {
+                              await buddyService.removeBuddy(buddy.id);
+                            } catch { /* ignore */ }
+                          }}
+                          className={`px-3 flex items-center justify-center py-2 rounded-lg text-xs font-medium transition-colors ${
+                            isDark ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-red-50 text-red-600 hover:bg-red-100'
+                          }`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   );
@@ -460,6 +473,23 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                           </div>
                         </div>
                       </div>
+                      <button
+                        onClick={async () => {
+                          setActionLoading(req.id);
+                          try {
+                            await buddyService.cancelBuddyRequest(req.id);
+                            setOutgoingRequests((prev) => prev.filter((r) => r.id !== req.id));
+                            setSentRequests((prev) => { const s = new Set(prev); s.delete(req.toUid); return s; });
+                          } catch { /* ignore */ }
+                          setActionLoading(null);
+                        }}
+                        disabled={actionLoading === req.id}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                          isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                        } disabled:opacity-50`}
+                      >
+                        Cancel
+                      </button>
                     </div>
                   ))}
                 </div>
