@@ -194,10 +194,10 @@ export async function sendBuddyRequest(toUid: string, toName: string, toPhoto?: 
   const request: Omit<BuddyRequest, 'id'> = {
     fromUid: user.uid,
     fromName: user.displayName || 'Anonymous',
-    fromPhoto: user.photoURL || undefined,
+    fromPhoto: user.photoURL || null,
     toUid,
     toName,
-    toPhoto,
+    toPhoto: toPhoto || null,
     status: 'pending',
     createdAt: new Date().toISOString(),
   };

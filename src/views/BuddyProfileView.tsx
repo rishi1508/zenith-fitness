@@ -28,16 +28,41 @@ export function BuddyProfileView({
   useEffect(() => {
     const load = async () => {
       try {
-        const [p, s, w, buddies] = await Promise.all([
+        const [p, buddies] = await Promise.all([
           buddyService.getUserProfile(buddyUid),
-          buddyService.getBuddyStats(buddyUid),
-          buddyService.getBuddyWorkouts(buddyUid),
           buddyService.getBuddies(),
         ]);
         setProfile(p);
-        setStats(s);
-        setWorkouts(w.filter((wk) => wk.completed && wk.type !== 'rest')
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+
+        // Build stats from the public profile (always accessible)
+        if (p) {
+          setStats({
+            totalWorkouts: p.totalWorkouts || 0,
+            currentStreak: p.currentStreak || 0,
+            longestStreak: p.currentStreak || 0,
+            thisWeekWorkouts: 0,
+            totalVolume: 0,
+            avgVolumePerSession: 0,
+          });
+        }
+
+        // Try to load workout history (may fail if Firestore rules block cross-user reads)
+        try {
+          const w = await buddyService.getBuddyWorkouts(buddyUid);
+          const completed = w.filter((wk) => wk.completed && wk.type !== 'rest')
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          setWorkouts(completed);
+
+          // If workouts loaded, calculate full stats
+          if (completed.length > 0) {
+            const fullStats = await buddyService.getBuddyStats(buddyUid);
+            if (fullStats) setStats(fullStats);
+          }
+        } catch {
+          // Cross-user read blocked by Firestore rules — stats from profile are used instead
+          console.log('[BuddyProfile] Workout history not accessible (Firestore rules)');
+        }
+
         const rel = buddies.find((b) => b.users.includes(buddyUid));
         setBuddy(rel || null);
       } catch (err) {

@@ -157,10 +157,10 @@ export interface BuddyRequest {
   id: string;
   fromUid: string;
   fromName: string;
-  fromPhoto?: string;
+  fromPhoto?: string | null;
   toUid: string;
   toName: string;
-  toPhoto?: string;
+  toPhoto?: string | null;
   status: 'pending' | 'accepted' | 'declined';
   createdAt: string;
 }

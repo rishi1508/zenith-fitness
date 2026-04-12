@@ -116,8 +116,14 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
     try {
       await buddyService.sendBuddyRequest(profile.uid, profile.displayName, profile.photoURL);
       setSentRequests((prev) => new Set(prev).add(profile.uid));
-    } catch (err: any) {
-      alert(err.message || 'Failed to send request');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to send request';
+      // If request already exists, just mark as sent instead of showing error
+      if (msg.includes('already sent') || msg.includes('Already')) {
+        setSentRequests((prev) => new Set(prev).add(profile.uid));
+      } else {
+        alert(msg);
+      }
     } finally {
       setActionLoading(null);
     }

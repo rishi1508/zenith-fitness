@@ -9,8 +9,70 @@ import * as sync from '../sync';
 import { BodyWeightChart } from '../BodyWeightChart';
 import { PlateCalculator, OneRMCalculator } from '../components';
 import { useAuth } from '../auth/AuthContext';
+import { updateProfile } from 'firebase/auth';
+import { auth } from '../firebase';
 
 declare const __APP_VERSION__: string;
+
+// Edit Name Section (within Account)
+function EditNameSection({ isDark }: { isDark: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(auth.currentUser?.displayName || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!name.trim() || !auth.currentUser) return;
+    setSaving(true);
+    try {
+      await updateProfile(auth.currentUser, { displayName: name.trim() });
+      setEditing(false);
+    } catch (err) {
+      console.error('[Settings] Failed to update name:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { setName(auth.currentUser?.displayName || ''); setEditing(true); }}
+        className={`w-full text-left text-xs py-1.5 transition-colors ${isDark ? 'text-orange-400 hover:text-orange-300' : 'text-orange-600 hover:text-orange-500'}`}
+      >
+        {auth.currentUser?.displayName ? 'Edit name' : 'Set your name'}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+        placeholder="Your name"
+        autoFocus
+        className={`flex-1 rounded-lg px-3 py-2 text-sm border focus:outline-none focus:border-orange-500 ${
+          isDark ? 'bg-[#0f0f0f] border-[#2e2e2e] text-white' : 'bg-gray-50 border-gray-200'
+        }`}
+      />
+      <button
+        onClick={handleSave}
+        disabled={saving || !name.trim()}
+        className="px-3 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white disabled:opacity-50"
+      >
+        {saving ? '...' : 'Save'}
+      </button>
+      <button
+        onClick={() => setEditing(false)}
+        className={`px-2 py-2 rounded-lg text-xs ${isDark ? 'text-zinc-500 hover:text-zinc-300' : 'text-gray-400 hover:text-gray-600'}`}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
 
 // Sound Settings Section
 function SoundSettingsSection({ isDark }: { isDark: boolean }) {
@@ -836,6 +898,7 @@ export function SettingsView({ onBack, onDataChange, onNavigateToExercises, isDa
                 <div className={`text-sm truncate ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>{user.email || 'No email'}</div>
               </div>
             </div>
+            <EditNameSection isDark={isDark} />
             <div className="flex items-center gap-2">
               <Cloud className="w-3.5 h-3.5 text-green-400" />
               <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Data synced to cloud</span>
