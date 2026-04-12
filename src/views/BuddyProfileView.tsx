@@ -6,6 +6,7 @@ import {
 import { Avatar } from '../components';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
+import * as sessionService from '../workoutSessionService';
 import * as storage from '../storage';
 
 interface BuddyProfileViewProps {
@@ -14,10 +15,11 @@ interface BuddyProfileViewProps {
   isDark: boolean;
   onBack: () => void;
   onOpenChat: (chatId: string, buddyName: string) => void;
+  onStartSession: (sessionId: string) => void;
 }
 
 export function BuddyProfileView({
-  buddyUid, buddyName, isDark, onBack, onOpenChat,
+  buddyUid, buddyName, isDark, onBack, onOpenChat, onStartSession,
 }: BuddyProfileViewProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -169,12 +171,15 @@ export function BuddyProfileView({
           <button
             onClick={async () => {
               const plan = storage.getActivePlan();
-              const workoutName = plan ? plan.name : 'a workout';
-              const exerciseCount = plan?.days?.[0]?.exercises?.length ?? 0;
-              if (buddy?.chatId) {
-                await buddyService.sendWorkoutInvite(buddy.chatId, workoutName, exerciseCount);
-                onOpenChat(buddy.chatId, buddyName);
-              }
+              if (!plan) { alert('Set an active workout plan first!'); return; }
+              const day = plan.days.find((d) => !d.isRestDay) || plan.days[0];
+              const sid = await sessionService.createSession(
+                `${plan.name} - ${day.name}`,
+                'custom',
+                day.exercises,
+              );
+              await sessionService.inviteToSession(sid, buddyUid, buddyName, profile?.photoURL || null);
+              onStartSession(sid);
             }}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
           >

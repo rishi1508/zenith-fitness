@@ -192,10 +192,61 @@ export interface ChatMessage {
 /** In-app buddy notification */
 export interface BuddyNotification {
   id: string;
-  type: 'buddy_request' | 'buddy_accepted' | 'workout_started' | 'workout_invite';
+  type: 'buddy_request' | 'buddy_accepted' | 'workout_started' | 'workout_invite' | 'session_invite';
   fromUid: string;
   fromName: string;
   message: string;
   createdAt: string;
   read: boolean;
+  data?: Record<string, string>;
+}
+
+// ============ GROUP WORKOUT SESSIONS ============
+
+export type SessionStatus = 'waiting' | 'active' | 'completed';
+export type ParticipantStatus = 'invited' | 'joined' | 'active' | 'completed' | 'declined';
+
+/** Summary of one participant in a group workout (stored in session doc). */
+export interface SessionParticipant {
+  uid: string;
+  name: string;
+  photoURL: string | null;
+  status: ParticipantStatus;
+  joinedAt?: string;
+  completedAt?: string;
+  totalVolume: number;
+  completedSets: number;
+  totalSets: number;
+  currentExercise: string;
+  duration?: number;
+}
+
+/** A group workout session (2-3 participants). */
+export interface WorkoutSession {
+  id: string;
+  hostUid: string;
+  hostName: string;
+  status: SessionStatus;
+  workoutName: string;
+  workoutType: WorkoutType;
+  templateExercises: TemplateExercise[];
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  participants: Record<string, SessionParticipant>;
+}
+
+/** Live exercise progress for a participant (separate doc for performance). */
+export interface SessionProgress {
+  exercises: WorkoutExercise[];
+  lastUpdated: number;
+}
+
+/** Quick reaction during a live session. */
+export interface SessionReaction {
+  id: string;
+  fromUid: string;
+  fromName: string;
+  emoji: string;
+  timestamp: string;
 }

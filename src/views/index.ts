@@ -13,3 +13,4 @@ export { LoginView } from './LoginView';
 export { BuddyView } from './BuddyView';
 export { BuddyProfileView } from './BuddyProfileView';
 export { BuddyChatView } from './BuddyChatView';
+export { SessionLobbyView } from './SessionLobbyView';

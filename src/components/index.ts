@@ -11,3 +11,5 @@ export { ShareWorkout } from './ShareWorkout';
 export { VolumeGoals } from './VolumeGoals';
 export { Avatar } from './Avatar';
 export { NotificationToast } from './NotificationToast';
+export { GroupSessionBar } from './GroupSessionBar';
+export { PostWorkoutComparison } from './PostWorkoutComparison';

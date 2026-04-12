@@ -3,18 +3,19 @@ import {
   Dumbbell, Calendar, TrendingUp, BarChart3,
   Flame, Settings, ClipboardList, Sun, Moon, PartyPopper, Users,
 } from 'lucide-react';
-import type { Workout, WorkoutTemplate, UserStats } from './types';
+import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
 import { UpdateChecker } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import { SplashScreen, NavButton, WorkoutTimer, NotificationToast } from './components';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView } from './views';
+import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison } from './components';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView } from './views';
 import * as buddyService from './buddyService';
+import * as sessionService from './workoutSessionService';
 import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'session-lobby';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -35,6 +36,11 @@ function App() {
   
   // Buddy view context (which buddy are we viewing / chatting with)
   const [buddyContext, setBuddyContext] = useState<{ uid: string; name: string; chatId?: string; photoURL?: string | null }>({ uid: '', name: '' });
+
+  // Group workout session state
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [completedSession, setCompletedSession] = useState<WorkoutSession | null>(null);
+  const sessionSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-theme check every minute when in auto mode
   useEffect(() => {
@@ -122,12 +128,20 @@ function App() {
   }, [loadData, user]);
   
   // CRITICAL: Persist active workout to localStorage on every change (screen timeout fix)
+  // Also sync progress to Firestore when in a group session (debounced 2s)
   useEffect(() => {
     if (activeWorkout) {
       try {
         localStorage.setItem('zenith_active_workout', JSON.stringify(activeWorkout));
       } catch (e) {
         console.error('[Persist] Failed to save active workout:', e);
+      }
+      // Group session sync
+      if (activeSessionId) {
+        if (sessionSyncTimer.current) clearTimeout(sessionSyncTimer.current);
+        sessionSyncTimer.current = setTimeout(() => {
+          sessionService.syncProgress(activeSessionId, activeWorkout.exercises);
+        }, 2000);
       }
     }
   }, [activeWorkout]);
@@ -298,7 +312,23 @@ function App() {
       if (user) {
         buddyService.setWorkingOutStatus(false);
       }
-      
+
+      // Complete group session if in one
+      if (activeSessionId && duration) {
+        sessionService.syncProgress(activeSessionId, finished.exercises);
+        sessionService.completeSession(activeSessionId, duration).then(() => {
+          // Listen for session completion to show comparison
+          const unsub = sessionService.listenToSession(activeSessionId, (s) => {
+            if (s && s.status === 'completed') {
+              setCompletedSession(s);
+              unsub();
+            }
+          });
+          // Auto-cleanup listener after 30 min
+          setTimeout(() => unsub(), 30 * 60 * 1000);
+        });
+      }
+
       // Show celebration
       setCelebrationData({
         name: activeWorkout.name,
@@ -487,13 +517,16 @@ function App() {
           />
         )}
         {view === 'active' && activeWorkout && (
-          <ActiveWorkoutView
-            workout={activeWorkout}
-            onUpdate={saveActiveWorkout}
-            onFinish={finishWorkout}
-            onPause={pauseWorkout}
-            onDiscard={discardWorkout}
-          />
+          <>
+            {activeSessionId && <GroupSessionBar sessionId={activeSessionId} />}
+            <ActiveWorkoutView
+              workout={activeWorkout}
+              onUpdate={saveActiveWorkout}
+              onFinish={finishWorkout}
+              onPause={pauseWorkout}
+              onDiscard={discardWorkout}
+            />
+          </>
         )}
         {view === 'history' && (
           <HistoryView 
@@ -614,6 +647,10 @@ function App() {
               setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL: prev.photoURL }));
               navigateTo('buddy-chat');
             }}
+            onStartSession={(sessionId) => {
+              setActiveSessionId(sessionId);
+              navigateTo('session-lobby');
+            }}
           />
         )}
         {view === 'buddy-chat' && buddyContext.chatId && (
@@ -625,7 +662,38 @@ function App() {
             onBack={() => goBack()}
           />
         )}
+        {view === 'session-lobby' && activeSessionId && (
+          <SessionLobbyView
+            sessionId={activeSessionId}
+            isDark={isDark}
+            onBack={() => {
+              setActiveSessionId(null);
+              goBack();
+            }}
+            onSessionStart={(session) => {
+              // Session started! Create workout from template and go to active view
+              const template: WorkoutTemplate = {
+                id: `session_${session.id}`,
+                name: session.workoutName,
+                type: session.workoutType,
+                exercises: session.templateExercises,
+              };
+              startWorkout(template);
+            }}
+          />
+        )}
       </main>
+
+      {/* Post-Workout Group Comparison Modal */}
+      {completedSession && (
+        <PostWorkoutComparison
+          session={completedSession}
+          onClose={() => {
+            setCompletedSession(null);
+            setActiveSessionId(null);
+          }}
+        />
+      )}
 
       {/* Bottom Navigation */}
       {view !== 'active' && (
