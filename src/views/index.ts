@@ -15,3 +15,7 @@ export { BuddyProfileView } from './BuddyProfileView';
 export { BuddyChatView } from './BuddyChatView';
 export { SessionLobbyView } from './SessionLobbyView';
 export { BuddyComparisonView } from './BuddyComparisonView';
+export { ServicesView } from './ServicesView';
+export { BodyWeightView } from './BodyWeightView';
+export { CommonTemplatesView } from './CommonTemplatesView';
+export { ProfileLanding } from './ProfileView';

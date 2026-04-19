@@ -181,6 +181,22 @@ export function ActiveWorkoutView({
     onUpdate(newWorkout);
   };
 
+  const addSet = (exerciseIndex: number) => {
+    const newWorkout = { ...workout };
+    newWorkout.exercises = [...workout.exercises];
+    const ex = { ...workout.exercises[exerciseIndex] };
+    ex.sets = [...ex.sets];
+    const lastSet = ex.sets[ex.sets.length - 1];
+    ex.sets.push({
+      id: crypto.randomUUID(),
+      reps: 0,
+      weight: lastSet?.weight || 0,
+      completed: false,
+    });
+    newWorkout.exercises[exerciseIndex] = ex;
+    onUpdate(newWorkout);
+  };
+
   const updateSet = (exerciseIndex: number, setIndex: number, updates: Partial<WorkoutSet>) => {
     const newWorkout = { ...workout };
     newWorkout.exercises = [...workout.exercises];
@@ -413,6 +429,7 @@ export function ActiveWorkoutView({
               <ExerciseCard
                 exercise={exercise}
                 onUpdateSet={(setIndex, updates) => updateSet(exIndex, setIndex, updates)}
+                onAddSet={() => addSet(exIndex)}
                 onSwapExercise={(newExercise) => swapExercise(exIndex, newExercise)}
                 onDelete={() => deleteExercise(exIndex)}
                 canDelete={workout.exercises.length > 1}
@@ -513,9 +530,10 @@ export function ActiveWorkoutView({
 }
 
 // Exercise Card
-function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, buddyBest }: {
+function ExerciseCard({ exercise, onUpdateSet, onAddSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, buddyBest }: {
   exercise: WorkoutExercise;
   onUpdateSet: (setIndex: number, updates: Partial<WorkoutSet>) => void;
+  onAddSet: () => void;
   onSwapExercise: (newExercise: Exercise) => void;
   onDelete: () => void;
   canDelete: boolean;
@@ -825,6 +843,14 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
               </div>
             );
           })}
+
+          {/* Add set button */}
+          <button
+            onClick={onAddSet}
+            className="w-full mt-2 py-2 rounded-lg text-xs font-medium border border-dashed border-zinc-700 text-zinc-400 hover:border-orange-500/50 hover:text-orange-400 transition-colors flex items-center justify-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add set
+          </button>
 
           {/* Personal Record */}
           {exercisePR && exercisePR.weight > 0 && (

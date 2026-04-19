@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { CloudOff, RefreshCw, ChevronRight, Settings, Trash2, ArrowRight, Clock } from 'lucide-react';
+import { ChevronRight, Settings, Trash2, ArrowRight, Clock } from 'lucide-react';
 import type { Workout, WorkoutTemplate } from '../types';
-import * as sync from '../sync';
 import { WeeklyPlanSelector } from '../components/WeeklyPlanSelector';
 import { VersionInfo } from '../UpdateChecker';
 import { useAuth } from '../auth/AuthContext';
@@ -20,8 +19,6 @@ interface HomeViewProps {
 export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onManagePlans, activeWorkout, onResumeWorkout, onDiscardWorkout }: HomeViewProps) {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'Champ';
-  const [pendingCount, setPendingCount] = useState(() => sync.getPendingCount());
-  const [syncing, setSyncing] = useState(false);
 
   // Elapsed timer for paused workout banner
   const [pausedElapsed, setPausedElapsed] = useState('');
@@ -43,24 +40,6 @@ export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onMa
     const interval = setInterval(() => setPausedElapsed(formatElapsed()), 10000);
     return () => clearInterval(interval);
   }, [activeWorkout?.startedAt]);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPendingCount(sync.getPendingCount());
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleSyncNow = async () => {
-    setSyncing(true);
-    try {
-      await sync.processQueue();
-      setPendingCount(sync.getPendingCount());
-    } catch (err) {
-      console.error('Sync failed:', err);
-    }
-    setSyncing(false);
-  };
 
   const today = new Date();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -119,30 +98,6 @@ export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onMa
               Resume
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Pending Sync Banner */}
-      {pendingCount > 0 && (
-        <div className={`rounded-xl p-3 border flex items-center justify-between ${
-          isDark ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-yellow-50 border-yellow-200'
-        }`}>
-          <div className="flex items-center gap-2">
-            <CloudOff className={`w-4 h-4 ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`} />
-            <span className={`text-sm ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
-              {pendingCount} workout{pendingCount > 1 ? 's' : ''} waiting to sync
-            </span>
-          </div>
-          <button
-            onClick={handleSyncNow}
-            disabled={syncing}
-            className={`px-3 py-1 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
-              isDark ? 'bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-            } ${syncing ? 'opacity-50' : ''}`}
-          >
-            <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Syncing...' : 'Sync Now'}
-          </button>
         </div>
       )}
 

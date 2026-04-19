@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Dumbbell, Calendar, TrendingUp, BarChart3,
-  Flame, Settings, ClipboardList, Sun, Moon, PartyPopper, Users,
+  Dumbbell, Calendar,
+  Flame, Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon,
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
@@ -10,13 +10,13 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison } from './components';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView } from './views';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
 import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'common-templates' | 'profile';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -737,7 +737,6 @@ function App() {
           <SettingsView 
             onBack={() => goBack()}
             onDataChange={loadData}
-            onNavigateToExercises={() => navigateTo('exercises')}
             isDark={isDark}
             onThemeChange={(newTheme) => setTheme(newTheme)}
           />
@@ -793,6 +792,31 @@ function App() {
             isDark={isDark}
             onBack={() => goBack()}
             onExercisesChange={loadData}
+          />
+        )}
+        {view === 'services' && (
+          <ServicesView
+            isDark={isDark}
+            onBack={() => goBack()}
+            onOpenExerciseLibrary={() => navigateTo('exercises')}
+            onOpenCommonTemplates={() => navigateTo('common-templates')}
+            onOpenBodyWeight={() => navigateTo('body-weight')}
+          />
+        )}
+        {view === 'body-weight' && (
+          <BodyWeightView isDark={isDark} onBack={() => goBack()} />
+        )}
+        {view === 'common-templates' && (
+          <CommonTemplatesView isDark={isDark} onBack={() => goBack()} />
+        )}
+        {view === 'profile' && (
+          <ProfileLanding
+            isDark={isDark}
+            onViewAnalysis={() => navigateTo('analysis')}
+            onViewProgress={() => navigateTo('progress')}
+            onViewHistory={() => navigateTo('history')}
+            stats={stats}
+            workouts={workoutHistory}
           />
         )}
         {view === 'buddies' && (
@@ -887,38 +911,38 @@ function App() {
       {view !== 'active' && (
         <nav className={`fixed bottom-0 left-0 right-0 border-t px-4 py-2 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
           <div className="flex justify-around">
-            <NavButton 
-              icon={<Dumbbell />} 
-              label="Workout" 
-              active={view === 'home'} 
-              onClick={() => { navigationHistory.current = ['home']; setView('home'); }} 
+            <NavButton
+              icon={<Dumbbell />}
+              label="Workout"
+              active={view === 'home'}
+              onClick={() => { navigationHistory.current = ['home']; setView('home'); }}
             />
             <NavButton
-              icon={<BarChart3 />}
-              label="Analysis"
-              active={view === 'analysis'}
-              onClick={() => navigateTo('analysis')}
-            />
-            <NavButton 
-              icon={<ClipboardList />} 
-              label="History" 
-              active={view === 'history'} 
-              onClick={() => navigateTo('history')} 
+              icon={<ClipboardList />}
+              label="History"
+              active={view === 'history'}
+              onClick={() => navigateTo('history')}
             />
             <NavButton
-              icon={<TrendingUp />}
-              label="Progress"
-              active={view === 'progress'}
-              onClick={() => navigateTo('progress')}
+              icon={<Layers />}
+              label="Services"
+              active={view === 'services' || view === 'body-weight' || view === 'common-templates' || view === 'exercises'}
+              onClick={() => navigateTo('services')}
             />
             {!isGuest && (
               <NavButton
                 icon={<Users />}
                 label="Buddies"
-                active={view === 'buddies' || view === 'buddy-profile' || view === 'buddy-chat'}
+                active={view === 'buddies' || view === 'buddy-profile' || view === 'buddy-chat' || view === 'buddy-compare'}
                 onClick={() => navigateTo('buddies')}
               />
             )}
+            <NavButton
+              icon={<UserIcon />}
+              label="Profile"
+              active={view === 'profile' || view === 'analysis' || view === 'progress'}
+              onClick={() => navigateTo('profile')}
+            />
           </div>
         </nav>
       )}

@@ -122,5 +122,15 @@ service cloud.firestore {
       allow create: if signedIn();
       allow update: if signedIn();
     }
+
+    // ---------- shared templates library ----------
+    // Any authenticated user can browse + publish a template. Updates are
+    // allowed so useCount can be incremented by any importer.
+    match /sharedTemplates/{templateId} {
+      allow read:   if signedIn();
+      allow create: if signedIn() && request.auth.uid == request.resource.data.creatorUid;
+      allow update: if signedIn();
+      allow delete: if signedIn() && request.auth.uid == resource.data.creatorUid;
+    }
   }
 }

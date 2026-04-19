@@ -1,5 +1,4 @@
 import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from './types';
-import { syncWorkout, syncExercise, syncPlan, isSyncEnabled } from './sync';
 import { queueFirestoreSync, addToSharedExerciseLibrary } from './firestoreSync';
 
 const STORAGE_KEYS = {
@@ -54,22 +53,6 @@ export function saveWorkout(workout: Workout): void {
   }
   setItem(STORAGE_KEYS.WORKOUTS, workouts);
   
-  // Auto-sync to Google Sheets when workout is completed
-  if (workout.completed && workout.type !== 'rest' && isSyncEnabled()) {
-    syncWorkout({
-      date: workout.date,
-      name: workout.name,
-      exercises: workout.exercises.map(ex => ({
-        exerciseId: ex.exerciseId,
-        exerciseName: ex.exerciseName,
-        sets: ex.sets.map(s => ({
-          reps: s.reps,
-          weight: s.weight,
-          completed: s.completed,
-        })),
-      })),
-    }).catch(err => console.error('[Storage] Sync failed:', err));
-  }
 }
 
 // Save the full workouts array (for bulk operations like import)
@@ -163,20 +146,6 @@ export function saveWeeklyPlan(plan: WeeklyPlan): void {
     plans.push(plan);
   }
   setItem(STORAGE_KEYS.WEEKLY_PLANS, plans);
-  
-  // Auto-sync to Google Sheets if this is the active plan
-  if (isSyncEnabled() && getActivePlanId() === plan.id) {
-    syncPlan({
-      name: plan.name,
-      days: plan.days.map(d => ({
-        dayNumber: d.dayNumber,
-        name: d.name,
-        exercises: d.exercises.map(e => ({
-          exerciseName: e.exerciseName,
-        })),
-      })),
-    }).catch(err => console.error('[Storage] Sync plan failed:', err));
-  }
 }
 
 // Save the full weekly plans array (for bulk operations like import)
@@ -362,14 +331,6 @@ export function addCustomExercise(name: string, muscleGroup: string): Exercise {
   addToSharedExerciseLibrary(newExercise).catch(err =>
     console.error('[Storage] Shared library sync failed:', err)
   );
-
-  // Auto-sync to Google Sheets
-  if (isSyncEnabled()) {
-    syncExercise({
-      name: newExercise.name,
-      muscleGroup: newExercise.muscleGroup,
-    }).catch(err => console.error('[Storage] Sync exercise failed:', err));
-  }
 
   return newExercise;
 }
