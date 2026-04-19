@@ -56,22 +56,35 @@ function compareSides(me: SideStat, buddy: SideStat): 'me' | 'buddy' | 'tie' {
   return 'tie';
 }
 
+/**
+ * Matches the streak logic in storage.calculateStats:
+ *   - Any completed workout (including rest days) counts.
+ *   - Today NOT being worked out yet is OK; counting resumes from yesterday.
+ *   - A missed day breaks the streak.
+ * The previous strict version returned 0 whenever you hadn't worked out
+ * yet today, which made Compare and Home disagree.
+ */
 function computeCurrentStreak(workouts: Workout[]): number {
-  const completed = workouts.filter((w) => w.completed && w.type !== 'rest');
-  const uniqueDates = Array.from(
-    new Set(completed.map((w) => new Date(w.date).toDateString())),
-  ).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-
+  const activeDates = new Set(
+    workouts
+      .filter((w) => w.completed)
+      .map((w) => w.date.split('T')[0]),
+  );
+  const today = new Date().toISOString().split('T')[0];
   let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < uniqueDates.length; i++) {
-    const d = new Date(uniqueDates[i]);
-    d.setHours(0, 0, 0, 0);
-    const expected = new Date(today);
-    expected.setDate(expected.getDate() - i);
-    if (d.getTime() === expected.getTime()) streak++;
-    else break;
+  const checkDate = new Date();
+  let max = 365;
+  while (max-- > 0) {
+    const ds = checkDate.toISOString().split('T')[0];
+    if (activeDates.has(ds)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else if (ds === today) {
+      // Today hasn't been worked out yet — keep checking backwards.
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
   }
   return streak;
 }

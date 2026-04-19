@@ -7,6 +7,8 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components';
 import type { UserProfile, BuddyRequest, BuddyRelationship, BuddyNotification } from '../types';
 import * as buddyService from '../buddyService';
+import * as sessionService from '../workoutSessionService';
+import * as storage from '../storage';
 
 interface BuddyViewProps {
   isDark: boolean;
@@ -371,10 +373,10 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                       </div>
 
                       {/* Quick Actions */}
-                      <div className="flex gap-2 mt-3">
+                      <div className="grid grid-cols-3 gap-2 mt-3">
                         <button
                           onClick={() => onOpenChat(buddy.chatId, buddyName, profile?.photoURL)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                             isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
                           }`}
                         >
@@ -382,24 +384,42 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                         </button>
                         <button
                           onClick={() => onViewProfile(buddyUid, buddyName, profile?.photoURL)}
-                          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                             isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
                           }`}
                         >
-                          <Dumbbell className="w-3.5 h-3.5" /> Profile
+                          <UserCheck className="w-3.5 h-3.5" /> Profile
                         </button>
                         <button
                           onClick={async () => {
-                            if (!confirm(`Remove ${buddyName} as a buddy?`)) return;
+                            const plan = storage.getActivePlan();
+                            if (!plan) { alert('Set an active workout plan first!'); return; }
+                            const day = plan.days.find((d) => !d.isRestDay) || plan.days[0];
+                            if (!day.exercises || day.exercises.length === 0) {
+                              alert('Your active plan has no exercises for this day.');
+                              return;
+                            }
                             try {
-                              await buddyService.removeBuddy(buddy.id);
-                            } catch { /* ignore */ }
+                              const sid = await sessionService.createSession(
+                                `${plan.name} - ${day.name}`,
+                                'custom',
+                                day.exercises,
+                              );
+                              try {
+                                await sessionService.inviteToSession(sid, buddyUid, buddyName, profile?.photoURL || null);
+                              } catch (inviteErr) {
+                                console.error('[WorkoutTogether] Invite failed:', inviteErr);
+                                alert(`Session created but invite failed: ${inviteErr instanceof Error ? inviteErr.message : 'unknown error'}.`);
+                              }
+                              onOpenSession(sid);
+                            } catch (err) {
+                              console.error('[WorkoutTogether] Create session failed:', err);
+                              alert(`Couldn't start a workout session: ${err instanceof Error ? err.message : 'unknown error'}`);
+                            }
                           }}
-                          className={`px-3 flex items-center justify-center py-2 rounded-lg text-xs font-medium transition-colors ${
-                            isDark ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-red-50 text-red-600 hover:bg-red-100'
-                          }`}
+                          className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
                         >
-                          <X className="w-3.5 h-3.5" />
+                          <Dumbbell className="w-3.5 h-3.5" /> Together
                         </button>
                       </div>
                     </div>
