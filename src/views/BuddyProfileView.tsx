@@ -37,34 +37,60 @@ export function BuddyProfileView({
         ]);
         setProfile(p);
 
-        // Build stats from the public profile (always accessible)
+        // Build stats from the public profile (always accessible).
+        // If the buddy has synced a compareStats snapshot, we can derive richer
+        // stats (volume, this-week count) without needing cross-user workout reads.
         if (p) {
-          setStats({
-            totalWorkouts: p.totalWorkouts || 0,
-            currentStreak: p.currentStreak || 0,
-            longestStreak: p.currentStreak || 0,
-            thisWeekWorkouts: 0,
-            totalVolume: 0,
-            avgVolumePerSession: 0,
-          });
-        }
-
-        // Try to load workout history (may fail if Firestore rules block cross-user reads)
-        try {
-          const w = await buddyService.getBuddyWorkouts(buddyUid);
-          const completed = w.filter((wk) => wk.completed && wk.type !== 'rest')
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          setWorkouts(completed);
-
-          // If workouts loaded, calculate full stats
-          if (completed.length > 0) {
-            const fullStats = await buddyService.getBuddyStats(buddyUid);
-            if (fullStats) setStats(fullStats);
+          const cs = p.compareStats;
+          if (cs) {
+            const weekAgo = new Date();
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            const thisWeek = (cs.recentWorkouts || []).filter(
+              (w) => new Date(w.date).getTime() >= weekAgo.getTime(),
+            ).length;
+            setStats({
+              totalWorkouts: cs.headline.totalWorkouts,
+              currentStreak: cs.headline.currentStreak,
+              longestStreak: cs.headline.currentStreak,
+              thisWeekWorkouts: thisWeek,
+              totalVolume: cs.headline.totalVolume,
+              avgVolumePerSession: cs.headline.avgVolumePerSession,
+            });
+          } else {
+            setStats({
+              totalWorkouts: p.totalWorkouts || 0,
+              currentStreak: p.currentStreak || 0,
+              longestStreak: p.currentStreak || 0,
+              thisWeekWorkouts: 0,
+              totalVolume: 0,
+              avgVolumePerSession: 0,
+            });
           }
-        } catch {
-          // Cross-user read blocked by Firestore rules — stats from profile are used instead
-          console.log('[BuddyProfile] Workout history not accessible (Firestore rules)');
         }
+
+        // Synthesize "recent workout history" view from compareStats.recentWorkouts
+        // so the profile shows real history without cross-user data access.
+        const recent = p?.compareStats?.recentWorkouts || [];
+        const fakeHistory: Workout[] = recent.map((rw) => ({
+          id: rw.id,
+          date: rw.date,
+          name: rw.name,
+          type: rw.type,
+          duration: rw.duration,
+          completed: true,
+          exercises: rw.topExercises.map((tx, i) => ({
+            id: `${rw.id}-${i}`,
+            exerciseId: `${rw.id}-${i}`,
+            exerciseName: tx.name,
+            sets: Array.from({ length: tx.setCount }, () => ({
+              id: crypto.randomUUID(),
+              reps: 0,
+              weight: tx.maxWeight,
+              completed: true,
+            })),
+          })),
+        }));
+        setWorkouts(fakeHistory);
 
         const rel = buddies.find((b) => b.users.includes(buddyUid));
         setBuddy(rel || null);

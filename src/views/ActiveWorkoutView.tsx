@@ -8,12 +8,19 @@ import * as storage from '../storage';
 import { hapticImpact, hapticNotification } from '../haptics';
 
 // Active Workout View
-export function ActiveWorkoutView({ workout, onUpdate, onFinish, onPause, onDiscard }: {
+export function ActiveWorkoutView({
+  workout, onUpdate, onFinish, onPause, onDiscard,
+  sessionMode, buddyProgress,
+}: {
   workout: Workout;
   onUpdate: (workout: Workout) => void;
   onFinish: () => void;
   onPause: () => void;
   onDiscard: () => void;
+  /** 'host' = finish ends session for all; 'participant' = cannot finish; null = regular personal workout */
+  sessionMode?: 'host' | 'participant' | null;
+  /** Per-exercise best set from the other buddy in the session, keyed by exercise NAME (case-insensitive, trimmed) */
+  buddyProgress?: Map<string, { buddyName: string; weight: number; reps: number }>;
 }) {
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
@@ -296,12 +303,18 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onPause, onDisc
           >
             <Trash2 className="w-5 h-5" />
           </button>
-          <button
-            onClick={onFinish}
-            className="px-4 py-2 bg-emerald-600 rounded-lg text-sm font-medium"
-          >
-            Finish
-          </button>
+          {sessionMode === 'participant' ? (
+            <div className="px-3 py-2 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-400">
+              Waiting for host…
+            </div>
+          ) : (
+            <button
+              onClick={onFinish}
+              className="px-4 py-2 bg-emerald-600 rounded-lg text-sm font-medium"
+            >
+              {sessionMode === 'host' ? 'Finish Session' : 'Finish'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -404,6 +417,7 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onPause, onDisc
                 onDelete={() => deleteExercise(exIndex)}
                 canDelete={workout.exercises.length > 1}
                 onExerciseCreated={refreshExercises}
+                buddyBest={buddyProgress?.get(exercise.exerciseName.trim().toLowerCase())}
               />
             </div>
           );
@@ -499,13 +513,15 @@ export function ActiveWorkoutView({ workout, onUpdate, onFinish, onPause, onDisc
 }
 
 // Exercise Card
-function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDelete, onExerciseCreated }: {
+function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, buddyBest }: {
   exercise: WorkoutExercise;
   onUpdateSet: (setIndex: number, updates: Partial<WorkoutSet>) => void;
   onSwapExercise: (newExercise: Exercise) => void;
   onDelete: () => void;
   canDelete: boolean;
   onExerciseCreated: () => void;
+  /** Best set from the other buddy on this exercise in the current session. */
+  buddyBest?: { buddyName: string; weight: number; reps: number };
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -535,11 +551,16 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
     return { notes: ex?.notes, videoUrl: ex?.videoUrl };
   }, [exercise.exerciseId]);
 
-  // Get PR for this exercise
+  // Get PR for this exercise — match by id OR by name so session workouts
+  // (which carry the host's exerciseIds) resolve to the local user's PR.
   const exercisePR = useMemo(() => {
     const records = storage.getPersonalRecords();
-    return records.find(r => r.exerciseId === exercise.exerciseId) ?? null;
-  }, [exercise.exerciseId]);
+    const nameKey = exercise.exerciseName.trim().toLowerCase();
+    return records.find(
+      r => r.exerciseId === exercise.exerciseId ||
+           r.exerciseName.trim().toLowerCase() === nameKey,
+    ) ?? null;
+  }, [exercise.exerciseId, exercise.exerciseName]);
   
   // Helper to get comparison indicator for a set
   const getProgressIndicator = (setIndex: number, currentWeight: number, currentReps: number) => {
@@ -793,6 +814,12 @@ function ExerciseCard({ exercise, onUpdateSet, onSwapExercise, onDelete, canDele
                         <span>{indicator.label}</span>
                       </span>
                     )}
+                  </div>
+                )}
+                {/* Buddy's best set in the current group session, if any */}
+                {setIndex === 0 && buddyBest && buddyBest.weight > 0 && buddyBest.reps > 0 && (
+                  <div className="px-2 text-xs text-blue-400">
+                    {buddyBest.buddyName} did {buddyBest.weight}kg × {buddyBest.reps} reps
                   </div>
                 )}
               </div>

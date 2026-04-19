@@ -314,3 +314,23 @@ export async function getPendingSessionInvites(): Promise<WorkoutSession[]> {
 export async function deleteSession(sessionId: string): Promise<void> {
   await deleteDoc(doc(db, 'workoutSessions', sessionId));
 }
+
+/**
+ * Host ends the session for all participants. Flips status='completed' so
+ * every participant's app detects it and auto-saves its in-progress workout.
+ */
+export async function finishSessionForAll(sessionId: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+
+  const sessionRef = doc(db, 'workoutSessions', sessionId);
+  const snap = await getDoc(sessionRef);
+  if (!snap.exists()) throw new Error('Session not found');
+  const session = snap.data() as WorkoutSession;
+  if (session.hostUid !== user.uid) throw new Error('Only the host can finish the session');
+
+  await updateDoc(sessionRef, {
+    status: 'completed',
+    completedAt: new Date().toISOString(),
+  });
+}

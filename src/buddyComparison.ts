@@ -163,7 +163,11 @@ export function computeMyCompareStats(
 ): BuddyCompareStats {
   const headline = computeHeadline(workouts);
   const groupByExId = new Map<string, MuscleGroup>();
-  for (const e of exercises) groupByExId.set(e.id, e.muscleGroup);
+  const groupByExName = new Map<string, MuscleGroup>();
+  for (const e of exercises) {
+    groupByExId.set(e.id, e.muscleGroup);
+    groupByExName.set(e.name.trim().toLowerCase(), e.muscleGroup);
+  }
 
   const volMap = computeMuscleGroupVolumes(workouts, groupByExId);
   const muscleGroupVolumes: Partial<Record<MuscleGroup, number>> = {};
@@ -184,20 +188,60 @@ export function computeMyCompareStats(
   for (const exerciseId of seen) {
     const stat = computeSideStatForExercise(workouts, exerciseId);
     if (!stat) continue;
+    const name = nameByExId.get(exerciseId) || exerciseId;
+    // Prefer muscle group lookup by id, then by name (handles session workouts
+    // where exerciseId is the host's, not the local library's id).
+    const muscleGroup =
+      groupByExId.get(exerciseId) ||
+      groupByExName.get(name.trim().toLowerCase()) ||
+      'other';
     exerciseMaxes.push({
       exerciseId,
-      exerciseName: nameByExId.get(exerciseId) || exerciseId,
-      muscleGroup: groupByExId.get(exerciseId) || 'other',
+      exerciseName: name,
+      muscleGroup,
       maxWeight: stat.maxWeight,
       repsAtMax: stat.repsAtMax,
     });
   }
+
+  // Recent workout summaries for buddy profile history view.
+  const recent = [...workouts]
+    .filter((w) => w.completed && w.type !== 'rest')
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 20);
+  const recentWorkouts: NonNullable<BuddyCompareStats['recentWorkouts']> = recent.map((w) => {
+    let totalVolume = 0;
+    const perEx: Array<{ name: string; setCount: number; maxWeight: number }> = [];
+    for (const ex of w.exercises) {
+      let setCount = 0;
+      let maxWeight = 0;
+      for (const s of ex.sets) {
+        if (s.completed) {
+          totalVolume += s.weight * s.reps;
+          setCount++;
+          if (s.weight > maxWeight) maxWeight = s.weight;
+        }
+      }
+      if (setCount > 0) perEx.push({ name: ex.exerciseName, setCount, maxWeight });
+    }
+    return {
+      id: w.id,
+      date: w.date,
+      name: w.name,
+      type: w.type,
+      duration: w.duration,
+      exerciseCount: w.exercises.length,
+      totalVolume: Math.round(totalVolume),
+      topExercises: perEx,
+    };
+  });
 
   return {
     updatedAt: new Date().toISOString(),
     headline,
     muscleGroupVolumes,
     exerciseMaxes,
+    recentWorkouts,
   };
 }
 
@@ -214,14 +258,19 @@ export function computeComparisonFromStats(
 ): ComparisonResult {
   const headline = { me: me.headline, buddy: buddy.headline };
 
-  const myById = new Map<string, BuddyCompareStats['exerciseMaxes'][number]>();
-  for (const e of me.exerciseMaxes) myById.set(e.exerciseId, e);
-  const buddyById = new Map<string, BuddyCompareStats['exerciseMaxes'][number]>();
-  for (const e of buddy.exerciseMaxes) buddyById.set(e.exerciseId, e);
+  // Match exercises by NAME (case-insensitive, trimmed) rather than by id.
+  // Different users usually have different exerciseIds for the same exercise
+  // (each created their own copy in their library), so id-matching treats
+  // every shared exercise as an "exclusive" on both sides.
+  const normName = (s: string) => s.trim().toLowerCase();
+  const myByName = new Map<string, BuddyCompareStats['exerciseMaxes'][number]>();
+  for (const e of me.exerciseMaxes) myByName.set(normName(e.exerciseName), e);
+  const buddyByName = new Map<string, BuddyCompareStats['exerciseMaxes'][number]>();
+  for (const e of buddy.exerciseMaxes) buddyByName.set(normName(e.exerciseName), e);
 
   const faceoffs: ExerciseFaceoff[] = [];
-  for (const [id, myEx] of myById) {
-    const buddyEx = buddyById.get(id);
+  for (const [key, myEx] of myByName) {
+    const buddyEx = buddyByName.get(key);
     if (!buddyEx) continue;
     const meStat: SideStat = {
       maxWeight: myEx.maxWeight,
@@ -234,7 +283,7 @@ export function computeComparisonFromStats(
       est1RM: Math.round(buddyEx.maxWeight * (1 + buddyEx.repsAtMax / 30)),
     };
     faceoffs.push({
-      exerciseId: id,
+      exerciseId: myEx.exerciseId,
       exerciseName: myEx.exerciseName || buddyEx.exerciseName,
       me: meStat,
       buddy: buddyStat,
@@ -257,17 +306,17 @@ export function computeComparisonFromStats(
   const ties = faceoffs.filter((f) => f.winner === 'tie').length;
 
   const exclusives: ExerciseExclusive[] = [];
-  for (const [id, ex] of myById) {
-    if (buddyById.has(id)) continue;
+  for (const [key, ex] of myByName) {
+    if (buddyByName.has(key)) continue;
     exclusives.push({
-      exerciseId: id, exerciseName: ex.exerciseName, side: 'me',
+      exerciseId: ex.exerciseId, exerciseName: ex.exerciseName, side: 'me',
       maxWeight: ex.maxWeight, repsAtMax: ex.repsAtMax,
     });
   }
-  for (const [id, ex] of buddyById) {
-    if (myById.has(id)) continue;
+  for (const [key, ex] of buddyByName) {
+    if (myByName.has(key)) continue;
     exclusives.push({
-      exerciseId: id, exerciseName: ex.exerciseName, side: 'buddy',
+      exerciseId: ex.exerciseId, exerciseName: ex.exerciseName, side: 'buddy',
       maxWeight: ex.maxWeight, repsAtMax: ex.repsAtMax,
     });
   }

@@ -47,6 +47,7 @@ export interface Workout {
   completed: boolean;
   startedAt?: string;
   completedAt?: string;
+  sessionId?: string; // set when this workout is part of a group session
 }
 
 export type WorkoutType = 
@@ -157,6 +158,18 @@ export interface BuddyCompareStats {
     muscleGroup: MuscleGroup;
     maxWeight: number;
     repsAtMax: number;
+  }>;
+  // Compact summaries of the 20 most recent completed workouts so buddies
+  // can see workout history on the profile without cross-user data access.
+  recentWorkouts?: Array<{
+    id: string;
+    date: string;
+    name: string;
+    type: WorkoutType;
+    duration?: number;
+    exerciseCount: number;
+    totalVolume: number;
+    topExercises: Array<{ name: string; setCount: number; maxWeight: number }>;
   }>;
 }
 

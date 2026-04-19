@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, ChevronUp, Dumbbell, Check } from 'lucide-react';
+import { ChevronDown, ChevronUp, Dumbbell, Check, Play, StopCircle } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { useAuth } from '../auth/AuthContext';
 import type { WorkoutSession, SessionParticipant, SessionReaction } from '../types';
@@ -9,9 +9,12 @@ const { REACTION_EMOJIS } = sessionService;
 
 interface GroupSessionBarProps {
   sessionId: string;
+  /** Show a "Continue" button that returns the user to the session lobby / active workout. */
+  showContinue?: boolean;
+  onContinue?: () => void;
 }
 
-export function GroupSessionBar({ sessionId }: GroupSessionBarProps) {
+export function GroupSessionBar({ sessionId, showContinue, onContinue }: GroupSessionBarProps) {
   const { user } = useAuth();
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -44,10 +47,21 @@ export function GroupSessionBar({ sessionId }: GroupSessionBarProps) {
 
   if (!session || session.status !== 'active') return null;
 
+  const isHost = session.hostUid === user?.uid;
   const participants = Object.values(session.participants).filter(
     (p) => p.status === 'active' || p.status === 'completed'
   );
   const others = participants.filter((p) => p.uid !== user?.uid);
+  const buddyName = others[0]?.name || 'your buddy';
+
+  const handleEndSession = async () => {
+    if (!confirm('End the session for everyone? Each participant\'s progress will be saved.')) return;
+    try {
+      await sessionService.finishSessionForAll(sessionId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to end session');
+    }
+  };
 
   const getProgressPercent = (p: SessionParticipant) =>
     p.totalSets > 0 ? Math.round((p.completedSets / p.totalSets) * 100) : 0;
@@ -89,25 +103,43 @@ export function GroupSessionBar({ sessionId }: GroupSessionBarProps) {
               ))}
             </div>
             <span className="text-xs font-medium text-orange-400">
-              {participants.length} working out together
+              {showContinue ? `Session with ${buddyName} active` : `${participants.length} working out together`}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            {/* Quick reaction buttons */}
-            <div className="flex gap-0.5">
-              {REACTION_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    sessionService.sendReaction(sessionId, emoji);
-                  }}
-                  className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-sm transition-colors"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
+            {showContinue && onContinue && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onContinue(); }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+              >
+                <Play className="w-3 h-3" /> Continue
+              </button>
+            )}
+            {isHost && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleEndSession(); }}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+                title="End session for everyone"
+              >
+                <StopCircle className="w-3 h-3" /> End
+              </button>
+            )}
+            {!showContinue && (
+              <div className="flex gap-0.5">
+                {REACTION_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      sessionService.sendReaction(sessionId, emoji);
+                    }}
+                    className="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center text-sm transition-colors"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
             {expanded ? (
               <ChevronUp className="w-4 h-4 text-zinc-500" />
             ) : (

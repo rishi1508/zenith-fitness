@@ -393,12 +393,22 @@ export function savePersonalRecords(records: PersonalRecord[]): void {
  * A set is a PR when it either lifts a heavier top weight than ever before,
  * OR matches the existing top weight for more reps than ever before.
  * Estimated-1RM is still shown in the UI, but it does NOT decide PR status.
+ *
+ * Matching: look up existing PR by exerciseId first; if not found, fall
+ * back to exerciseName (case-insensitive). This matters for group sessions
+ * where the host's template uses the host's exerciseIds — local user's
+ * records are keyed by their OWN library's ids, so id-only matching would
+ * treat every session set as a first-time PR (false positive).
  */
 export function checkAndUpdatePR(exerciseId: string, exerciseName: string, weight: number, reps: number): boolean {
   if (weight <= 0 || reps <= 0) return false;
 
   const records = getPersonalRecords();
-  const existing = records.find(r => r.exerciseId === exerciseId);
+  const nameKey = exerciseName.trim().toLowerCase();
+  const existingIdx = records.findIndex(
+    r => r.exerciseId === exerciseId || r.exerciseName.trim().toLowerCase() === nameKey,
+  );
+  const existing = existingIdx >= 0 ? records[existingIdx] : undefined;
 
   const isPR =
     !existing ||
@@ -408,16 +418,15 @@ export function checkAndUpdatePR(exerciseId: string, exerciseName: string, weigh
   if (!isPR) return false;
 
   const newRecord: PersonalRecord = {
-    exerciseId,
+    exerciseId: existing?.exerciseId || exerciseId, // preserve local id if matched by name
     exerciseName,
     weight,
     reps,
     date: new Date().toISOString(),
   };
 
-  if (existing) {
-    const index = records.findIndex(r => r.exerciseId === exerciseId);
-    records[index] = newRecord;
+  if (existingIdx >= 0) {
+    records[existingIdx] = newRecord;
   } else {
     records.push(newRecord);
   }

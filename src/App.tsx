@@ -41,6 +41,8 @@ function App() {
   // Group workout session state
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<WorkoutSession | null>(null);
+  const [sessionMode, setSessionMode] = useState<'host' | 'participant' | null>(null);
+  const [buddyProgress, setBuddyProgress] = useState<Map<string, { buddyName: string; weight: number; reps: number }>>(new Map());
   const sessionSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-theme check every minute when in auto mode
@@ -167,14 +169,107 @@ function App() {
         console.error('[Persist] Failed to save active workout:', e);
       }
       // Group session sync
-      if (activeSessionId) {
+      if (activeSessionId && activeWorkout.sessionId === activeSessionId) {
         if (sessionSyncTimer.current) clearTimeout(sessionSyncTimer.current);
         sessionSyncTimer.current = setTimeout(() => {
           sessionService.syncProgress(activeSessionId, activeWorkout.exercises);
         }, 2000);
       }
     }
-  }, [activeWorkout]);
+  }, [activeWorkout, activeSessionId]);
+
+  // When the host ends the session, every participant's app auto-saves their
+  // in-progress workout so they don't lose what they logged.
+  const finishWorkoutRef = useRef<((opts?: { skipValidation?: boolean; endSession?: boolean }) => void) | null>(null);
+  useEffect(() => {
+    if (!activeSessionId) return;
+    const unsub = sessionService.listenToSession(activeSessionId, (s) => {
+      if (!s) {
+        setSessionMode(null);
+        return;
+      }
+      // Determine host vs. participant for the current user
+      if (user) {
+        setSessionMode(s.hostUid === user.uid ? 'host' : 'participant');
+      }
+      if (s.status === 'completed' &&
+          activeWorkout?.sessionId === activeSessionId &&
+          !activeWorkout.completed) {
+        finishWorkoutRef.current?.({ skipValidation: true });
+      }
+    });
+    return unsub;
+  }, [activeSessionId, activeWorkout, user]);
+
+  // Listen to per-participant progress and compute each buddy's best set per
+  // exercise (keyed by exercise name, case-insensitive). Used by ActiveWorkoutView
+  // to show "Alice did 60kg × 10 reps" under the Last set line.
+  useEffect(() => {
+    if (!activeSessionId || !user) {
+      setBuddyProgress(new Map());
+      return;
+    }
+    let cancelled = false;
+    const unsubs: Array<() => void> = [];
+    const perBuddy = new Map<string, Map<string, { buddyName: string; weight: number; reps: number }>>();
+    const recompute = () => {
+      if (cancelled) return;
+      const merged = new Map<string, { buddyName: string; weight: number; reps: number }>();
+      for (const byName of perBuddy.values()) {
+        for (const [k, v] of byName) {
+          const existing = merged.get(k);
+          if (!existing ||
+              v.weight > existing.weight ||
+              (v.weight === existing.weight && v.reps > existing.reps)) {
+            merged.set(k, v);
+          }
+        }
+      }
+      setBuddyProgress(merged);
+    };
+    const setup = async () => {
+      const unsubSession = sessionService.listenToSession(activeSessionId, (session) => {
+        if (!session || cancelled) return;
+        for (const [uid, p] of Object.entries(session.participants)) {
+          if (uid === user.uid) continue;
+          if (perBuddy.has(uid)) continue;
+          const localMap = new Map<string, { buddyName: string; weight: number; reps: number }>();
+          perBuddy.set(uid, localMap);
+          const unsub = sessionService.listenToProgress(activeSessionId, uid, (progress) => {
+            localMap.clear();
+            if (progress) {
+              for (const ex of progress.exercises) {
+                let best: { weight: number; reps: number } | null = null;
+                for (const s of ex.sets) {
+                  if (!s.completed || s.weight <= 0 || s.reps <= 0) continue;
+                  if (!best ||
+                      s.weight > best.weight ||
+                      (s.weight === best.weight && s.reps > best.reps)) {
+                    best = { weight: s.weight, reps: s.reps };
+                  }
+                }
+                if (best) {
+                  localMap.set(ex.exerciseName.trim().toLowerCase(), {
+                    buddyName: p.name,
+                    weight: best.weight,
+                    reps: best.reps,
+                  });
+                }
+              }
+            }
+            recompute();
+          });
+          unsubs.push(unsub);
+        }
+      });
+      unsubs.push(unsubSession);
+    };
+    setup();
+    return () => {
+      cancelled = true;
+      for (const u of unsubs) u();
+    };
+  }, [activeSessionId, user]);
 
   // Apply theme
   useEffect(() => {
@@ -214,7 +309,7 @@ function App() {
     setupNative();
   }, [goBack]);
 
-  const startWorkout = (template: WorkoutTemplate) => {
+  const startWorkout = (template: WorkoutTemplate, sessionId?: string) => {
     // If there's already an active (paused) workout, ask to discard it first
     if (activeWorkout) {
       if (!confirm('You have an active workout in progress. Discard it and start a new one?')) {
@@ -225,12 +320,19 @@ function App() {
       setActiveWorkout(null);
     }
 
+    // Starting a new PERSONAL workout (no sessionId) implies leaving any
+    // prior group session context so the session bar doesn't bleed into
+    // unrelated personal workouts.
+    if (!sessionId && activeSessionId) {
+      setActiveSessionId(null);
+    }
+
     // Remember this template as last used
     storage.setLastUsedTemplateId(template.id);
-    
+
     // Get last weights for auto-fill
     const lastWeights = getLastWeightsForDay(template);
-    
+
     const workout: Workout = {
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
@@ -253,6 +355,7 @@ function App() {
       }),
       completed: false,
       startedAt: new Date().toISOString(),
+      ...(sessionId ? { sessionId } : {}),
     };
     setActiveWorkout(workout);
     navigateTo('active');
@@ -299,15 +402,17 @@ function App() {
     setActiveWorkout(workout);
   };
 
-  const finishWorkout = () => {
+  const finishWorkout: (opts?: { skipValidation?: boolean; endSession?: boolean }) => void = (opts) => {
     if (activeWorkout) {
-      // Validate: every exercise must have at least one set with reps > 0
-      const exercisesWithNoReps = activeWorkout.exercises.filter(ex =>
-        !ex.sets.some(s => s.reps > 0)
-      );
-      if (exercisesWithNoReps.length > 0) {
-        alert(`Please log at least one set for: ${exercisesWithNoReps.map(e => e.exerciseName).join(', ')}`);
-        return;
+      // Validate: every exercise must have at least one set with reps > 0 (unless auto-saved)
+      if (!opts?.skipValidation) {
+        const exercisesWithNoReps = activeWorkout.exercises.filter(ex =>
+          !ex.sets.some(s => s.reps > 0)
+        );
+        if (exercisesWithNoReps.length > 0) {
+          alert(`Please log at least one set for: ${exercisesWithNoReps.map(e => e.exerciseName).join(', ')}`);
+          return;
+        }
       }
 
       const completedAt = new Date().toISOString();
@@ -347,7 +452,15 @@ function App() {
       // Complete group session if in one
       if (activeSessionId && duration) {
         sessionService.syncProgress(activeSessionId, finished.exercises);
-        sessionService.completeSession(activeSessionId, duration).then(() => {
+        sessionService.completeSession(activeSessionId, duration).then(async () => {
+          // If the host is finishing, end the session for everyone.
+          if (opts?.endSession) {
+            try {
+              await sessionService.finishSessionForAll(activeSessionId);
+            } catch (e) {
+              console.error('[Session] finishSessionForAll failed:', e);
+            }
+          }
           // Listen for session completion to show comparison
           const unsub = sessionService.listenToSession(activeSessionId, (s) => {
             if (s && s.status === 'completed') {
@@ -375,6 +488,10 @@ function App() {
       setView('home');
     }
   };
+
+  // Keep latest finishWorkout in a ref so the auto-save effect doesn't need to
+  // re-subscribe every time the function identity changes.
+  finishWorkoutRef.current = finishWorkout;
 
   const pauseWorkout = useCallback(() => {
     // Navigate to home but keep activeWorkout in state + localStorage
@@ -533,6 +650,26 @@ function App() {
         </div>
       </header>
 
+      {/* Pinned group-session reminder — shown on every view EXCEPT the
+          session's own active workout (where GroupSessionBar is rendered
+          inline below) and personal workouts (where we hide it so it
+          doesn't bleed into an unrelated session). */}
+      {activeSessionId && view !== 'session-lobby' && !(view === 'active' && activeWorkout?.sessionId === activeSessionId) && !(view === 'active' && activeWorkout && activeWorkout.sessionId !== activeSessionId) && (
+        <div className="px-4 pt-3">
+          <GroupSessionBar
+            sessionId={activeSessionId}
+            showContinue
+            onContinue={() => {
+              if (activeWorkout?.sessionId === activeSessionId) {
+                navigateTo('active');
+              } else {
+                navigateTo('session-lobby');
+              }
+            }}
+          />
+        </div>
+      )}
+
       {/* Content */}
       <main className="px-4 py-4">
         {view === 'home' && (
@@ -549,13 +686,17 @@ function App() {
         )}
         {view === 'active' && activeWorkout && (
           <>
-            {activeSessionId && <GroupSessionBar sessionId={activeSessionId} />}
+            {activeSessionId && activeWorkout.sessionId === activeSessionId && (
+              <GroupSessionBar sessionId={activeSessionId} />
+            )}
             <ActiveWorkoutView
               workout={activeWorkout}
               onUpdate={saveActiveWorkout}
-              onFinish={finishWorkout}
+              onFinish={() => finishWorkout({ endSession: sessionMode === 'host' })}
               onPause={pauseWorkout}
               onDiscard={discardWorkout}
+              sessionMode={activeWorkout.sessionId === activeSessionId ? sessionMode : null}
+              buddyProgress={activeWorkout.sessionId === activeSessionId ? buddyProgress : undefined}
             />
           </>
         )}
@@ -725,7 +866,7 @@ function App() {
                 type: session.workoutType,
                 exercises: session.templateExercises,
               };
-              startWorkout(template);
+              startWorkout(template, session.id);
             }}
           />
         )}
