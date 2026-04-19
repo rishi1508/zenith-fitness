@@ -10,12 +10,12 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison } from './components';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView } from './views';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'session-lobby';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -84,7 +84,17 @@ function App() {
     return false; // No history, let app close
   }, [view, activeWorkout]);
 
+  // Open a group workout session (used by buddy invites and notification toasts)
+  const openSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+    navigationHistory.current.push('session-lobby');
+    setView('session-lobby');
+  }, []);
+
   const loadData = useCallback(() => {
+    // Rebuild PRs from workout history so stored records stay consistent with the
+    // current max-weight-then-reps hierarchy (also heals records from older logic).
+    storage.recomputePersonalRecords();
     setStats(storage.calculateStats());
     _setTemplates(storage.getTemplates()); // LEGACY
     setWorkoutHistory(storage.getWorkouts());
@@ -390,7 +400,7 @@ function App() {
     <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Update Checker */}
       <UpdateChecker />
-      {user && <NotificationToast />}
+      {user && <NotificationToast onOpenSession={openSession} />}
       
       {/* Missing Days Prompt */}
       {missingDays.length > 0 && (
@@ -635,6 +645,7 @@ function App() {
               setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL }));
               navigateTo('buddy-chat');
             }}
+            onOpenSession={openSession}
           />
         )}
         {view === 'buddy-profile' && buddyContext.uid && (
@@ -651,6 +662,19 @@ function App() {
               setActiveSessionId(sessionId);
               navigateTo('session-lobby');
             }}
+            onCompare={(uid, name, photoURL) => {
+              setBuddyContext({ uid, name, photoURL });
+              navigateTo('buddy-compare');
+            }}
+          />
+        )}
+        {view === 'buddy-compare' && buddyContext.uid && (
+          <BuddyComparisonView
+            buddyUid={buddyContext.uid}
+            buddyName={buddyContext.name}
+            buddyPhotoURL={buddyContext.photoURL}
+            isDark={isDark}
+            onBack={() => goBack()}
           />
         )}
         {view === 'buddy-chat' && buddyContext.chatId && (

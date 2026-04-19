@@ -389,35 +389,80 @@ export function savePersonalRecords(records: PersonalRecord[]): void {
   setItem(STORAGE_KEYS.RECORDS, records);
 }
 
+/**
+ * A set is a PR when it either lifts a heavier top weight than ever before,
+ * OR matches the existing top weight for more reps than ever before.
+ * Estimated-1RM is still shown in the UI, but it does NOT decide PR status.
+ */
 export function checkAndUpdatePR(exerciseId: string, exerciseName: string, weight: number, reps: number): boolean {
+  if (weight <= 0 || reps <= 0) return false;
+
   const records = getPersonalRecords();
   const existing = records.find(r => r.exerciseId === exerciseId);
-  
-  // Simple 1RM estimation: weight * (1 + reps/30)
-  const estimated1RM = weight * (1 + reps / 30);
-  const existingEstimated1RM = existing ? existing.weight * (1 + existing.reps / 30) : 0;
-  
-  if (estimated1RM > existingEstimated1RM) {
-    const newRecord: PersonalRecord = {
-      exerciseId,
-      exerciseName,
-      weight,
-      reps,
-      date: new Date().toISOString(),
-    };
-    
-    if (existing) {
-      const index = records.findIndex(r => r.exerciseId === exerciseId);
-      records[index] = newRecord;
-    } else {
-      records.push(newRecord);
-    }
-    
-    setItem(STORAGE_KEYS.RECORDS, records);
-    return true;
+
+  const isPR =
+    !existing ||
+    weight > existing.weight ||
+    (weight === existing.weight && reps > existing.reps);
+
+  if (!isPR) return false;
+
+  const newRecord: PersonalRecord = {
+    exerciseId,
+    exerciseName,
+    weight,
+    reps,
+    date: new Date().toISOString(),
+  };
+
+  if (existing) {
+    const index = records.findIndex(r => r.exerciseId === exerciseId);
+    records[index] = newRecord;
+  } else {
+    records.push(newRecord);
   }
-  
-  return false;
+
+  setItem(STORAGE_KEYS.RECORDS, records);
+  return true;
+}
+
+/**
+ * Recompute all personal records from workout history under the current hierarchy.
+ * Idempotent — running this on every app load keeps stored PRs in sync with history
+ * even when workouts are imported, edited, or deleted.
+ */
+export function recomputePersonalRecords(): void {
+  const workouts = getWorkouts()
+    .filter(w => w.completed && w.type !== 'rest')
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // oldest first
+
+  const byExercise = new Map<string, PersonalRecord>();
+
+  for (const w of workouts) {
+    for (const ex of w.exercises) {
+      for (const s of ex.sets) {
+        if (!s.completed || s.weight <= 0 || s.reps <= 0) continue;
+
+        const current = byExercise.get(ex.exerciseId);
+        const isBeatsCurrent =
+          !current ||
+          s.weight > current.weight ||
+          (s.weight === current.weight && s.reps > current.reps);
+
+        if (isBeatsCurrent) {
+          byExercise.set(ex.exerciseId, {
+            exerciseId: ex.exerciseId,
+            exerciseName: ex.exerciseName,
+            weight: s.weight,
+            reps: s.reps,
+            date: w.date, // date when this PR was first achieved
+          });
+        }
+      }
+    }
+  }
+
+  setItem(STORAGE_KEYS.RECORDS, Array.from(byExercise.values()));
 }
 
 // Get last session data for an exercise (for progressive overload tracking)

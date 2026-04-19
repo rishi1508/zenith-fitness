@@ -14,3 +14,4 @@ export { BuddyView } from './BuddyView';
 export { BuddyProfileView } from './BuddyProfileView';
 export { BuddyChatView } from './BuddyChatView';
 export { SessionLobbyView } from './SessionLobbyView';
+export { BuddyComparisonView } from './BuddyComparisonView';

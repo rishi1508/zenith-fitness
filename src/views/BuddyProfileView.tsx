@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Dumbbell, Flame, TrendingUp,
-  MessageCircle, Clock, Target, Loader2, Zap, UserMinus,
+  MessageCircle, Clock, Target, Loader2, Zap, UserMinus, Scale,
 } from 'lucide-react';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
@@ -15,10 +15,11 @@ interface BuddyProfileViewProps {
   onBack: () => void;
   onOpenChat: (chatId: string, buddyName: string) => void;
   onStartSession: (sessionId: string) => void;
+  onCompare: (buddyUid: string, buddyName: string, photoURL: string | null) => void;
 }
 
 export function BuddyProfileView({
-  buddyUid, buddyName, isDark, onBack, onOpenChat, onStartSession,
+  buddyUid, buddyName, isDark, onBack, onOpenChat, onStartSession, onCompare,
 }: BuddyProfileViewProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -158,14 +159,22 @@ export function BuddyProfileView({
 
       {/* Action Buttons */}
       {buddy && (
-        <div className="flex gap-3">
+        <div className="grid grid-cols-3 gap-2">
           <button
             onClick={() => onOpenChat(buddy.chatId, buddyName)}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm transition-colors ${
+            className={`flex items-center justify-center gap-1.5 py-3 rounded-xl font-medium text-xs transition-colors ${
               isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
             }`}
           >
             <MessageCircle className="w-4 h-4" /> Chat
+          </button>
+          <button
+            onClick={() => onCompare(buddyUid, buddyName, profile?.photoURL || null)}
+            className={`flex items-center justify-center gap-1.5 py-3 rounded-xl font-medium text-xs transition-colors ${
+              isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+            }`}
+          >
+            <Scale className="w-4 h-4" /> Compare
           </button>
           <button
             onClick={async () => {
@@ -180,9 +189,9 @@ export function BuddyProfileView({
               await sessionService.inviteToSession(sid, buddyUid, buddyName, profile?.photoURL || null);
               onStartSession(sid);
             }}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium text-sm bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
+            className="flex items-center justify-center gap-1.5 py-3 rounded-xl font-medium text-xs bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
           >
-            <Dumbbell className="w-4 h-4" /> Workout Together
+            <Dumbbell className="w-4 h-4" /> Together
           </button>
         </div>
       )}

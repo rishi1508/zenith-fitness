@@ -13,11 +13,12 @@ interface BuddyViewProps {
   onBack: () => void;
   onViewProfile: (buddyUid: string, buddyName: string, photoURL?: string | null) => void;
   onOpenChat: (chatId: string, buddyName: string, photoURL?: string | null) => void;
+  onOpenSession: (sessionId: string) => void;
 }
 
 type Tab = 'buddies' | 'requests' | 'notifications';
 
-export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyViewProps) {
+export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSession }: BuddyViewProps) {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>('buddies');
   const [searchQuery, setSearchQuery] = useState('');
@@ -160,6 +161,9 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
 
     if (notif.type === 'buddy_request') {
       setTab('requests');
+    } else if (notif.type === 'session_invite') {
+      const sessionId = notif.data?.sessionId;
+      if (sessionId) onOpenSession(sessionId);
     } else if (notif.type === 'buddy_accepted' || notif.type === 'workout_started') {
       onViewProfile(notif.fromUid, notif.fromName);
     }
@@ -530,13 +534,13 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat }: BuddyVi
                       className={`w-full text-left flex items-center gap-3 p-3 rounded-xl border transition-colors ${cardBg} ${cardBorder} ${hoverBg}`}
                     >
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        notif.type === 'workout_started'
+                        notif.type === 'workout_started' || notif.type === 'session_invite'
                           ? 'bg-emerald-500/20 text-emerald-400'
                           : notif.type === 'buddy_accepted'
                             ? 'bg-blue-500/20 text-blue-400'
                             : 'bg-orange-500/20 text-orange-400'
                       }`}>
-                        {notif.type === 'workout_started' ? (
+                        {notif.type === 'workout_started' || notif.type === 'session_invite' ? (
                           <Dumbbell className="w-5 h-5" />
                         ) : notif.type === 'buddy_accepted' ? (
                           <UserCheck className="w-5 h-5" />

@@ -535,14 +535,17 @@ export async function getNotifications(): Promise<BuddyNotification[]> {
   const user = auth.currentUser;
   if (!user) return [];
 
+  // Order-only query — avoids requiring a composite index for (read ASC, createdAt DESC).
+  // Unread filter is applied in memory.
   const q = query(
     collection(db, 'notifications', user.uid, 'items'),
-    where('read', '==', false),
     orderBy('createdAt', 'desc'),
     limit(50),
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as BuddyNotification));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as BuddyNotification))
+    .filter((n) => !n.read);
 }
 
 /** Listen to notifications in real-time. */
@@ -554,15 +557,22 @@ export function listenToNotifications(
 
   const q = query(
     collection(db, 'notifications', user.uid, 'items'),
-    where('read', '==', false),
     orderBy('createdAt', 'desc'),
     limit(50),
   );
 
-  return onSnapshot(q, (snap) => {
-    const notifications = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BuddyNotification));
-    callback(notifications);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const notifications = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as BuddyNotification))
+        .filter((n) => !n.read);
+      callback(notifications);
+    },
+    (err) => {
+      console.error('[Buddy] Notification listener failed:', err);
+    },
+  );
 }
 
 /** Mark a notification as read. */
