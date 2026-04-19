@@ -38,9 +38,9 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      # ---- Firebase Hosting Deploy ----
-      - name: Deploy to Firebase Hosting
-        run: npx firebase-tools deploy --only hosting --token "$FIREBASE_TOKEN"
+      # ---- Firebase Hosting + Firestore rules Deploy ----
+      - name: Deploy to Firebase (Hosting + Firestore rules)
+        run: npx firebase-tools deploy --only hosting,firestore:rules --token "$FIREBASE_TOKEN"
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
