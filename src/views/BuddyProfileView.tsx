@@ -181,13 +181,27 @@ export function BuddyProfileView({
               const plan = storage.getActivePlan();
               if (!plan) { alert('Set an active workout plan first!'); return; }
               const day = plan.days.find((d) => !d.isRestDay) || plan.days[0];
-              const sid = await sessionService.createSession(
-                `${plan.name} - ${day.name}`,
-                'custom',
-                day.exercises,
-              );
-              await sessionService.inviteToSession(sid, buddyUid, buddyName, profile?.photoURL || null);
-              onStartSession(sid);
+              if (!day.exercises || day.exercises.length === 0) {
+                alert('Your active plan has no exercises for this day. Add exercises to the plan first.');
+                return;
+              }
+              try {
+                const sid = await sessionService.createSession(
+                  `${plan.name} - ${day.name}`,
+                  'custom',
+                  day.exercises,
+                );
+                try {
+                  await sessionService.inviteToSession(sid, buddyUid, buddyName, profile?.photoURL || null);
+                } catch (inviteErr) {
+                  console.error('[WorkoutTogether] Invite failed:', inviteErr);
+                  alert(`Session created but invite failed: ${inviteErr instanceof Error ? inviteErr.message : 'unknown error'}. You can still invite from the lobby.`);
+                }
+                onStartSession(sid);
+              } catch (err) {
+                console.error('[WorkoutTogether] Create session failed:', err);
+                alert(`Couldn't start a workout session: ${err instanceof Error ? err.message : 'unknown error'}`);
+              }
             }}
             className="flex items-center justify-center gap-1.5 py-3 rounded-xl font-medium text-xs bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
           >

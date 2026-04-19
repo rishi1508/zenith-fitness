@@ -13,6 +13,7 @@ import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionB
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
+import { computeMyCompareStats } from './buddyComparison';
 import { useAuth } from './auth/AuthContext';
 
 type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby';
@@ -123,19 +124,38 @@ function App() {
     loadData();
   }, [loadData]);
 
+  // Upsert public profile stats (including buddy-comparison snapshot) so
+  // buddies can read them without needing raw workout access.
+  const upsertMyProfileStats = useCallback(() => {
+    if (!user) return;
+    try {
+      const freshStats = storage.calculateStats();
+      const compareStats = computeMyCompareStats(
+        storage.getWorkouts(),
+        storage.getExercises(),
+      );
+      buddyService.upsertUserProfile(freshStats, compareStats);
+    } catch (err) {
+      console.error('[App] upsertMyProfileStats failed:', err);
+    }
+  }, [user]);
+
+  // Sync profile on mount (so existing users update the new compareStats field
+  // as soon as they open the updated app).
+  useEffect(() => {
+    upsertMyProfileStats();
+  }, [upsertMyProfileStats]);
+
   // Listen for data refresh events from auth/sync layer
   // Profile upsert happens HERE (after sync) to avoid stale stats from previous account
   useEffect(() => {
     const handler = () => {
       loadData();
-      if (user) {
-        const freshStats = storage.calculateStats();
-        buddyService.upsertUserProfile(freshStats);
-      }
+      upsertMyProfileStats();
     };
     window.addEventListener('zenith-data-refresh', handler);
     return () => window.removeEventListener('zenith-data-refresh', handler);
-  }, [loadData, user]);
+  }, [loadData, upsertMyProfileStats]);
   
   // CRITICAL: Persist active workout to localStorage on every change (screen timeout fix)
   // Also sync progress to Firestore when in a group session (debounced 2s)
@@ -318,9 +338,10 @@ function App() {
       // Clear the persisted active workout (session is done)
       localStorage.removeItem('zenith_active_workout');
 
-      // Clear working-out status for buddies
+      // Clear working-out status for buddies + refresh public profile stats
       if (user) {
         buddyService.setWorkingOutStatus(false);
+        upsertMyProfileStats();
       }
 
       // Complete group session if in one
@@ -685,6 +706,7 @@ function App() {
             buddyPhotoURL={buddyContext.photoURL}
             isDark={isDark}
             onBack={() => goBack()}
+            onStartSession={openSession}
           />
         )}
         {view === 'session-lobby' && activeSessionId && (

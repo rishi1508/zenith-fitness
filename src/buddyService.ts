@@ -7,13 +7,16 @@ import {
 import { db, auth } from './firebase';
 import type {
   UserProfile, BuddyRequest, BuddyRelationship,
-  ChatMessage, BuddyNotification, Workout, UserStats,
+  ChatMessage, BuddyNotification, Workout, UserStats, BuddyCompareStats,
 } from './types';
 
 // ============ USER PROFILES ============
 
 /** Create or update the current user's public profile. */
-export async function upsertUserProfile(stats?: UserStats): Promise<void> {
+export async function upsertUserProfile(
+  stats?: UserStats,
+  compareStats?: BuddyCompareStats,
+): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
 
@@ -39,6 +42,10 @@ export async function upsertUserProfile(stats?: UserStats): Promise<void> {
         profile.totalWorkouts = stats.totalWorkouts;
         profile.currentStreak = stats.currentStreak;
       }
+    }
+
+    if (compareStats) {
+      profile.compareStats = compareStats;
     }
 
     await setDoc(ref, profile, { merge: true });

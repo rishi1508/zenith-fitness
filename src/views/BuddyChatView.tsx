@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components';
 import type { ChatMessage } from '../types';
 import * as buddyService from '../buddyService';
+import * as sessionService from '../workoutSessionService';
 import * as storage from '../storage';
 
 interface BuddyChatViewProps {
@@ -15,9 +16,10 @@ interface BuddyChatViewProps {
   buddyPhotoURL?: string | null;
   isDark: boolean;
   onBack: () => void;
+  onStartSession: (sessionId: string) => void;
 }
 
-export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDark, onBack }: BuddyChatViewProps) {
+export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDark, onBack, onStartSession }: BuddyChatViewProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -231,7 +233,35 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                       {isInvite && !isMe && (
                         <button
                           onClick={async () => {
-                            await buddyService.sendMessage(chatId, `I'm in! Let's do "${msg.workoutData?.workoutName || 'it'}" together!`, 'workout_update', undefined, buddyUid);
+                            // Turn the chat invite into a real group session:
+                            // the accepter creates the session, invites the inviter,
+                            // and navigates both to the lobby (via notification for the other side).
+                            const plan = storage.getActivePlan();
+                            if (!plan) { alert('Set an active workout plan first!'); return; }
+                            const day = plan.days.find((d) => !d.isRestDay) || plan.days[0];
+                            if (!day.exercises || day.exercises.length === 0) {
+                              alert('Your active plan has no exercises for this day.');
+                              return;
+                            }
+                            try {
+                              await buddyService.sendMessage(
+                                chatId,
+                                `I'm in! Let's do "${msg.workoutData?.workoutName || 'it'}" together!`,
+                                'workout_update',
+                                undefined,
+                                buddyUid,
+                              );
+                              const sid = await sessionService.createSession(
+                                `${plan.name} - ${day.name}`,
+                                'custom',
+                                day.exercises,
+                              );
+                              await sessionService.inviteToSession(sid, buddyUid, buddyName, buddyPhotoURL || null);
+                              onStartSession(sid);
+                            } catch (err) {
+                              console.error('[Chat] Accept & Start failed:', err);
+                              alert(`Couldn't start the session: ${err instanceof Error ? err.message : 'unknown error'}`);
+                            }
                           }}
                           className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1"
                         >

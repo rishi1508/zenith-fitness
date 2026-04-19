@@ -1,4 +1,4 @@
-import type { Workout, Exercise, MuscleGroup } from './types';
+import type { Workout, Exercise, MuscleGroup, BuddyCompareStats } from './types';
 
 // ========== Public types ==========
 
@@ -148,6 +148,160 @@ function computeMuscleGroupVolumes(
     }
   }
   return result;
+}
+
+// ========== Snapshot for cross-user read ==========
+
+/**
+ * Build a self-contained comparison snapshot from the current user's own
+ * workouts. Serialized onto userProfile so a buddy can read it without
+ * needing access to raw workout docs.
+ */
+export function computeMyCompareStats(
+  workouts: Workout[],
+  exercises: Exercise[],
+): BuddyCompareStats {
+  const headline = computeHeadline(workouts);
+  const groupByExId = new Map<string, MuscleGroup>();
+  for (const e of exercises) groupByExId.set(e.id, e.muscleGroup);
+
+  const volMap = computeMuscleGroupVolumes(workouts, groupByExId);
+  const muscleGroupVolumes: Partial<Record<MuscleGroup, number>> = {};
+  for (const [group, vol] of volMap) muscleGroupVolumes[group] = Math.round(vol);
+
+  // Collect every unique exerciseId the user has actually done
+  const seen = new Set<string>();
+  const nameByExId = new Map<string, string>();
+  for (const w of workouts) {
+    if (!w.completed || w.type === 'rest') continue;
+    for (const ex of w.exercises) {
+      seen.add(ex.exerciseId);
+      if (!nameByExId.has(ex.exerciseId)) nameByExId.set(ex.exerciseId, ex.exerciseName);
+    }
+  }
+
+  const exerciseMaxes: BuddyCompareStats['exerciseMaxes'] = [];
+  for (const exerciseId of seen) {
+    const stat = computeSideStatForExercise(workouts, exerciseId);
+    if (!stat) continue;
+    exerciseMaxes.push({
+      exerciseId,
+      exerciseName: nameByExId.get(exerciseId) || exerciseId,
+      muscleGroup: groupByExId.get(exerciseId) || 'other',
+      maxWeight: stat.maxWeight,
+      repsAtMax: stat.repsAtMax,
+    });
+  }
+
+  return {
+    updatedAt: new Date().toISOString(),
+    headline,
+    muscleGroupVolumes,
+    exerciseMaxes,
+  };
+}
+
+// ========== Profile-based comparison ==========
+
+/**
+ * Compute a comparison from two BuddyCompareStats snapshots (one per user).
+ * Preferred over computeComparison when raw workout data isn't available
+ * cross-user — the snapshots are stored on each user's public profile.
+ */
+export function computeComparisonFromStats(
+  me: BuddyCompareStats,
+  buddy: BuddyCompareStats,
+): ComparisonResult {
+  const headline = { me: me.headline, buddy: buddy.headline };
+
+  const myById = new Map<string, BuddyCompareStats['exerciseMaxes'][number]>();
+  for (const e of me.exerciseMaxes) myById.set(e.exerciseId, e);
+  const buddyById = new Map<string, BuddyCompareStats['exerciseMaxes'][number]>();
+  for (const e of buddy.exerciseMaxes) buddyById.set(e.exerciseId, e);
+
+  const faceoffs: ExerciseFaceoff[] = [];
+  for (const [id, myEx] of myById) {
+    const buddyEx = buddyById.get(id);
+    if (!buddyEx) continue;
+    const meStat: SideStat = {
+      maxWeight: myEx.maxWeight,
+      repsAtMax: myEx.repsAtMax,
+      est1RM: Math.round(myEx.maxWeight * (1 + myEx.repsAtMax / 30)),
+    };
+    const buddyStat: SideStat = {
+      maxWeight: buddyEx.maxWeight,
+      repsAtMax: buddyEx.repsAtMax,
+      est1RM: Math.round(buddyEx.maxWeight * (1 + buddyEx.repsAtMax / 30)),
+    };
+    faceoffs.push({
+      exerciseId: id,
+      exerciseName: myEx.exerciseName || buddyEx.exerciseName,
+      me: meStat,
+      buddy: buddyStat,
+      winner: compareSides(meStat, buddyStat),
+    });
+  }
+  faceoffs.sort((a, b) => {
+    if (a.winner === 'tie' && b.winner !== 'tie') return 1;
+    if (b.winner === 'tie' && a.winner !== 'tie') return -1;
+    if (a.winner === 'tie' && b.winner === 'tie') {
+      return a.exerciseName.localeCompare(b.exerciseName);
+    }
+    const gapA = Math.abs(a.me.maxWeight - a.buddy.maxWeight);
+    const gapB = Math.abs(b.me.maxWeight - b.buddy.maxWeight);
+    return gapB - gapA;
+  });
+
+  const meLeads = faceoffs.filter((f) => f.winner === 'me').length;
+  const buddyLeads = faceoffs.filter((f) => f.winner === 'buddy').length;
+  const ties = faceoffs.filter((f) => f.winner === 'tie').length;
+
+  const exclusives: ExerciseExclusive[] = [];
+  for (const [id, ex] of myById) {
+    if (buddyById.has(id)) continue;
+    exclusives.push({
+      exerciseId: id, exerciseName: ex.exerciseName, side: 'me',
+      maxWeight: ex.maxWeight, repsAtMax: ex.repsAtMax,
+    });
+  }
+  for (const [id, ex] of buddyById) {
+    if (myById.has(id)) continue;
+    exclusives.push({
+      exerciseId: id, exerciseName: ex.exerciseName, side: 'buddy',
+      maxWeight: ex.maxWeight, repsAtMax: ex.repsAtMax,
+    });
+  }
+  exclusives.sort((a, b) => a.exerciseName.localeCompare(b.exerciseName));
+
+  const allGroups = new Set<MuscleGroup>([
+    ...Object.keys(me.muscleGroupVolumes) as MuscleGroup[],
+    ...Object.keys(buddy.muscleGroupVolumes) as MuscleGroup[],
+  ]);
+  const muscleGroups: MuscleGroupFaceoff[] = [];
+  for (const group of allGroups) {
+    const meVolume = me.muscleGroupVolumes[group] || 0;
+    const buddyVolume = buddy.muscleGroupVolumes[group] || 0;
+    if (meVolume === 0 && buddyVolume === 0) continue;
+    const total = meVolume + buddyVolume;
+    const ratio = total > 0 ? Math.abs(meVolume - buddyVolume) / total : 0;
+    const winner: 'me' | 'buddy' | 'tie' =
+      ratio < 0.02 ? 'tie' : meVolume > buddyVolume ? 'me' : 'buddy';
+    muscleGroups.push({ group, meVolume, buddyVolume, winner });
+  }
+  const GROUP_ORDER: MuscleGroup[] = [
+    'chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other',
+  ];
+  muscleGroups.sort(
+    (a, b) => GROUP_ORDER.indexOf(a.group) - GROUP_ORDER.indexOf(b.group),
+  );
+
+  return {
+    headline,
+    muscleGroups,
+    exercises: faceoffs,
+    exclusives,
+    verdict: { meLeads, buddyLeads, ties },
+  };
 }
 
 // ========== Public entry point ==========

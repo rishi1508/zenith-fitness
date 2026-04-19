@@ -60,27 +60,43 @@ export function NotificationToast({ onOpenSession }: NotificationToastProps) {
     }
   }, [removeToast]);
 
-  // Listen for real-time notifications
+  // Listen for real-time notifications.
+  // seenIds is persisted in localStorage (scoped to user) so reopening the app
+  // doesn't re-toast old ones — but genuinely new notifications received while
+  // offline DO toast on next launch.
   useEffect(() => {
     if (!user) return;
 
-    const seenIds = new Set<string>();
-    let isFirstSnapshot = true;
+    const storageKey = `zenith_seen_notifications_${user.uid}`;
+    const loadSeen = (): Set<string> => {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+      } catch {
+        return new Set<string>();
+      }
+    };
+    const saveSeen = (seen: Set<string>) => {
+      try {
+        // Cap at 500 most-recent IDs to avoid unbounded growth
+        const arr = Array.from(seen);
+        const capped = arr.slice(-500);
+        localStorage.setItem(storageKey, JSON.stringify(capped));
+      } catch { /* quota ignore */ }
+    };
+
+    const seenIds = loadSeen();
 
     const unsub = buddyService.listenToNotifications((notifications) => {
-      if (isFirstSnapshot) {
-        // Seed seenIds from whatever was already unread at mount time.
-        // Users shouldn't get flooded with toasts for notifications they've already been offline for.
-        for (const notif of notifications) seenIds.add(notif.id);
-        isFirstSnapshot = false;
-        return;
-      }
+      let changed = false;
       for (const notif of notifications) {
         if (!seenIds.has(notif.id)) {
           seenIds.add(notif.id);
+          changed = true;
           addToast(notif);
         }
       }
+      if (changed) saveSeen(seenIds);
     });
 
     return unsub;

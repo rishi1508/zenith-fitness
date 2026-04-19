@@ -138,6 +138,28 @@ export interface WeeklyVolumeProgress {
 
 // ============ BUDDY SYSTEM ============
 
+/** Buddy comparison snapshot stored on the public profile so buddies can
+ *  read it without needing cross-user access to raw workout data. */
+export interface BuddyCompareStats {
+  updatedAt: string; // ISO
+  headline: {
+    totalWorkouts: number;
+    currentStreak: number;
+    totalVolume: number;
+    avgVolumePerSession: number;
+  };
+  // Per-muscle-group total volume (kg). Only includes groups with non-zero volume.
+  muscleGroupVolumes: Partial<Record<MuscleGroup, number>>;
+  // Per-exercise max lift (heavier weight wins; same-weight-more-reps wins).
+  exerciseMaxes: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    muscleGroup: MuscleGroup;
+    maxWeight: number;
+    repsAtMax: number;
+  }>;
+}
+
 /** Public user profile (searchable by other users) */
 export interface UserProfile {
   uid: string;
@@ -150,6 +172,7 @@ export interface UserProfile {
   isWorkingOut: boolean;
   activeWorkoutName?: string;
   activeWorkoutStartedAt?: string;
+  compareStats?: BuddyCompareStats;
 }
 
 /** Buddy request between two users */

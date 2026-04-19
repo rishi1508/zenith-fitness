@@ -2,11 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft, Crown, Loader2, Scale, Trophy, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import type { Workout, MuscleGroup } from '../types';
+import type { BuddyCompareStats, MuscleGroup } from '../types';
 import * as storage from '../storage';
 import * as buddyService from '../buddyService';
 import { Avatar } from '../components';
-import { computeComparison, type ComparisonResult } from '../buddyComparison';
+import {
+  computeMyCompareStats, computeComparisonFromStats,
+  type ComparisonResult,
+} from '../buddyComparison';
 
 interface BuddyComparisonViewProps {
   buddyUid: string;
@@ -36,36 +39,47 @@ function formatVolume(kg: number): string {
 export function BuddyComparisonView({
   buddyUid, buddyName, buddyPhotoURL, isDark, onBack,
 }: BuddyComparisonViewProps) {
-  const [buddyWorkouts, setBuddyWorkouts] = useState<Workout[] | null>(null);
+  const [buddyStats, setBuddyStats] = useState<BuddyCompareStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showExclusives, setShowExclusives] = useState(false);
 
-  const myWorkouts = useMemo(() => storage.getWorkouts(), []);
-  const exercises = useMemo(() => storage.getExercises(), []);
+  // My comparison snapshot is computed fresh from local storage.
+  const myStats = useMemo(
+    () => computeMyCompareStats(storage.getWorkouts(), storage.getExercises()),
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const w = await buddyService.getBuddyWorkouts(buddyUid);
-        if (!cancelled) setBuddyWorkouts(w);
+        const profile = await buddyService.getUserProfile(buddyUid);
+        if (cancelled) return;
+        if (!profile) {
+          setError(`Could not load ${buddyName}'s profile.`);
+        } else if (!profile.compareStats) {
+          // Buddy hasn't opened the updated app yet — no snapshot to compare against.
+          setError(`${buddyName} hasn't synced comparison data yet. Ask them to open the app once and try again.`);
+        } else {
+          setBuddyStats(profile.compareStats);
+        }
       } catch (e) {
         if (!cancelled) {
-          console.error('[BuddyCompare] Failed to load buddy workouts:', e);
-          setError('Could not load buddy workouts.');
+          console.error('[BuddyCompare] Failed to load buddy profile:', e);
+          setError('Could not load buddy profile.');
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [buddyUid]);
+  }, [buddyUid, buddyName]);
 
   const result: ComparisonResult | null = useMemo(() => {
-    if (!buddyWorkouts) return null;
-    return computeComparison(myWorkouts, buddyWorkouts, exercises);
-  }, [myWorkouts, buddyWorkouts, exercises]);
+    if (!buddyStats) return null;
+    return computeComparisonFromStats(myStats, buddyStats);
+  }, [myStats, buddyStats]);
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -97,8 +111,8 @@ export function BuddyComparisonView({
     );
   }
 
-  const noBuddyWorkouts = (buddyWorkouts?.length || 0) === 0;
-  const noMyWorkouts = myWorkouts.length === 0;
+  const noBuddyWorkouts = (buddyStats?.headline.totalWorkouts || 0) === 0;
+  const noMyWorkouts = myStats.headline.totalWorkouts === 0;
   if (noBuddyWorkouts || noMyWorkouts) {
     const who = noBuddyWorkouts ? buddyName : 'You';
     return (
