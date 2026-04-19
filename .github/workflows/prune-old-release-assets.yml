@@ -1,0 +1,77 @@
+name: Prune old release assets
+
+# Deletes .apk attachments from any release that is:
+#   - NOT the latest non-draft, non-prerelease release
+#   - AND older than 7 days (by published_at / created_at)
+#
+# The release itself (tag, notes) is kept so history stays intact; only
+# the large APK blob is removed. Keeps storage bounded while always
+# preserving the latest release's APK for downloads.
+
+on:
+  schedule:
+    - cron: '17 3 * * *' # daily at 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune APKs from non-latest releases older than 7 days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          NOW_EPOCH=$(date +%s)
+          CUTOFF=$((NOW_EPOCH - 7*86400))
+
+          RELEASES=$(gh api "/repos/${REPO}/releases?per_page=100" --paginate)
+
+          LATEST_ID=$(echo "$RELEASES" | jq '[.[] | select(.draft==false and .prerelease==false)] | sort_by(.published_at) | last | .id')
+          LATEST_TAG=$(echo "$RELEASES" | jq -r --argjson id "$LATEST_ID" '.[] | select(.id == $id) | .tag_name')
+          echo "Latest release to preserve: $LATEST_TAG (id=$LATEST_ID)"
+
+          PRUNED_RELEASES=0
+          PRUNED_ASSETS=0
+          FREED_BYTES=0
+
+          echo "$RELEASES" | jq -c '.[]' | while read -r rel; do
+            REL_ID=$(echo "$rel" | jq -r '.id')
+            REL_TAG=$(echo "$rel" | jq -r '.tag_name')
+            REL_PUB=$(echo "$rel" | jq -r '.published_at // .created_at')
+
+            if [ "$REL_ID" = "$LATEST_ID" ]; then
+              echo "· skip latest: $REL_TAG"
+              continue
+            fi
+
+            REL_EPOCH=$(date -d "$REL_PUB" +%s)
+            if [ "$REL_EPOCH" -gt "$CUTOFF" ]; then
+              echo "· skip <7d old: $REL_TAG ($REL_PUB)"
+              continue
+            fi
+
+            # Only target .apk assets — leave other files (if any) alone
+            APK_ASSETS=$(echo "$rel" | jq -c '[.assets[]? | select(.name | endswith(".apk"))]')
+            COUNT=$(echo "$APK_ASSETS" | jq 'length')
+            if [ "$COUNT" = "0" ]; then
+              echo "· no .apk on $REL_TAG"
+              continue
+            fi
+
+            echo "· pruning $COUNT apk(s) from $REL_TAG"
+            echo "$APK_ASSETS" | jq -c '.[]' | while read -r asset; do
+              ASSET_ID=$(echo "$asset" | jq -r '.id')
+              ASSET_NAME=$(echo "$asset" | jq -r '.name')
+              ASSET_SIZE=$(echo "$asset" | jq -r '.size')
+              echo "  - delete $ASSET_NAME ($ASSET_SIZE bytes)"
+              gh api --method DELETE "/repos/${REPO}/releases/assets/${ASSET_ID}"
+            done
+          done
+
+          echo "Done."
