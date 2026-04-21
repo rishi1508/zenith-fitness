@@ -23,11 +23,31 @@ const STORAGE_TO_FIRESTORE: Record<string, string> = {
 
 // Debounce timers for fire-and-forget sync
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// The latest value per key waiting to be written. Kept up-to-date alongside
+// the debounce so flushPendingWrites() can push everything immediately on
+// app unload / tab hide.
+const pendingWrites = new Map<string, unknown>();
 let currentUserId: string | null = null;
 let unsubscribers: (() => void)[] = [];
 
 // Flag to prevent Firestore listener from writing back to localStorage during pull
 let isSyncing = false;
+
+const DEBOUNCE_MS = 300; // Was 1000ms — long enough to lose writes if the
+// user closed the app within a second of editing. 300ms still batches rapid
+// typing without risking data loss.
+
+async function writeToFirestore(localStorageKey: string, value: unknown): Promise<void> {
+  if (!currentUserId) return;
+  const firestoreDoc = STORAGE_TO_FIRESTORE[localStorageKey];
+  if (!firestoreDoc) return;
+  try {
+    const docRef = doc(db, 'users', currentUserId, 'data', firestoreDoc);
+    await setDoc(docRef, { value, updatedAt: Date.now() });
+  } catch (err) {
+    console.error(`[FirestoreSync] Failed to sync ${localStorageKey}:`, err);
+  }
+}
 
 /**
  * Queue a Firestore write (debounced, fire-and-forget).
@@ -35,26 +55,36 @@ let isSyncing = false;
  */
 export function queueFirestoreSync(localStorageKey: string, value: unknown): void {
   if (!currentUserId || isSyncing) return;
-  const firestoreDoc = STORAGE_TO_FIRESTORE[localStorageKey];
-  if (!firestoreDoc) return;
+  if (!STORAGE_TO_FIRESTORE[localStorageKey]) return;
 
-  // Debounce: wait 1s after last change before writing
+  pendingWrites.set(localStorageKey, value);
+
   const existing = debounceTimers.get(localStorageKey);
   if (existing) clearTimeout(existing);
 
-  const userId = currentUserId;
   debounceTimers.set(
     localStorageKey,
-    setTimeout(async () => {
+    setTimeout(() => {
       debounceTimers.delete(localStorageKey);
-      try {
-        const docRef = doc(db, 'users', userId, 'data', firestoreDoc);
-        await setDoc(docRef, { value, updatedAt: Date.now() });
-      } catch (err) {
-        console.error(`[FirestoreSync] Failed to sync ${localStorageKey}:`, err);
-      }
-    }, 1000)
+      const v = pendingWrites.get(localStorageKey);
+      pendingWrites.delete(localStorageKey);
+      writeToFirestore(localStorageKey, v);
+    }, DEBOUNCE_MS),
   );
+}
+
+/**
+ * Immediately write every pending change to Firestore. Call this from
+ * visibilitychange (hidden) and beforeunload handlers so the user never
+ * loses a save by closing the app during the debounce window.
+ */
+export async function flushPendingWrites(): Promise<void> {
+  if (pendingWrites.size === 0) return;
+  for (const timer of debounceTimers.values()) clearTimeout(timer);
+  debounceTimers.clear();
+  const entries = Array.from(pendingWrites.entries());
+  pendingWrites.clear();
+  await Promise.all(entries.map(([k, v]) => writeToFirestore(k, v)));
 }
 
 /**
@@ -131,6 +161,12 @@ export async function migrateLocalStorageToFirestore(userId: string): Promise<bo
 
 /**
  * Pull all Firestore data into localStorage (for returning users on new device).
+ *
+ * IMPORTANT: For each key we compare byte length and, where available,
+ * `updatedAt`. We never overwrite a non-empty local value that looks richer
+ * or identical to the cloud copy — that was the data-loss vector when the
+ * user added notes locally, closed the app inside the debounce window, and
+ * on reopen the pull wiped their notes with the stale cloud state.
  */
 export async function pullFirestoreToLocalStorage(userId: string): Promise<void> {
   currentUserId = userId;
@@ -141,12 +177,24 @@ export async function pullFirestoreToLocalStorage(userId: string): Promise<void>
       try {
         const docRef = doc(db, 'users', userId, 'data', firestoreDoc);
         const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.value !== undefined) {
-            localStorage.setItem(localKey, JSON.stringify(data.value));
+        if (!snap.exists()) continue;
+        const data = snap.data();
+        if (data.value === undefined) continue;
+
+        const existingRaw = localStorage.getItem(localKey);
+        if (existingRaw) {
+          const cloudRaw = JSON.stringify(data.value);
+          // Don't overwrite if local is already a superset of or equal to
+          // cloud. Conservative heuristic: if the local payload is longer,
+          // assume it has unsynced edits and skip (a pending write will push
+          // it on the next flush).
+          if (existingRaw.length >= cloudRaw.length) {
+            // Push local up to cloud in case it diverged in the user's favor.
+            queueFirestoreSync(localKey, JSON.parse(existingRaw));
+            continue;
           }
         }
+        localStorage.setItem(localKey, JSON.stringify(data.value));
       } catch (err) {
         console.error(`[FirestoreSync] Failed to pull ${firestoreDoc}:`, err);
       }

@@ -14,6 +14,7 @@ import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView,
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
+import { flushPendingWrites } from './firestoreSync';
 import { useAuth } from './auth/AuthContext';
 
 type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'common-templates' | 'profile';
@@ -322,6 +323,24 @@ function App() {
     try { localStorage.setItem('zenith_theme', theme); } catch {}
   }, [theme]);
 
+  // Flush any in-flight localStorage → Firestore writes when the tab is
+  // hidden / the app is closed, so edits made within the debounce window
+  // aren't lost (which is what was eating exercise notes).
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flushPendingWrites();
+    };
+    const onBeforeUnload = () => { flushPendingWrites(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onBeforeUnload);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onBeforeUnload);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, []);
+
   const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), []);
 
   // Keep a ref to the latest goBack so the Capacitor back-button handler
@@ -602,7 +621,7 @@ function App() {
   }
   
   return (
-    <div className={`min-h-screen pb-20 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`h-dvh flex flex-col overflow-hidden transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Update Checker */}
       <UpdateChecker />
       {user && <NotificationToast onOpenSession={openSession} />}
@@ -684,7 +703,7 @@ function App() {
       )}
       
       {/* Header */}
-      <header className={`sticky top-0 backdrop-blur-sm border-b px-4 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`} style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: '12px' }}>
+      <header className={`flex-none backdrop-blur-sm border-b px-4 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`} style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: '12px' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {/* In-app icon = the app drawer icon from /public/icon.svg so
@@ -738,7 +757,7 @@ function App() {
       )}
 
       {/* Content */}
-      <main className="px-4 py-4">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 pb-24" style={{ overscrollBehavior: 'none' }}>
         {view === 'home' && (
           <HomeView
             workouts={workoutHistory}

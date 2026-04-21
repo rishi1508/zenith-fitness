@@ -141,9 +141,17 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   };
 
   const handleDelete = async () => {
-    if (!allMine || selectedMessages.length === 0) return;
-    if (!confirm(`Delete ${selectedMessages.length} message${selectedMessages.length === 1 ? '' : 's'}?`)) return;
-    await Promise.all(selectedMessages.map((m) => buddyService.deleteMessage(chatId, m.id)));
+    if (selectedMessages.length === 0) return;
+    const myOwn = selectedMessages.filter((m) => m.senderId === user?.uid);
+    if (myOwn.length === 0) {
+      alert("You can only delete your own messages.");
+      return;
+    }
+    const msg = myOwn.length === selectedMessages.length
+      ? `Delete ${myOwn.length} message${myOwn.length === 1 ? '' : 's'}?`
+      : `Delete your ${myOwn.length} message${myOwn.length === 1 ? '' : 's'}? (${selectedMessages.length - myOwn.length} not yours will be kept.)`;
+    if (!confirm(msg)) return;
+    await Promise.all(myOwn.map((m) => buddyService.deleteMessage(chatId, m.id)));
     clearSelection();
   };
 
@@ -181,7 +189,10 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)]">
+    // h-full fills the scrollable <main> area so the header (or selection
+    // action bar) always sits at the top and the messages pane scrolls
+    // internally — no more "scroll to the top to reveal the action bar".
+    <div className="flex flex-col h-full min-h-[calc(100dvh-140px)]">
       {/* Chat Header — swapped for the selection-mode action bar when
           one or more messages are selected (long-press → multi-select). */}
       {inSelectionMode ? (
@@ -203,15 +214,13 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
           >
             <Copy className="w-5 h-5" />
           </button>
-          {allMine && (
-            <button
-              onClick={handleDelete}
-              className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-red-500/20 text-red-400' : 'hover:bg-red-50 text-red-600'}`}
-              title="Delete"
-            >
-              <Trash2 className="w-5 h-5" />
-            </button>
-          )}
+          <button
+            onClick={handleDelete}
+            className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-red-500/20 text-red-400' : 'hover:bg-red-50 text-red-600'}`}
+            title={allMine ? 'Delete selected' : "Delete (only your own messages will be removed)"}
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
         </div>
       ) : (
         <div className="flex items-center gap-3 pb-3">
@@ -279,8 +288,19 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                 return (
                   <div
                     key={msg.id}
-                    className={`flex mb-2 ${isMe ? 'justify-end' : 'justify-start'}`}
                     onClick={() => { if (inSelectionMode) toggleSelection(msg); }}
+                    // WhatsApp-style full-row tint on the selected message
+                    // (orange for dark, warmer for light). Covers the entire
+                    // row including the gutter, not just the bubble.
+                    className={`flex mb-2 -mx-3 px-3 py-0.5 transition-colors ${
+                      isMe ? 'justify-end' : 'justify-start'
+                    } ${
+                      isSelected
+                        ? isDark
+                          ? 'bg-orange-500/15'
+                          : 'bg-orange-100/70'
+                        : ''
+                    }`}
                   >
                     <div
                       onTouchStart={(e) => handleLongPressStart(msg, e)}
@@ -288,9 +308,7 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                       onTouchEnd={handleLongPressEnd}
                       onTouchCancel={handleLongPressEnd}
                       onContextMenu={(e) => { e.preventDefault(); setSelectedIds(new Set([msg.id])); }}
-                      className={`max-w-[80%] rounded-2xl px-3.5 py-2 select-none transition-shadow ${
-                        isSelected ? 'ring-2 ring-orange-400 ring-offset-2 ring-offset-transparent' : ''
-                      } ${
+                      className={`max-w-[80%] rounded-2xl px-3.5 py-2 select-none ${
                         isInvite || isUpdate
                           ? isDark
                             ? 'bg-emerald-500/15 border border-emerald-500/30'
