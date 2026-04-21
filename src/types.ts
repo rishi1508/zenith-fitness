@@ -84,6 +84,10 @@ export interface WeeklyPlan {
   days: DayPlan[];
   isCustom?: boolean;
   isImported?: boolean;
+  /** If this plan was imported from a sharedTemplates/{id} doc, record the
+   *  source id so the Common Templates view can show "Remove" instead of
+   *  "Add" and support one-click removal. */
+  sourceTemplateId?: string;
 }
 
 // Legacy - kept for backward compatibility, represents a single day workout

@@ -17,11 +17,26 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
   const [exercises, setExercises] = useState(day.exercises);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const allExercises = storage.getExercises();
-  
+  const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
+  const [showCreate, setShowCreate] = useState(false);
+  const [newMuscleGroup, setNewMuscleGroup] = useState<string>('chest');
+
   const filteredExercises = allExercises.filter(ex =>
     ex.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleCreateAndAdd = () => {
+    const name = searchQuery.trim();
+    if (!name) return;
+    // Prevent duplicates (case-insensitive)
+    const existing = allExercises.find(
+      (e) => e.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    const ex = existing || storage.addCustomExercise(name, newMuscleGroup);
+    if (!existing) setAllExercises(storage.getExercises());
+    addExercise(ex);
+    setShowCreate(false);
+  };
   
   const addExercise = (exercise: Exercise) => {
     setExercises([...exercises, {
@@ -108,6 +123,55 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
               </div>
             </button>
           ))}
+
+          {/* Not found? Offer to create a new exercise without leaving the flow */}
+          {searchQuery.trim() && filteredExercises.length === 0 && !showCreate && (
+            <button
+              onClick={() => setShowCreate(true)}
+              className={`w-full p-4 rounded-xl border-2 border-dashed text-left transition-colors ${
+                isDark ? 'border-orange-500/40 hover:border-orange-500 hover:bg-orange-500/10' : 'border-orange-400 hover:bg-orange-50'
+              }`}
+            >
+              <div className="flex items-center gap-2 text-orange-400 font-medium">
+                <Plus className="w-4 h-4" />
+                Create "{searchQuery.trim()}" as a new exercise
+              </div>
+              <div className={`text-xs mt-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                It'll be added to your Exercise Library and this day.
+              </div>
+            </button>
+          )}
+          {searchQuery.trim() && showCreate && (
+            <div className={`rounded-xl border p-4 space-y-3 ${isDark ? 'bg-[#1a1a1a] border-orange-500/40' : 'bg-white border-orange-400'}`}>
+              <div className="text-sm font-medium">New exercise: "{searchQuery.trim()}"</div>
+              <div>
+                <label className={`text-xs block mb-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Muscle group</label>
+                <select
+                  value={newMuscleGroup}
+                  onChange={(e) => setNewMuscleGroup(e.target.value)}
+                  className={`w-full rounded-lg px-3 py-2 text-sm border ${
+                    isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-white border-gray-200'
+                  } focus:outline-none focus:border-orange-500`}
+                >
+                  {['chest','back','shoulders','biceps','triceps','legs','core','full_body','other'].map(g => (
+                    <option key={g} value={g}>{g.replace('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowCreate(false)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+                  }`}
+                >Cancel</button>
+                <button
+                  onClick={handleCreateAndAdd}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
+                >Create & add</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

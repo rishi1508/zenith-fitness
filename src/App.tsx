@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dumbbell, Calendar,
-  Flame, Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon,
+  Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon,
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
@@ -137,6 +137,9 @@ function App() {
   }, [goBack]);
 
   const loadData = useCallback(() => {
+    // Fill in missed days with auto-rest so streaks reflect real consistency
+    // (up to 7 days per gap). Idempotent so running on every mount is safe.
+    storage.autoLogMissedRestDays();
     // Rebuild PRs from workout history so stored records stay consistent with the
     // current max-weight-then-reps hierarchy (also heals records from older logic).
     storage.recomputePersonalRecords();
@@ -662,9 +665,9 @@ function App() {
       <header className={`sticky top-0 backdrop-blur-sm border-b px-4 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`} style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: '12px' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center">
-              <Flame className="w-5 h-5 text-white" />
-            </div>
+            {/* In-app icon = the app drawer icon from /public/icon.svg so
+                they stay visually identical. */}
+            <img src="/icon.svg" alt="" className="w-8 h-8 rounded-lg" />
             <span className="font-bold text-lg">Zenith Fitness</span>
           </div>
           <div className="flex items-center gap-2">

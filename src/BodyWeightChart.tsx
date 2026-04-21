@@ -61,9 +61,23 @@ export function BodyWeightChart({ entries, isDark }: { entries: BodyWeightEntry[
   
   // Create line path
   const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-  
+
   // Create gradient area path
   const areaPath = `${linePath} L ${points[points.length - 1].x} ${paddingTop + graphHeight} L ${paddingLeft} ${paddingTop + graphHeight} Z`;
+
+  // 5-point moving average trend line (overlaid in cyan)
+  const MA_WINDOW = 5;
+  const maPath = chartData.length >= MA_WINDOW
+    ? chartData.map((_, i) => {
+        const start = Math.max(0, i - MA_WINDOW + 1);
+        const slice = chartData.slice(start, i + 1);
+        const avg = slice.reduce((s, e) => s + e.weight, 0) / slice.length;
+        const x = paddingLeft + i * pointSpacing;
+        const norm = (avg - adjustedMin) / adjustedRange;
+        const y = paddingTop + graphHeight - norm * graphHeight;
+        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+      }).join(' ')
+    : '';
   
   // Handle touch/mouse interaction
   const handleInteraction = (e: React.TouchEvent | React.MouseEvent) => {
@@ -267,7 +281,21 @@ export function BodyWeightChart({ entries, isDark }: { entries: BodyWeightEntry[
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-            
+
+            {/* 5-point moving average trend line */}
+            {maPath && (
+              <path
+                d={maPath}
+                fill="none"
+                stroke="#22d3ee"
+                strokeWidth="1.5"
+                strokeDasharray="4 3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity="0.9"
+              />
+            )}
+
             {/* Data points */}
             {points.map((p, i) => (
               <circle

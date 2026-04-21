@@ -56,6 +56,76 @@ export function saveWorkout(workout: Workout): void {
 }
 
 // Save the full workouts array (for bulk operations like import)
+/**
+ * Fill gaps in the workout log with auto-generated rest days so streaks
+ * reflect real consistency instead of only days the user manually tapped
+ * "Log Rest". Rules, per user spec:
+ *
+ *   - Between two logged days A and B with gap N:
+ *       · N <= 7  → fill all N-1 missing days as rest.
+ *       · N > 7   → fill 7 rest days starting from A+1. Remaining days
+ *                   stay unlogged so the streak correctly breaks.
+ *   - Between the most recent logged day and yesterday (not today):
+ *       · Fill up to 7 missing days as rest. Today itself is never
+ *         auto-logged — the user might still work out.
+ *
+ * Idempotent: already-logged dates are never overwritten. Safe to run on
+ * every app load.
+ */
+export function autoLogMissedRestDays(): void {
+  const workouts = getWorkouts();
+  if (workouts.length === 0) return;
+
+  const logged = new Set(workouts.map(w => w.date.split('T')[0]));
+  const sortedDates = Array.from(logged).sort();
+  const newRest: Workout[] = [];
+  const oneDayMs = 86400000;
+
+  const createRestDay = (dateISO: string): Workout => ({
+    id: crypto.randomUUID(),
+    date: dateISO,
+    name: 'Rest Day',
+    type: 'rest',
+    exercises: [],
+    completed: true,
+    completedAt: dateISO,
+  });
+
+  const addRestDay = (baseDate: Date, offset: number) => {
+    const d = new Date(baseDate.getTime() + offset * oneDayMs);
+    const ds = d.toISOString().split('T')[0];
+    if (!logged.has(ds)) {
+      // Use noon UTC to avoid timezone boundary weirdness when showing date.
+      const iso = new Date(`${ds}T12:00:00.000Z`).toISOString();
+      newRest.push(createRestDay(iso));
+      logged.add(ds);
+    }
+  };
+
+  // Fill gaps between consecutive logged dates.
+  for (let i = 0; i < sortedDates.length - 1; i++) {
+    const a = new Date(sortedDates[i] + 'T00:00:00.000Z');
+    const b = new Date(sortedDates[i + 1] + 'T00:00:00.000Z');
+    const gapDays = Math.round((b.getTime() - a.getTime()) / oneDayMs);
+    if (gapDays <= 1) continue;
+    const fillCount = Math.min(gapDays - 1, 7);
+    for (let j = 1; j <= fillCount; j++) addRestDay(a, j);
+  }
+
+  // Fill from the last logged date up to yesterday (not today).
+  const lastLogged = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00.000Z');
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const daysSinceLast = Math.round((today.getTime() - lastLogged.getTime()) / oneDayMs);
+  // Skip the last-logged day (offset 0) and today (offset daysSinceLast).
+  const trailingFill = Math.min(daysSinceLast - 1, 7);
+  for (let j = 1; j <= trailingFill; j++) addRestDay(lastLogged, j);
+
+  if (newRest.length > 0) {
+    setItem(STORAGE_KEYS.WORKOUTS, [...workouts, ...newRest]);
+  }
+}
+
 export function saveWorkouts(workouts: Workout[]): void {
   setItem(STORAGE_KEYS.WORKOUTS, workouts);
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  ArrowLeft, Search, Loader2, Calendar, Dumbbell, User, Upload, Check, Plus,
+  ArrowLeft, Search, Loader2, Calendar, Dumbbell, User, Upload, Plus, X,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import type { WeeklyPlan, WorkoutTemplate } from '../types';
 import * as storage from '../storage';
@@ -15,11 +16,27 @@ interface CommonTemplatesViewProps {
 export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps) {
   const [list, setList] = useState<SharedTemplate[] | null>(null);
   const [search, setSearch] = useState('');
-  const [importing, setImporting] = useState<string | null>(null);
-  const [imported, setImported] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+  // Map of sharedTemplateId → local WeeklyPlan ids that were imported from it.
+  // Used to show Remove vs. Add, and to remove all copies in one tap.
+  const [importedMap, setImportedMap] = useState<Map<string, string[]>>(new Map());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showPublish, setShowPublish] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+
+  const refreshImportedMap = () => {
+    const map = new Map<string, string[]>();
+    for (const p of storage.getWeeklyPlans()) {
+      if (p.sourceTemplateId) {
+        const ids = map.get(p.sourceTemplateId) || [];
+        ids.push(p.id);
+        map.set(p.sourceTemplateId, ids);
+      }
+    }
+    setImportedMap(map);
+  };
+  useEffect(() => { refreshImportedMap(); }, []);
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -44,7 +61,7 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
   }, [list, search]);
 
   const handleImport = async (tpl: SharedTemplate) => {
-    setImporting(tpl.id);
+    setBusyId(tpl.id);
     try {
       if (tpl.type === 'weekly-plan') {
         const plan = tpl.payload as WeeklyPlan;
@@ -52,6 +69,7 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
           ...plan,
           id: crypto.randomUUID(),
           name: `${plan.name} (from ${tpl.creatorName})`,
+          sourceTemplateId: tpl.id,
         };
         const existing = storage.getWeeklyPlans();
         storage.saveWeeklyPlans([...existing, newPlan]);
@@ -59,12 +77,26 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
         const t = tpl.payload as WorkoutTemplate;
         storage.saveTemplate({ ...t, id: crypto.randomUUID(), name: `${t.name} (from ${tpl.creatorName})` });
       }
-      setImported((prev) => new Set(prev).add(tpl.id));
+      refreshImportedMap();
       sharedTemplates.bumpUseCount(tpl.id);
     } catch (err) {
       alert('Import failed: ' + (err instanceof Error ? err.message : 'unknown'));
     } finally {
-      setImporting(null);
+      setBusyId(null);
+    }
+  };
+
+  const handleRemove = (tpl: SharedTemplate) => {
+    const planIds = importedMap.get(tpl.id) || [];
+    if (planIds.length === 0) return;
+    if (!confirm(`Remove ${planIds.length === 1 ? 'this imported plan' : `${planIds.length} imported plans`} from your library?`)) return;
+    setBusyId(tpl.id);
+    try {
+      const remaining = storage.getWeeklyPlans().filter(p => !planIds.includes(p.id));
+      storage.saveWeeklyPlans(remaining);
+      refreshImportedMap();
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -163,19 +195,23 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
       ) : (
         <div className="space-y-2">
           {filtered!.map((tpl) => {
-            const isImported = imported.has(tpl.id);
-            const isImporting = importing === tpl.id;
+            const isImported = (importedMap.get(tpl.id) || []).length > 0;
+            const isBusy = busyId === tpl.id;
             const exerciseCount = tpl.type === 'weekly-plan'
               ? (tpl.payload as WeeklyPlan).days.reduce((sum, d) => sum + (d.isRestDay ? 0 : d.exercises.length), 0)
               : (tpl.payload as WorkoutTemplate).exercises?.length || 0;
+            const isExpanded = expandedId === tpl.id;
             return (
-              <div key={tpl.id} className={`rounded-xl border p-3 ${cardBg} ${cardBorder}`}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div key={tpl.id} className={`rounded-xl border overflow-hidden ${cardBg} ${cardBorder}`}>
+                <div className="flex items-center justify-between gap-3 p-3">
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : tpl.id)}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  >
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isDark ? 'bg-emerald-500/15 text-emerald-400' : 'bg-emerald-100 text-emerald-600'}`}>
                       {tpl.type === 'weekly-plan' ? <Calendar className="w-5 h-5" /> : <Dumbbell className="w-5 h-5" />}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium text-sm truncate">{tpl.name}</div>
                       <div className={`text-xs flex items-center gap-2 ${subtle}`}>
                         <User className="w-3 h-3" /> {tpl.creatorName}
@@ -184,25 +220,66 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
                         {tpl.useCount > 0 && <><span>·</span><span>{tpl.useCount} imported</span></>}
                       </div>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => handleImport(tpl)}
-                    disabled={isImported || isImporting}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 ${
-                      isImported
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : 'bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 disabled:opacity-50'
-                    }`}
-                  >
-                    {isImported ? (
-                      <><Check className="w-3.5 h-3.5" /> Added</>
-                    ) : isImporting ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <><Plus className="w-3.5 h-3.5" /> Add</>
-                    )}
+                    {isExpanded ? <ChevronUp className={`w-4 h-4 ${subtle}`} /> : <ChevronDown className={`w-4 h-4 ${subtle}`} />}
                   </button>
+                  {isImported ? (
+                    <button
+                      onClick={() => handleRemove(tpl)}
+                      disabled={isBusy}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 disabled:opacity-50 ${
+                        isDark ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25' : 'bg-red-50 text-red-600 hover:bg-red-100'
+                      }`}
+                    >
+                      {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><X className="w-3.5 h-3.5" /> Remove</>}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleImport(tpl)}
+                      disabled={isBusy}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 disabled:opacity-50"
+                    >
+                      {isBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Plus className="w-3.5 h-3.5" /> Add</>}
+                    </button>
+                  )}
                 </div>
+                {isExpanded && (
+                  <div className={`border-t ${cardBorder} p-3 space-y-2`}>
+                    {tpl.type === 'weekly-plan' ? (
+                      (tpl.payload as WeeklyPlan).days.map((day, i) => (
+                        <div key={i} className={`rounded-lg p-2.5 ${isDark ? 'bg-[#252525]' : 'bg-gray-50'}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-sm font-medium">{day.name}</div>
+                            {day.isRestDay && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-700 text-zinc-300">Rest</span>
+                            )}
+                          </div>
+                          {!day.isRestDay && (
+                            <ul className={`text-xs space-y-0.5 ${subtle}`}>
+                              {day.exercises.map((ex, j) => (
+                                <li key={j} className="flex justify-between">
+                                  <span>{ex.exerciseName}</span>
+                                  <span className="ml-2 flex-shrink-0">{ex.defaultSets}×{ex.defaultReps}</span>
+                                </li>
+                              ))}
+                              {day.exercises.length === 0 && (
+                                <li className="italic">No exercises</li>
+                              )}
+                            </ul>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <ul className={`text-xs space-y-1 ${subtle}`}>
+                        {(tpl.payload as WorkoutTemplate).exercises?.map((ex, i) => (
+                          <li key={i} className="flex justify-between">
+                            <span>{ex.exerciseName}</span>
+                            <span className="ml-2">{ex.defaultSets}×{ex.defaultReps}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

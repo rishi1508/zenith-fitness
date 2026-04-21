@@ -118,6 +118,22 @@ export function VolumeLineChart({ sessions, isDark = true }: { sessions: Session
     ? `${linePath} L ${points[points.length - 1].x} ${paddingTop + graphHeight} L ${paddingLeft} ${paddingTop + graphHeight} Z`
     : '';
 
+  // 5-session moving average — a smoother trend line over the raw points.
+  // Only drawn when there are at least 5 sessions so the line is meaningful.
+  const MA_WINDOW = 5;
+  const maPoints = sessions.length >= MA_WINDOW
+    ? sessions.map((_, i) => {
+        const start = Math.max(0, i - MA_WINDOW + 1);
+        const slice = sessions.slice(start, i + 1);
+        const avg = slice.reduce((s, ses) => s + ses.volume, 0) / slice.length;
+        const x = paddingLeft + i * pointSpacing;
+        const normalized = (avg - adjustedMin) / adjustedRange;
+        const y = paddingTop + graphHeight - normalized * graphHeight;
+        return { x, y };
+      })
+    : [];
+  const maPath = maPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
   // Find nearest data point to an x coordinate (in SVG space)
   const findNearestPoint = useCallback((svgX: number): number | null => {
     let nearestIndex = 0;
@@ -348,7 +364,14 @@ export function VolumeLineChart({ sessions, isDark = true }: { sessions: Session
   return (
     <div className={`${containerClass} rounded-xl px-2 pt-3 pb-2`}>
       <div className="flex items-center justify-between mb-1 px-1">
-        <div className="text-sm font-medium">Volume Trend</div>
+        <div className="text-sm font-medium flex items-center gap-2">
+          Volume Trend
+          {maPath && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 font-normal">
+              5-MA
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {crosshairMode && (
             <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-400">
@@ -463,6 +486,21 @@ export function VolumeLineChart({ sessions, isDark = true }: { sessions: Session
 
             {/* Line */}
             <path d={linePath} fill="none" stroke="#f97316" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+            {/* 5-session moving average trend line (cyan, dashed so it reads
+                as secondary) */}
+            {maPath && (
+              <path
+                d={maPath}
+                fill="none"
+                stroke="#22d3ee"
+                strokeWidth="1.75"
+                strokeDasharray="4 3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeOpacity="0.9"
+              />
+            )}
 
             {/* Data points */}
             {points.map((p, i) => (

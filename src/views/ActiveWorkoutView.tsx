@@ -1,11 +1,26 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Dumbbell, ChevronRight, ChevronLeft, Check, Clock, Search, X, Edit3, Trash2, Plus,
-  TrendingUp, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play
+  TrendingUp, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play, Info
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
 import { hapticImpact, hapticNotification } from '../haptics';
+
+// Module-level AudioContext so oscillators don't constantly warm up a new
+// context (which Android autoplay policy keeps in "suspended"). Lazily
+// created and resumed inside playSound.
+let sharedAudioContext: AudioContext | null = null;
+function getAudioContext(): AudioContext | null {
+  if (sharedAudioContext) return sharedAudioContext;
+  try {
+    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    sharedAudioContext = new Ctor();
+    return sharedAudioContext;
+  } catch {
+    return null;
+  }
+}
 
 // Active Workout View
 export function ActiveWorkoutView({
@@ -48,32 +63,39 @@ export function ActiveWorkoutView({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Rest timer with strong haptic feedback
-  // Play sound effect using Web Audio API
+  // Persistent audio context — browsers require the same context for
+  // subsequent plays, and suspended contexts must be resumed via a user
+  // gesture. Creating a fresh one per call is why sounds were firing
+  // inconsistently on Android.
   const playSound = (type: 'celebration' | 'timer') => {
     if (!storage.isSoundEnabled(type)) return;
-    
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
+      const ctx = getAudioContext();
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
       oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = type === 'celebration' ? 880 : 440;
+      gainNode.connect(ctx.destination);
+
       oscillator.type = 'sine';
-      gainNode.gain.value = 0.3;
-      
-      oscillator.start();
-      
+      oscillator.frequency.value = type === 'celebration' ? 880 : 440;
+
+      // Short attack + release envelope so the tone doesn't click.
+      const now = ctx.currentTime;
+      const duration = type === 'celebration' ? 0.4 : 0.2;
+      gainNode.gain.setValueAtTime(0, now);
+      gainNode.gain.linearRampToValueAtTime(0.3, now + 0.015);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      oscillator.start(now);
       if (type === 'celebration') {
-        setTimeout(() => oscillator.frequency.value = 1047, 100);
-        setTimeout(() => oscillator.frequency.value = 1319, 200);
-        setTimeout(() => oscillator.stop(), 400);
-      } else {
-        setTimeout(() => oscillator.stop(), 200);
+        oscillator.frequency.setValueAtTime(880, now);
+        oscillator.frequency.setValueAtTime(1047, now + 0.1);
+        oscillator.frequency.setValueAtTime(1319, now + 0.2);
       }
+      oscillator.stop(now + duration + 0.02);
     } catch (e) {
       console.log('Audio not supported:', e);
     }
@@ -224,18 +246,45 @@ export function ActiveWorkoutView({
           updatedSet.reps
         );
         
-        // Check for volume PR (total volume this exercise in this session)
-        const currentVolume = exercise.sets
-          .filter(s => s.completed || s.id === updatedSet.id)
-          .reduce((sum, s) => sum + (s.weight * s.reps), 0);
-        
-        const lastSession = storage.getLastExerciseSession(exercise.exerciseId);
-        const lastVolume = lastSession 
+        // Check for volume PR (total volume this exercise in this session).
+        // Use the UPDATED set's values, and also pull prior session by
+        // exerciseId OR by name so session-mode exercises that use the
+        // host's ids still resolve.
+        const currentVolume = exercise.sets.reduce((sum, s) => {
+          // Current set uses the freshly-updated values; older sets only
+          // count if actually completed.
+          if (s.id === updatedSet.id) return sum + updatedSet.weight * updatedSet.reps;
+          return s.completed ? sum + s.weight * s.reps : sum;
+        }, 0);
+
+        // Resolve lastSession by id first, then by name (matches PR logic).
+        let lastSession = storage.getLastExerciseSession(exercise.exerciseId);
+        if (!lastSession) {
+          const nameKey = exercise.exerciseName.trim().toLowerCase();
+          const prior = storage.getWorkouts()
+            .filter(w => w.completed && w.type !== 'rest')
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          for (const w of prior) {
+            const match = w.exercises.find(ex => ex.exerciseName.trim().toLowerCase() === nameKey);
+            if (match && match.sets.some(s => s.completed)) {
+              lastSession = match.sets.filter(s => s.completed);
+              break;
+            }
+          }
+        }
+        const lastVolume = lastSession
           ? lastSession.reduce((sum, s) => sum + (s.weight * s.reps), 0)
           : 0;
-        
+
         const isVolumePR = currentVolume > lastVolume && lastVolume > 0;
-        
+        // Fire volume PR on the LAST completed set of the session — which
+        // is "the set at max index whose values are non-zero". This keeps
+        // the toast from spamming, and correctly handles Add Set making
+        // the last index larger than 2.
+        const completedCountNow = exercise.sets.filter(s => s.completed || s.id === updatedSet.id).length;
+        const isLastCompletedSet = setIndex === exercise.sets.length - 1 ||
+          completedCountNow === exercise.sets.length;
+
         if (isPR) {
           setPrAchievement({
             exercise: exercise.exerciseName,
@@ -246,8 +295,8 @@ export function ActiveWorkoutView({
           // Play celebration sound
           playSound('celebration');
           hapticNotification('success');
-        } else if (isVolumePR && setIndex === exercise.sets.length - 1) {
-          // Volume PR - only show on last set to avoid spam
+        } else if (isVolumePR && isLastCompletedSet) {
+          // Volume PR — fires on last set (or when all sets are completed)
           setPrAchievement({
             exercise: exercise.exerciseName,
             weight: Math.round(currentVolume),
@@ -562,12 +611,23 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onSwapExercise, onDelet
     [exercise.exerciseId]
   );
   
-  // Get exercise notes and video from library
+  // Get full exercise record (notes, video, muscle group) from the library.
+  // Match by id first, then by name so session workouts using the host's ids
+  // still resolve to the local user's library entry.
   const exerciseData = useMemo(() => {
     const exercises = storage.getExercises();
-    const ex = exercises.find(e => e.id === exercise.exerciseId);
-    return { notes: ex?.notes, videoUrl: ex?.videoUrl };
-  }, [exercise.exerciseId]);
+    const nameKey = exercise.exerciseName.trim().toLowerCase();
+    const ex = exercises.find(e => e.id === exercise.exerciseId)
+      || exercises.find(e => e.name.trim().toLowerCase() === nameKey);
+    return {
+      notes: ex?.notes,
+      videoUrl: ex?.videoUrl,
+      muscleGroup: ex?.muscleGroup,
+      isCompound: ex?.isCompound,
+    };
+  }, [exercise.exerciseId, exercise.exerciseName]);
+
+  const [showInfo, setShowInfo] = useState(false);
 
   // Get PR for this exercise — match by id OR by name so session workouts
   // (which carry the host's exerciseIds) resolve to the local user's PR.
@@ -721,6 +781,13 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onSwapExercise, onDelet
         </button>
         <div className="flex items-center gap-1">
           <button
+            onClick={() => setShowInfo(true)}
+            className="p-2 text-zinc-500 hover:text-blue-400 transition-colors"
+            title="Exercise info"
+          >
+            <Info className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setShowExerciseSelector(true)}
             className="p-2 text-zinc-500 hover:text-orange-400 transition-colors"
             title="Swap exercise"
@@ -741,6 +808,71 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onSwapExercise, onDelet
           </button>
         </div>
       </div>
+
+      {/* Exercise Info Modal */}
+      {showInfo && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center animate-fadeIn"
+          onClick={() => setShowInfo(false)}
+        >
+          <div
+            className="bg-[#1a1a1a] w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-[#1a1a1a] p-4 border-b border-[#2e2e2e] flex items-center justify-between">
+              <h3 className="font-bold">{exercise.exerciseName}</h3>
+              <button
+                onClick={() => setShowInfo(false)}
+                className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-[#252525]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                {exerciseData.muscleGroup && (
+                  <div className="bg-[#252525] rounded-lg p-3">
+                    <div className="text-[10px] uppercase text-zinc-500 font-semibold">Muscle group</div>
+                    <div className="font-medium mt-0.5 capitalize">{exerciseData.muscleGroup.replace('_', ' ')}</div>
+                  </div>
+                )}
+                <div className="bg-[#252525] rounded-lg p-3">
+                  <div className="text-[10px] uppercase text-zinc-500 font-semibold">Sets planned</div>
+                  <div className="font-medium mt-0.5">{exercise.sets.length}</div>
+                </div>
+                {exerciseData.isCompound !== undefined && (
+                  <div className="bg-[#252525] rounded-lg p-3 col-span-2">
+                    <div className="text-[10px] uppercase text-zinc-500 font-semibold">Type</div>
+                    <div className="font-medium mt-0.5">{exerciseData.isCompound ? 'Compound' : 'Isolation'}</div>
+                  </div>
+                )}
+              </div>
+              {exerciseData.notes ? (
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" /> Notes & cues
+                  </div>
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-zinc-300 whitespace-pre-wrap">
+                    {exerciseData.notes}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-500 italic">No notes yet — add cues or form reminders from the Exercise Library.</p>
+              )}
+              {exerciseData.videoUrl && (
+                <a
+                  href={exerciseData.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-medium text-sm transition-colors"
+                >
+                  <Play className="w-4 h-4" /> Watch form video
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
