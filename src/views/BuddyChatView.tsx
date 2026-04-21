@@ -189,10 +189,11 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   }
 
   return (
-    // h-full fills the scrollable <main> area so the header (or selection
-    // action bar) always sits at the top and the messages pane scrolls
-    // internally — no more "scroll to the top to reveal the action bar".
-    <div className="flex flex-col h-full min-h-[calc(100dvh-140px)]">
+    // h-full fills the scrollable <main> area. Main drops its own padding
+    // when this view is active so we can take the full content box without
+    // overflowing. We re-apply horizontal padding and a bottom pad that
+    // clears the fixed bottom nav (h-20 ≈ 80px).
+    <div className="flex flex-col h-full px-4 pt-3 pb-24">
       {/* Chat Header — swapped for the selection-mode action bar when
           one or more messages are selected (long-press → multi-select). */}
       {inSelectionMode ? (

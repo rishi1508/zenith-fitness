@@ -757,7 +757,16 @@ function App() {
       )}
 
       {/* Content */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 pb-24" style={{ overscrollBehavior: 'none' }}>
+      <main
+        className={`flex-1 overflow-y-auto overflow-x-hidden ${
+          // The chat view lays itself out full-height with its own internal
+          // scroll + padding. Any main padding would stretch chat past main
+          // and re-introduce the "scroll up to find the header" bug, so we
+          // drop it when that view is active.
+          view === 'buddy-chat' ? 'p-0' : 'px-4 py-4 pb-24'
+        }`}
+        style={{ overscrollBehavior: 'none' }}
+      >
         {view === 'home' && (
           <HomeView
             workouts={workoutHistory}
