@@ -16,14 +16,56 @@
   background-color: #f9fafb;
 }
 
+/* Light-mode overrides for components that use hard-coded dark hex
+   classes (primarily ActiveWorkoutView + modals). These remap the dark
+   palette tokens to their light equivalents so the whole app respects
+   the current theme without every component having to thread isDark. */
+[data-theme="light"] .bg-\[\#0f0f0f\] { background-color: #ffffff !important; }
+[data-theme="light"] .bg-\[\#0f0f0f\]\/95 { background-color: rgba(255, 255, 255, 0.95) !important; }
+[data-theme="light"] .bg-\[\#1a1a1a\] { background-color: #ffffff !important; }
+[data-theme="light"] .bg-\[\#1a1a1a\]\/95 { background-color: rgba(255, 255, 255, 0.95) !important; }
+[data-theme="light"] .bg-\[\#222\] { background-color: #f3f4f6 !important; }
+[data-theme="light"] .bg-\[\#252525\] { background-color: #f3f4f6 !important; }
+[data-theme="light"] .bg-\[\#2e2e2e\] { background-color: #e5e7eb !important; }
+[data-theme="light"] .bg-\[\#303030\] { background-color: #e5e7eb !important; }
+[data-theme="light"] .bg-\[\#3e3e3e\] { background-color: #d1d5db !important; }
+[data-theme="light"] .hover\:bg-\[\#252525\]:hover { background-color: #e5e7eb !important; }
+[data-theme="light"] .hover\:bg-\[\#222\]:hover { background-color: #e5e7eb !important; }
+[data-theme="light"] .hover\:bg-\[\#303030\]:hover { background-color: #d1d5db !important; }
+[data-theme="light"] .hover\:bg-\[\#3e3e3e\]:hover { background-color: #9ca3af !important; }
+
+[data-theme="light"] .border-\[\#1a1a1a\] { border-color: #e5e7eb !important; }
+[data-theme="light"] .border-\[\#2e2e2e\] { border-color: #e5e7eb !important; }
+[data-theme="light"] .border-\[\#303030\] { border-color: #d1d5db !important; }
+[data-theme="light"] .border-\[\#3e3e3e\] { border-color: #d1d5db !important; }
+[data-theme="light"] .divide-\[\#2e2e2e\] > :not([hidden]) ~ :not([hidden]) { border-color: #e5e7eb !important; }
+
+/* In the scoped dark surfaces above, `text-white` / `text-zinc-*` need to
+   flip to readable light-mode equivalents. We only touch the explicit
+   utility classes so intentionally light-on-orange buttons still work. */
+[data-theme="light"] .text-white:not(.bg-gradient-to-r):not(.bg-gradient-to-br):not(.bg-emerald-500):not(.bg-emerald-600):not(.bg-orange-500):not(.bg-orange-600):not(.bg-red-500):not(.bg-red-600):not(.bg-blue-500):not(.bg-blue-600):not(.bg-purple-500):not(.bg-purple-600):not(.bg-cyan-500):not(.bg-yellow-500):not(.bg-indigo-500) {
+  color: #111827 !important;
+}
+[data-theme="light"] .text-zinc-100 { color: #111827 !important; }
+[data-theme="light"] .text-zinc-200 { color: #1f2937 !important; }
+[data-theme="light"] .text-zinc-300 { color: #374151 !important; }
+[data-theme="light"] .text-zinc-400 { color: #4b5563 !important; }
+[data-theme="light"] .text-zinc-500 { color: #6b7280 !important; }
+[data-theme="light"] .text-zinc-600 { color: #9ca3af !important; }
+[data-theme="light"] .placeholder-zinc-500::placeholder { color: #9ca3af !important; }
+[data-theme="light"] .placeholder-zinc-600::placeholder { color: #d1d5db !important; }
+
+/* Nav bottom bar uses the same dark tokens — already covered above. */
+
 body {
   @apply bg-[#0f0f0f] text-white min-h-screen;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
   transition: background-color 0.3s ease, color 0.3s ease;
-  /* Prevent the whole page from rubber-banding / pull-to-refresh — makes
-     the app feel like a native app instead of a webpage. */
-  overscroll-behavior-y: none;
+  /* Lock the app to native-feeling scroll: no rubber-band, no
+     pull-to-refresh, no horizontal overflow drift. */
+  overscroll-behavior: none;
+  overflow-x: hidden;
 }
 
 /* Safe area handling for mobile (PWA & Capacitor) */
@@ -31,7 +73,9 @@ html {
   padding: 0;
   background-color: #0f0f0f;
   transition: background-color 0.3s ease;
-  overscroll-behavior-y: none;
+  overscroll-behavior: none;
+  /* Android Chrome ignores overscroll-behavior on <body> in some modes;
+     pinning it to <html> too covers both. */
 }
 
 body {

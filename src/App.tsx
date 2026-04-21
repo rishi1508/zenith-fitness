@@ -324,35 +324,57 @@ function App() {
 
   const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), []);
 
-  // Configure status bar and back button for Android
-  useEffect(() => {
-    const setupNative = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          // Show status bar with dark background, light icons
-          await StatusBar.setStyle({ style: Style.Dark });
-          await StatusBar.setBackgroundColor({ color: '#0f0f0f' });
-          await StatusBar.show();
-        } catch (e) {
-          console.log('StatusBar setup error:', e);
-        }
+  // Keep a ref to the latest goBack so the Capacitor back-button handler
+  // (registered only once, async) always uses the current closure instead of
+  // an early-mount snapshot. The previous version re-registered the handler
+  // every time goBack's identity changed AND threw away the cleanup function
+  // returned from the async setup, so listeners piled up and stale ones
+  // fired — which is why back was "closing the app": a stale goBack saw
+  // navigationHistory=['home'] from first-paint, returned false, and we
+  // called minimizeApp.
+  const goBackRef = useRef(goBack);
+  useEffect(() => { goBackRef.current = goBack; }, [goBack]);
 
-        // Handle Android back button
-        const backHandler = await CapApp.addListener('backButton', () => {
-          if (!goBack()) {
-            // No navigation history, minimize app instead of closing
-            CapApp.minimizeApp();
+  // Configure status bar and back button for Android — one-time setup.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let cleanup: (() => void) | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await StatusBar.setStyle({ style: Style.Dark });
+        await StatusBar.setBackgroundColor({ color: '#0f0f0f' });
+        await StatusBar.show();
+      } catch (e) {
+        console.log('StatusBar setup error:', e);
+      }
+
+      try {
+        const handler = await CapApp.addListener('backButton', () => {
+          const handled = goBackRef.current?.();
+          if (!handled) {
+            // At root — keep the user in the app rather than minimize,
+            // matching the "should not exit" expectation.
+            // (CapApp.minimizeApp would send to background.)
           }
         });
-
-        return () => {
-          backHandler.remove();
-        };
+        if (cancelled) {
+          handler.remove();
+        } else {
+          cleanup = () => handler.remove();
+        }
+      } catch (e) {
+        console.log('backButton listener failed:', e);
       }
-    };
+    })();
 
-    setupNative();
-  }, [goBack]);
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, []);
 
   const startWorkout = (template: WorkoutTemplate, sessionId?: string) => {
     // If there's already an active (paused) workout, ask to discard it first

@@ -611,23 +611,27 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onSwapExercise, onDelet
     [exercise.exerciseId]
   );
   
-  // Get full exercise record (notes, video, muscle group) from the library.
-  // Match by id first, then by name so session workouts using the host's ids
-  // still resolve to the local user's library entry.
-  const exerciseData = useMemo(() => {
+  const [showInfo, setShowInfo] = useState(false);
+  // Re-fetched each time the info modal opens so newly-edited notes in the
+  // Exercise Library show without requiring a full remount. Previously this
+  // was useMemo'd with stale deps, which is why saved notes sometimes
+  // wouldn't appear here.
+  const [exerciseData, setExerciseData] = useState<{
+    notes?: string; videoUrl?: string;
+    muscleGroup?: Exercise['muscleGroup']; isCompound?: boolean;
+  }>({});
+  useEffect(() => {
     const exercises = storage.getExercises();
     const nameKey = exercise.exerciseName.trim().toLowerCase();
     const ex = exercises.find(e => e.id === exercise.exerciseId)
       || exercises.find(e => e.name.trim().toLowerCase() === nameKey);
-    return {
+    setExerciseData({
       notes: ex?.notes,
       videoUrl: ex?.videoUrl,
       muscleGroup: ex?.muscleGroup,
       isCompound: ex?.isCompound,
-    };
-  }, [exercise.exerciseId, exercise.exerciseName]);
-
-  const [showInfo, setShowInfo] = useState(false);
+    });
+  }, [exercise.exerciseId, exercise.exerciseName, showInfo]);
 
   // Get PR for this exercise — match by id OR by name so session workouts
   // (which carry the host's exerciseIds) resolve to the local user's PR.

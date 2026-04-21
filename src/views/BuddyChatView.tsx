@@ -25,10 +25,26 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [selectedMsg, setSelectedMsg] = useState<ChatMessage | null>(null);
+  // Multi-select: long-press a message to enter selection mode, then tap to
+  // toggle. Copy/Delete act on all selected messages at once. Delete is only
+  // available when every selected message belongs to the current user.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const inSelectionMode = selectedIds.size > 0;
+  const selectedMessages = messages.filter((m) => selectedIds.has(m.id));
+  const allMine = selectedMessages.length > 0 && selectedMessages.every((m) => m.senderId === user?.uid);
+
+  const toggleSelection = (msg: ChatMessage) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msg.id)) next.delete(msg.id); else next.add(msg.id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
 
   // Listen to messages in real-time
   useEffect(() => {
@@ -92,7 +108,9 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   const handleLongPressStart = (msg: ChatMessage, e: React.TouchEvent) => {
     const t = e.touches[0];
     longPressStart.current = { x: t.clientX, y: t.clientY };
-    longPressTimer.current = setTimeout(() => setSelectedMsg(msg), 500);
+    longPressTimer.current = setTimeout(() => {
+      setSelectedIds(new Set([msg.id]));
+    }, 500);
   };
 
   const handleLongPressMove = (e: React.TouchEvent) => {
@@ -113,17 +131,20 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   };
 
   const handleCopy = async () => {
-    if (selectedMsg) {
-      try { await navigator.clipboard.writeText(selectedMsg.text); } catch { /* ignore */ }
-      setSelectedMsg(null);
-    }
+    if (selectedMessages.length === 0) return;
+    const text = selectedMessages
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .map((m) => m.text)
+      .join('\n');
+    try { await navigator.clipboard.writeText(text); } catch { /* ignore */ }
+    clearSelection();
   };
 
   const handleDelete = async () => {
-    if (selectedMsg && selectedMsg.senderId === user?.uid) {
-      await buddyService.deleteMessage(chatId, selectedMsg.id);
-      setSelectedMsg(null);
-    }
+    if (!allMine || selectedMessages.length === 0) return;
+    if (!confirm(`Delete ${selectedMessages.length} message${selectedMessages.length === 1 ? '' : 's'}?`)) return;
+    await Promise.all(selectedMessages.map((m) => buddyService.deleteMessage(chatId, m.id)));
+    clearSelection();
   };
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
@@ -161,28 +182,60 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
 
   return (
     <div className="flex flex-col h-[calc(100vh-140px)]">
-      {/* Chat Header */}
-      <div className="flex items-center gap-3 pb-3">
-        <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div className="flex items-center gap-2 flex-1">
-          <Avatar name={buddyName} photoURL={buddyPhotoURL} size="sm" />
-          <div>
-            <div className="font-semibold text-sm">{buddyName}</div>
+      {/* Chat Header — swapped for the selection-mode action bar when
+          one or more messages are selected (long-press → multi-select). */}
+      {inSelectionMode ? (
+        <div className={`flex items-center gap-2 pb-3 rounded-lg px-2 py-1.5 ${isDark ? 'bg-orange-500/10' : 'bg-orange-50'}`}>
+          <button
+            onClick={clearSelection}
+            className={`p-2 rounded-lg transition-colors ${hoverBg}`}
+            title="Cancel selection"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="flex-1 text-sm font-semibold text-orange-400">
+            {selectedIds.size} selected
           </div>
+          <button
+            onClick={handleCopy}
+            className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-orange-500/20 text-zinc-200' : 'hover:bg-orange-100 text-gray-700'}`}
+            title="Copy"
+          >
+            <Copy className="w-5 h-5" />
+          </button>
+          {allMine && (
+            <button
+              onClick={handleDelete}
+              className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-red-500/20 text-red-400' : 'hover:bg-red-50 text-red-600'}`}
+              title="Delete"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
         </div>
-        <button
-          onClick={sendWorkoutInvite}
-          disabled={sending}
-          className={`p-2 rounded-lg transition-colors ${
-            isDark ? 'text-orange-400 bg-orange-500/10 hover:bg-orange-500/20' : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
-          } disabled:opacity-50`}
-          title="Invite to workout"
-        >
-          <Dumbbell className="w-5 h-5" />
-        </button>
-      </div>
+      ) : (
+        <div className="flex items-center gap-3 pb-3">
+          <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2 flex-1">
+            <Avatar name={buddyName} photoURL={buddyPhotoURL} size="sm" />
+            <div>
+              <div className="font-semibold text-sm">{buddyName}</div>
+            </div>
+          </div>
+          <button
+            onClick={sendWorkoutInvite}
+            disabled={sending}
+            className={`p-2 rounded-lg transition-colors ${
+              isDark ? 'text-orange-400 bg-orange-500/10 hover:bg-orange-500/20' : 'text-orange-600 bg-orange-50 hover:bg-orange-100'
+            } disabled:opacity-50`}
+            title="Invite to workout"
+          >
+            <Dumbbell className="w-5 h-5" />
+          </button>
+        </div>
+      )}
 
       {/* Messages Area */}
       <div className={`flex-1 overflow-y-auto rounded-xl border p-3 space-y-4 ${cardBg} ${cardBorder}`}>
@@ -221,19 +274,23 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                 const isMe = msg.senderId === user?.uid;
                 const isInvite = msg.type === 'workout_invite';
                 const isUpdate = msg.type === 'workout_update';
+                const isSelected = selectedIds.has(msg.id);
 
                 return (
                   <div
                     key={msg.id}
                     className={`flex mb-2 ${isMe ? 'justify-end' : 'justify-start'}`}
+                    onClick={() => { if (inSelectionMode) toggleSelection(msg); }}
                   >
                     <div
                       onTouchStart={(e) => handleLongPressStart(msg, e)}
                       onTouchMove={handleLongPressMove}
                       onTouchEnd={handleLongPressEnd}
                       onTouchCancel={handleLongPressEnd}
-                      onContextMenu={(e) => { e.preventDefault(); setSelectedMsg(msg); }}
-                      className={`max-w-[80%] rounded-2xl px-3.5 py-2 select-none ${
+                      onContextMenu={(e) => { e.preventDefault(); setSelectedIds(new Set([msg.id])); }}
+                      className={`max-w-[80%] rounded-2xl px-3.5 py-2 select-none transition-shadow ${
+                        isSelected ? 'ring-2 ring-orange-400 ring-offset-2 ring-offset-transparent' : ''
+                      } ${
                         isInvite || isUpdate
                           ? isDark
                             ? 'bg-emerald-500/15 border border-emerald-500/30'
@@ -306,40 +363,6 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
         )}
         <div ref={messagesEndRef} />
       </div>
-
-      {/* Long-press Context Menu */}
-      {selectedMsg && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => setSelectedMsg(null)}
-        >
-          <div
-            className={`rounded-xl shadow-xl overflow-hidden w-48 ${isDark ? 'bg-[#222] border border-[#333]' : 'bg-white border border-gray-200'}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={handleCopy}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${isDark ? 'hover:bg-[#2a2a2a]' : 'hover:bg-gray-50'}`}
-            >
-              <Copy className="w-4 h-4 text-zinc-400" /> Copy
-            </button>
-            {selectedMsg.senderId === user?.uid && (
-              <button
-                onClick={handleDelete}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-red-400 transition-colors ${isDark ? 'hover:bg-[#2a2a2a]' : 'hover:bg-gray-50'}`}
-              >
-                <Trash2 className="w-4 h-4" /> Delete
-              </button>
-            )}
-            <button
-              onClick={() => setSelectedMsg(null)}
-              className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors ${isDark ? 'hover:bg-[#2a2a2a] text-zinc-500' : 'hover:bg-gray-50 text-gray-400'}`}
-            >
-              <X className="w-4 h-4" /> Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Input Area */}
       <div className="pt-3">
