@@ -82,12 +82,34 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
     }
   };
 
-  const handleLongPressStart = (msg: ChatMessage) => {
+  // Long-press detection that distinguishes from scrolling: the timer only
+  // fires if the finger hasn't moved more than a few px. Any touchmove
+  // beyond the threshold cancels the pending long-press so scrolling
+  // through the feed never triggers the context menu.
+  const longPressStart = useRef<{ x: number; y: number } | null>(null);
+  const LONG_PRESS_MOVE_PX = 8;
+
+  const handleLongPressStart = (msg: ChatMessage, e: React.TouchEvent) => {
+    const t = e.touches[0];
+    longPressStart.current = { x: t.clientX, y: t.clientY };
     longPressTimer.current = setTimeout(() => setSelectedMsg(msg), 500);
+  };
+
+  const handleLongPressMove = (e: React.TouchEvent) => {
+    if (!longPressStart.current || !longPressTimer.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - longPressStart.current.x;
+    const dy = t.clientY - longPressStart.current.y;
+    if (Math.hypot(dx, dy) > LONG_PRESS_MOVE_PX) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
   };
 
   const handleLongPressEnd = () => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+    longPressStart.current = null;
   };
 
   const handleCopy = async () => {
@@ -206,8 +228,10 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                     className={`flex mb-2 ${isMe ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      onTouchStart={() => handleLongPressStart(msg)}
+                      onTouchStart={(e) => handleLongPressStart(msg, e)}
+                      onTouchMove={handleLongPressMove}
                       onTouchEnd={handleLongPressEnd}
+                      onTouchCancel={handleLongPressEnd}
                       onContextMenu={(e) => { e.preventDefault(); setSelectedMsg(msg); }}
                       className={`max-w-[80%] rounded-2xl px-3.5 py-2 select-none ${
                         isInvite || isUpdate

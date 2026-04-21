@@ -42,30 +42,27 @@ export function BuddyProfileView({
         // stats (volume, this-week count) without needing cross-user workout reads.
         if (p) {
           const cs = p.compareStats;
-          if (cs) {
-            const weekAgo = new Date();
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            const thisWeek = (cs.recentWorkouts || []).filter(
-              (w) => new Date(w.date).getTime() >= weekAgo.getTime(),
-            ).length;
-            setStats({
-              totalWorkouts: cs.headline.totalWorkouts,
-              currentStreak: cs.headline.currentStreak,
-              longestStreak: cs.headline.currentStreak,
-              thisWeekWorkouts: thisWeek,
-              totalVolume: cs.headline.totalVolume,
-              avgVolumePerSession: cs.headline.avgVolumePerSession,
-            });
-          } else {
-            setStats({
-              totalWorkouts: p.totalWorkouts || 0,
-              currentStreak: p.currentStreak || 0,
-              longestStreak: p.currentStreak || 0,
-              thisWeekWorkouts: 0,
-              totalVolume: 0,
-              avgVolumePerSession: 0,
-            });
-          }
+          // Always take the max of every available signal so values stay
+          // consistent across Search / Buddies / Profile / Compare even if
+          // the buddy's device is running an older version where one of
+          // the fields is stale.
+          const profileStreak = p.currentStreak || 0;
+          const profileWorkouts = p.totalWorkouts || 0;
+          const csStreak = cs?.headline.currentStreak || 0;
+          const csWorkouts = cs?.headline.totalWorkouts || 0;
+          const weekAgo = new Date();
+          weekAgo.setDate(weekAgo.getDate() - 7);
+          const thisWeek = (cs?.recentWorkouts || []).filter(
+            (w) => new Date(w.date).getTime() >= weekAgo.getTime(),
+          ).length;
+          setStats({
+            totalWorkouts: Math.max(csWorkouts, profileWorkouts),
+            currentStreak: Math.max(csStreak, profileStreak),
+            longestStreak: Math.max(csStreak, profileStreak),
+            thisWeekWorkouts: thisWeek,
+            totalVolume: cs?.headline.totalVolume || 0,
+            avgVolumePerSession: cs?.headline.avgVolumePerSession || 0,
+          });
         }
 
         // Synthesize "recent workout history" view from compareStats.recentWorkouts
@@ -244,14 +241,20 @@ export function BuddyProfileView({
         >
           <h3 className="text-sm font-semibold">Workout History</h3>
           <span className={`text-xs ${subtleText}`}>
-            {showHistory ? 'Hide' : `Show (${workouts.length})`}
+            {showHistory ? 'Hide' : `Show (${Math.max(workouts.length, stats?.totalWorkouts || 0)})`}
           </span>
         </button>
 
         {showHistory && (
           <div className="space-y-2">
             {workouts.length === 0 ? (
-              <p className={`text-sm text-center py-6 ${subtleText}`}>No workouts yet</p>
+              (stats?.totalWorkouts || 0) > 0 ? (
+                <p className={`text-sm text-center py-6 ${subtleText}`}>
+                  {buddyName} has {stats?.totalWorkouts} workout{stats?.totalWorkouts === 1 ? '' : 's'} logged, but their recent-workout snapshot hasn't synced yet. Ask them to open the app once.
+                </p>
+              ) : (
+                <p className={`text-sm text-center py-6 ${subtleText}`}>No workouts yet</p>
+              )
             ) : (
               workouts.slice(0, 20).map((w) => {
                 const totalVolume = w.exercises.reduce((sum, ex) =>

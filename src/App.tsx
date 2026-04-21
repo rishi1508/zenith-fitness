@@ -38,6 +38,26 @@ function App() {
   // Buddy view context (which buddy are we viewing / chatting with)
   const [buddyContext, setBuddyContext] = useState<{ uid: string; name: string; chatId?: string; photoURL?: string | null }>({ uid: '', name: '' });
 
+  // Live counts of things that need the user's attention on the Buddies tab
+  // (pending incoming requests + unread notifications) — drives the red badge
+  // on the bottom nav.
+  const [buddyAlertCount, setBuddyAlertCount] = useState(0);
+  useEffect(() => {
+    if (!user) { setBuddyAlertCount(0); return; }
+    let reqs = 0;
+    let notifs = 0;
+    const update = () => setBuddyAlertCount(reqs + notifs);
+    const unsubReqs = buddyService.listenToIncomingRequests((r) => {
+      reqs = r.length;
+      update();
+    });
+    const unsubNotifs = buddyService.listenToNotifications((n) => {
+      notifs = n.length;
+      update();
+    });
+    return () => { unsubReqs(); unsubNotifs(); };
+  }, [user]);
+
   // Group workout session state
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<WorkoutSession | null>(null);
@@ -62,11 +82,14 @@ function App() {
   // Navigation history for back button support
   const navigationHistory = useRef<View[]>(['home']);
 
-  // Navigate with history tracking
+  // Navigate with history tracking. Also pushes a browser history entry
+  // so the Android/browser back button pops back INTO the app instead of
+  // exiting the PWA.
   const navigateTo = useCallback((newView: View) => {
     if (newView !== view) {
       navigationHistory.current.push(newView);
       setView(newView);
+      try { window.history.pushState({ zenith: navigationHistory.current.length }, ''); } catch { /* ignore */ }
     }
   }, [view]);
 
@@ -92,7 +115,26 @@ function App() {
     setActiveSessionId(sessionId);
     navigationHistory.current.push('session-lobby');
     setView('session-lobby');
+    try { window.history.pushState({ zenith: navigationHistory.current.length }, ''); } catch { /* ignore */ }
   }, []);
+
+  // Android / browser back button handler — intercepts popstate so the
+  // PWA navigates within the app's own view stack instead of closing.
+  useEffect(() => {
+    // Seed a buffer state so the very first back press can be captured.
+    try { window.history.pushState({ zenith: 'seed' }, ''); } catch { /* ignore */ }
+    const onPop = () => {
+      const handled = goBack();
+      if (!handled) {
+        // At the root view — keep the user in the app by refilling the
+        // history buffer. (Intentional: user wants back-at-home to be a no-op
+        // rather than closing the app.)
+        try { window.history.pushState({ zenith: 'seed' }, ''); } catch { /* ignore */ }
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [goBack]);
 
   const loadData = useCallback(() => {
     // Rebuild PRs from workout history so stored records stay consistent with the
@@ -935,6 +977,7 @@ function App() {
                 label="Buddies"
                 active={view === 'buddies' || view === 'buddy-profile' || view === 'buddy-chat' || view === 'buddy-compare'}
                 onClick={() => navigateTo('buddies')}
+                badge={buddyAlertCount}
               />
             )}
             <NavButton

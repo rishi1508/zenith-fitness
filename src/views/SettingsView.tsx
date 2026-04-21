@@ -9,6 +9,7 @@ import { useAuth } from '../auth/AuthContext';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as buddyService from '../buddyService';
+import { manualCheckForUpdates } from '../UpdateChecker';
 
 declare const __APP_VERSION__: string;
 
@@ -720,11 +721,82 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
         <DataBackupSection isDark={isDark} onDataChange={onDataChange} />
       </div>
 
+      {/* Check for updates */}
+      <CheckForUpdatesSection isDark={isDark} />
+
       {/* App Info */}
       <div className={`text-center text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
         <p>Zenith Fitness v{__APP_VERSION__}</p>
-        <p>Built by Zenith</p>
+        <p>Built by Rishi</p>
       </div>
+    </div>
+  );
+}
+
+function CheckForUpdatesSection({ isDark }: { isDark: boolean }) {
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<null | { type: 'ok' | 'new' | 'err'; message: string; url?: string }>(null);
+
+  const handleCheck = async () => {
+    setChecking(true);
+    setResult(null);
+    const r = await manualCheckForUpdates();
+    if (r.status === 'up-to-date') {
+      setResult({ type: 'ok', message: `You're on the latest version (v${r.current})` });
+    } else if (r.status === 'update-available') {
+      setResult({
+        type: 'new',
+        message: `Update available: v${r.latest}`,
+        url: r.releaseUrl,
+      });
+    } else {
+      setResult({ type: 'err', message: `Couldn't check: ${r.message}` });
+    }
+    setChecking(false);
+  };
+
+  const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
+  const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
+
+  return (
+    <div className={`rounded-xl p-4 border space-y-3 ${cardBg} ${cardBorder}`}>
+      <div className="flex items-center gap-2">
+        <Download className="w-5 h-5 text-orange-400" />
+        <span className="font-medium">Check for Updates</span>
+      </div>
+      <button
+        onClick={handleCheck}
+        disabled={checking}
+        className="w-full py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
+      >
+        {checking ? 'Checking…' : 'Check now'}
+      </button>
+      {result && (
+        <div
+          className={`p-3 rounded-lg text-sm flex items-start gap-2 ${
+            result.type === 'ok'
+              ? 'bg-emerald-500/15 text-emerald-400'
+              : result.type === 'new'
+              ? 'bg-orange-500/15 text-orange-400'
+              : 'bg-red-500/15 text-red-400'
+          }`}
+        >
+          {result.type === 'ok' ? <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" /> : <Download className="w-4 h-4 mt-0.5 flex-shrink-0" />}
+          <div className="flex-1">
+            <div>{result.message}</div>
+            {result.url && (
+              <a
+                href={result.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs underline mt-1 inline-block"
+              >
+                Download latest
+              </a>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

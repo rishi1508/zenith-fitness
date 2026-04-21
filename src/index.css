@@ -21,6 +21,9 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-tap-highlight-color: transparent;
   transition: background-color 0.3s ease, color 0.3s ease;
+  /* Prevent the whole page from rubber-banding / pull-to-refresh — makes
+     the app feel like a native app instead of a webpage. */
+  overscroll-behavior-y: none;
 }
 
 /* Safe area handling for mobile (PWA & Capacitor) */
@@ -28,6 +31,7 @@ html {
   padding: 0;
   background-color: #0f0f0f;
   transition: background-color 0.3s ease;
+  overscroll-behavior-y: none;
 }
 
 body {

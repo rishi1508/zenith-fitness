@@ -62,7 +62,19 @@ export function BuddyComparisonView({
           // Buddy hasn't opened the updated app yet — no snapshot to compare against.
           setError(`${buddyName} hasn't synced comparison data yet. Ask them to open the app once and try again.`);
         } else {
-          setBuddyStats(profile.compareStats);
+          // Pad cs.headline values with whatever the public profile carries
+          // in the legacy totalWorkouts / currentStreak fields, in case the
+          // buddy's snapshot was produced by an older build with the broken
+          // streak logic.
+          const cs = profile.compareStats;
+          setBuddyStats({
+            ...cs,
+            headline: {
+              ...cs.headline,
+              currentStreak: Math.max(cs.headline.currentStreak, profile.currentStreak || 0),
+              totalWorkouts: Math.max(cs.headline.totalWorkouts, profile.totalWorkouts || 0),
+            },
+          });
         }
       } catch (e) {
         if (!cancelled) {
