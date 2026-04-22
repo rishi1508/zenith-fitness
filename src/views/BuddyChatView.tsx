@@ -6,8 +6,8 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components';
 import type { ChatMessage } from '../types';
 import * as buddyService from '../buddyService';
-import * as sessionService from '../workoutSessionService';
 import * as storage from '../storage';
+import { StartSessionModal } from '../components';
 
 interface BuddyChatViewProps {
   chatId: string;
@@ -29,6 +29,10 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   // toggle. Copy/Delete act on all selected messages at once. Delete is only
   // available when every selected message belongs to the current user.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showStartSession, setShowStartSession] = useState(false);
+  const [buddyTyping, setBuddyTyping] = useState(false);
+  const [buddyPresence, setBuddyPresence] = useState<'online' | 'in-workout' | 'offline'>('offline');
+  const typingThrottleRef = useRef<number>(0);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +63,36 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Listen for the buddy's typing activity + presence (lastActive + isWorkingOut).
+  useEffect(() => {
+    const unsubTyping = buddyService.listenToTyping(chatId, (uids) => {
+      setBuddyTyping(uids.has(buddyUid));
+    });
+    // Refresh presence every 30s from profile. Cheap one-off read.
+    let cancelled = false;
+    const refreshPresence = async () => {
+      const p = await buddyService.getUserProfile(buddyUid);
+      if (!cancelled) setBuddyPresence(buddyService.computePresence(p));
+    };
+    refreshPresence();
+    const interval = setInterval(refreshPresence, 30_000);
+    return () => {
+      cancelled = true;
+      unsubTyping();
+      clearInterval(interval);
+    };
+  }, [chatId, buddyUid]);
+
+  // Throttle typing writes so rapid keystrokes produce at most one write
+  // every 2 s — plenty to keep the indicator alive (4 s expiry) without
+  // spamming Firestore.
+  const bumpTyping = () => {
+    const now = Date.now();
+    if (now - typingThrottleRef.current < 2000) return;
+    typingThrottleRef.current = now;
+    buddyService.setTypingActive(chatId);
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -228,10 +262,13 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
           <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2 flex-1">
-            <Avatar name={buddyName} photoURL={buddyPhotoURL} size="sm" />
-            <div>
-              <div className="font-semibold text-sm">{buddyName}</div>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Avatar name={buddyName} photoURL={buddyPhotoURL} size="sm" presence={buddyPresence} />
+            <div className="min-w-0">
+              <div className="font-semibold text-sm truncate">{buddyName}</div>
+              <div className="text-[11px] text-emerald-400 min-h-[14px]">
+                {buddyTyping ? 'typing…' : ''}
+              </div>
             </div>
           </div>
           <button
@@ -333,16 +370,6 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                       {isInvite && !isMe && (
                         <button
                           onClick={async () => {
-                            // Turn the chat invite into a real group session:
-                            // the accepter creates the session, invites the inviter,
-                            // and navigates both to the lobby (via notification for the other side).
-                            const plan = storage.getActivePlan();
-                            if (!plan) { alert('Set an active workout plan first!'); return; }
-                            const day = plan.days.find((d) => !d.isRestDay) || plan.days[0];
-                            if (!day.exercises || day.exercises.length === 0) {
-                              alert('Your active plan has no exercises for this day.');
-                              return;
-                            }
                             try {
                               await buddyService.sendMessage(
                                 chatId,
@@ -351,17 +378,8 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                                 undefined,
                                 buddyUid,
                               );
-                              const sid = await sessionService.createSession(
-                                `${plan.name} - ${day.name}`,
-                                'custom',
-                                day.exercises,
-                              );
-                              await sessionService.inviteToSession(sid, buddyUid, buddyName, buddyPhotoURL || null);
-                              onStartSession(sid);
-                            } catch (err) {
-                              console.error('[Chat] Accept & Start failed:', err);
-                              alert(`Couldn't start the session: ${err instanceof Error ? err.message : 'unknown error'}`);
-                            }
+                            } catch { /* still proceed */ }
+                            setShowStartSession(true);
                           }}
                           className="mt-2 w-full py-1.5 rounded-lg text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1"
                         >
@@ -390,7 +408,7 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
             ref={inputRef}
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => { setInput(e.target.value); bumpTyping(); }}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             className={`flex-1 bg-transparent outline-none text-sm ${isDark ? 'placeholder-zinc-600' : 'placeholder-gray-400'}`}
@@ -412,6 +430,19 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
           </button>
         </div>
       </div>
+
+      {showStartSession && (
+        <StartSessionModal
+          buddyUid={buddyUid}
+          buddyName={buddyName}
+          buddyPhotoURL={buddyPhotoURL || null}
+          onClose={() => setShowStartSession(false)}
+          onStarted={(sid) => {
+            setShowStartSession(false);
+            onStartSession(sid);
+          }}
+        />
+      )}
     </div>
   );
 }

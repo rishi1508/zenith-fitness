@@ -7,8 +7,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components';
 import type { UserProfile, BuddyRequest, BuddyRelationship, BuddyNotification } from '../types';
 import * as buddyService from '../buddyService';
-import * as sessionService from '../workoutSessionService';
-import * as storage from '../storage';
+import { StartSessionModal } from '../components';
 
 interface BuddyViewProps {
   isDark: boolean;
@@ -35,6 +34,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
+  const [sessionModalBuddy, setSessionModalBuddy] = useState<{ uid: string; name: string; photoURL: string | null } | null>(null);
 
   // Load data on mount
   useEffect(() => {
@@ -233,7 +233,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                       onClick={() => onViewProfile(profile.uid, profile.displayName, profile.photoURL)}
                       className="flex items-center gap-3 flex-1 text-left min-w-0"
                     >
-                      <Avatar name={profile.displayName} photoURL={profile.photoURL} />
+                      <Avatar name={profile.displayName} photoURL={profile.photoURL} presence={buddyService.computePresence(profile)} />
                       <div className="min-w-0">
                         <div className="font-medium text-sm truncate">{profile.displayName}</div>
                         <div className={`text-xs ${subtleText}`}>
@@ -347,14 +347,12 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                           onClick={() => onViewProfile(buddyUid, buddyName, profile?.photoURL)}
                           className="flex items-center gap-3 flex-1 text-left"
                         >
-                          <div className="relative">
-                            <Avatar name={buddyName} photoURL={profile?.photoURL} size="lg" />
-                            {isWorkingOut && (
-                              <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 border-2 border-[#0f0f0f] flex items-center justify-center">
-                                <Dumbbell className="w-2.5 h-2.5 text-white" />
-                              </div>
-                            )}
-                          </div>
+                          <Avatar
+                            name={buddyName}
+                            photoURL={profile?.photoURL}
+                            size="lg"
+                            presence={buddyService.computePresence(profile)}
+                          />
                           <div className="flex-1">
                             <div className="font-medium">{buddyName}</div>
                             {isWorkingOut ? (
@@ -391,32 +389,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                           <UserCheck className="w-3.5 h-3.5" /> Profile
                         </button>
                         <button
-                          onClick={async () => {
-                            const plan = storage.getActivePlan();
-                            if (!plan) { alert('Set an active workout plan first!'); return; }
-                            const day = plan.days.find((d) => !d.isRestDay) || plan.days[0];
-                            if (!day.exercises || day.exercises.length === 0) {
-                              alert('Your active plan has no exercises for this day.');
-                              return;
-                            }
-                            try {
-                              const sid = await sessionService.createSession(
-                                `${plan.name} - ${day.name}`,
-                                'custom',
-                                day.exercises,
-                              );
-                              try {
-                                await sessionService.inviteToSession(sid, buddyUid, buddyName, profile?.photoURL || null);
-                              } catch (inviteErr) {
-                                console.error('[WorkoutTogether] Invite failed:', inviteErr);
-                                alert(`Session created but invite failed: ${inviteErr instanceof Error ? inviteErr.message : 'unknown error'}.`);
-                              }
-                              onOpenSession(sid);
-                            } catch (err) {
-                              console.error('[WorkoutTogether] Create session failed:', err);
-                              alert(`Couldn't start a workout session: ${err instanceof Error ? err.message : 'unknown error'}`);
-                            }
-                          }}
+                          onClick={() => setSessionModalBuddy({ uid: buddyUid, name: buddyName, photoURL: profile?.photoURL || null })}
                           className="flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
                         >
                           <Dumbbell className="w-3.5 h-3.5" /> Together
@@ -584,6 +557,18 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
             </div>
           )}
         </>
+      )}
+      {sessionModalBuddy && (
+        <StartSessionModal
+          buddyUid={sessionModalBuddy.uid}
+          buddyName={sessionModalBuddy.name}
+          buddyPhotoURL={sessionModalBuddy.photoURL}
+          onClose={() => setSessionModalBuddy(null)}
+          onStarted={(sid) => {
+            setSessionModalBuddy(null);
+            onOpenSession(sid);
+          }}
+        />
       )}
     </div>
   );

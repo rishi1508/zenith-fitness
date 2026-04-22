@@ -219,6 +219,18 @@ export function ActiveWorkoutView({
     onUpdate(newWorkout);
   };
 
+  const removeSet = (exerciseIndex: number, setIndex: number) => {
+    const ex = workout.exercises[exerciseIndex];
+    if (!ex || ex.sets.length <= 1) return; // keep at least one
+    const newWorkout = { ...workout };
+    newWorkout.exercises = [...workout.exercises];
+    newWorkout.exercises[exerciseIndex] = {
+      ...ex,
+      sets: ex.sets.filter((_, i) => i !== setIndex),
+    };
+    onUpdate(newWorkout);
+  };
+
   const updateSet = (exerciseIndex: number, setIndex: number, updates: Partial<WorkoutSet>) => {
     const newWorkout = { ...workout };
     newWorkout.exercises = [...workout.exercises];
@@ -479,6 +491,7 @@ export function ActiveWorkoutView({
                 exercise={exercise}
                 onUpdateSet={(setIndex, updates) => updateSet(exIndex, setIndex, updates)}
                 onAddSet={() => addSet(exIndex)}
+                onRemoveSet={(setIndex) => removeSet(exIndex, setIndex)}
                 onSwapExercise={(newExercise) => swapExercise(exIndex, newExercise)}
                 onDelete={() => deleteExercise(exIndex)}
                 canDelete={workout.exercises.length > 1}
@@ -579,10 +592,11 @@ export function ActiveWorkoutView({
 }
 
 // Exercise Card
-function ExerciseCard({ exercise, onUpdateSet, onAddSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, buddyBest }: {
+function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, buddyBest }: {
   exercise: WorkoutExercise;
   onUpdateSet: (setIndex: number, updates: Partial<WorkoutSet>) => void;
   onAddSet: () => void;
+  onRemoveSet: (setIndex: number) => void;
   onSwapExercise: (newExercise: Exercise) => void;
   onDelete: () => void;
   canDelete: boolean;
@@ -942,17 +956,29 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onSwapExercise, onDelet
                       className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-3 py-2 text-center focus:outline-none focus:border-orange-500"
                     />
                   </div>
-                  <div className="col-span-2 flex justify-center">
+                  <div className="col-span-2 flex items-center justify-center gap-1">
                     <button
                       onClick={() => onUpdateSet(setIndex, { completed: !set.completed })}
                       className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                        set.completed 
-                          ? 'bg-emerald-500 text-white' 
+                        set.completed
+                          ? 'bg-emerald-500 text-white'
                           : 'bg-[#2e2e2e] text-zinc-400 hover:bg-[#3e3e3e]'
                       }`}
+                      title={set.completed ? 'Uncheck set' : 'Mark set complete'}
                     >
                       <Check className="w-5 h-5" />
                     </button>
+                    {/* Remove set — hidden on the very first row so the
+                        exercise always has at least one set. */}
+                    {exercise.sets.length > 1 && (
+                      <button
+                        onClick={() => onRemoveSet(setIndex)}
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        title="Remove this set"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
                 

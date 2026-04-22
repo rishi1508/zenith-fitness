@@ -13,3 +13,4 @@ export { Avatar } from './Avatar';
 export { NotificationToast } from './NotificationToast';
 export { GroupSessionBar } from './GroupSessionBar';
 export { PostWorkoutComparison } from './PostWorkoutComparison';
+export { StartSessionModal } from './StartSessionModal';

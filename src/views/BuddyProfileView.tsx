@@ -5,8 +5,7 @@ import {
 } from 'lucide-react';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
-import * as sessionService from '../workoutSessionService';
-import * as storage from '../storage';
+import { StartSessionModal } from '../components';
 
 interface BuddyProfileViewProps {
   buddyUid: string;
@@ -25,6 +24,7 @@ export function BuddyProfileView({
   const [stats, setStats] = useState<UserStats | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [buddy, setBuddy] = useState<BuddyRelationship | null>(null);
+  const [showSessionModal, setShowSessionModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -140,11 +140,20 @@ export function BuddyProfileView({
               {buddyName.charAt(0).toUpperCase()}
             </div>
           )}
-          {profile?.isWorkingOut && (
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-[#0f0f0f] flex items-center justify-center">
-              <Dumbbell className="w-3.5 h-3.5 text-white" />
-            </div>
-          )}
+          {/* Presence dot: green = online, orange = in workout. Offline
+              state just shows no dot, matching the Avatar component. */}
+          {(() => {
+            const presence = buddyService.computePresence(profile);
+            if (presence === 'offline') return null;
+            return (
+              <span
+                className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ring-2 ring-[#0f0f0f] ${
+                  presence === 'in-workout' ? 'bg-orange-500' : 'bg-emerald-500'
+                }`}
+                aria-label={presence}
+              />
+            );
+          })()}
         </div>
         <h2 className="text-lg font-bold">{buddyName}</h2>
         {profile?.isWorkingOut && (
@@ -200,37 +209,24 @@ export function BuddyProfileView({
             <Scale className="w-4 h-4" /> Compare
           </button>
           <button
-            onClick={async () => {
-              const plan = storage.getActivePlan();
-              if (!plan) { alert('Set an active workout plan first!'); return; }
-              const day = plan.days.find((d) => !d.isRestDay) || plan.days[0];
-              if (!day.exercises || day.exercises.length === 0) {
-                alert('Your active plan has no exercises for this day. Add exercises to the plan first.');
-                return;
-              }
-              try {
-                const sid = await sessionService.createSession(
-                  `${plan.name} - ${day.name}`,
-                  'custom',
-                  day.exercises,
-                );
-                try {
-                  await sessionService.inviteToSession(sid, buddyUid, buddyName, profile?.photoURL || null);
-                } catch (inviteErr) {
-                  console.error('[WorkoutTogether] Invite failed:', inviteErr);
-                  alert(`Session created but invite failed: ${inviteErr instanceof Error ? inviteErr.message : 'unknown error'}. You can still invite from the lobby.`);
-                }
-                onStartSession(sid);
-              } catch (err) {
-                console.error('[WorkoutTogether] Create session failed:', err);
-                alert(`Couldn't start a workout session: ${err instanceof Error ? err.message : 'unknown error'}`);
-              }
-            }}
+            onClick={() => setShowSessionModal(true)}
             className="flex items-center justify-center gap-1.5 py-3 rounded-xl font-medium text-xs bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
           >
             <Dumbbell className="w-4 h-4" /> Together
           </button>
         </div>
+      )}
+      {showSessionModal && (
+        <StartSessionModal
+          buddyUid={buddyUid}
+          buddyName={buddyName}
+          buddyPhotoURL={profile?.photoURL || null}
+          onClose={() => setShowSessionModal(false)}
+          onStarted={(sid) => {
+            setShowSessionModal(false);
+            onStartSession(sid);
+          }}
+        />
       )}
 
       {/* Workout History */}

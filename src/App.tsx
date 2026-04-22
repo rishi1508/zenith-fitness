@@ -323,6 +323,23 @@ function App() {
     try { localStorage.setItem('zenith_theme', theme); } catch {}
   }, [theme]);
 
+  // Heartbeat → userProfile.lastActive every 45 s while the user is
+  // signed in + a beat on every visibility change so buddies see the
+  // online/offline dot flip quickly.
+  useEffect(() => {
+    if (!user) return;
+    buddyService.touchHeartbeat();
+    const interval = setInterval(() => buddyService.touchHeartbeat(), 45_000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') buddyService.touchHeartbeat();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user]);
+
   // Flush any in-flight localStorage → Firestore writes when the tab is
   // hidden / the app is closed, so edits made within the debounce window
   // aren't lost (which is what was eating exercise notes).

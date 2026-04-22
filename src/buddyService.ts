@@ -71,6 +71,35 @@ export async function setWorkingOutStatus(
   }, { merge: true });
 }
 
+/**
+ * Write a `lastActive` heartbeat to the current user's public profile so
+ * buddies can show an online/offline dot on the avatar. Cheap — a single
+ * field merge — but we still throttle to once-per-minute in the caller
+ * (App.tsx) to keep Firestore write costs low.
+ */
+export async function touchHeartbeat(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  try {
+    const ref = doc(db, 'userProfiles', user.uid);
+    await setDoc(ref, { lastActive: new Date().toISOString() }, { merge: true });
+  } catch { /* ignore — best-effort */ }
+}
+
+/** Compute the online/offline/busy state for a profile given its
+ *  lastActive timestamp + isWorkingOut flag. ONLINE_THRESHOLD_MS is
+ *  intentionally a bit generous so a ~60 s heartbeat miss doesn't flip
+ *  the dot. */
+export const ONLINE_THRESHOLD_MS = 2 * 60 * 1000; // 2 min
+export type PresenceState = 'offline' | 'online' | 'in-workout';
+export function computePresence(profile: Pick<UserProfile, 'lastActive' | 'isWorkingOut'> | null | undefined): PresenceState {
+  if (!profile) return 'offline';
+  const last = profile.lastActive ? new Date(profile.lastActive).getTime() : 0;
+  const isOnline = last > 0 && Date.now() - last < ONLINE_THRESHOLD_MS;
+  if (!isOnline) return 'offline';
+  return profile.isWorkingOut ? 'in-workout' : 'online';
+}
+
 /** Search users by display name (case-insensitive prefix match). */
 export async function searchUsers(searchTerm: string): Promise<UserProfile[]> {
   const user = auth.currentUser;
@@ -509,6 +538,45 @@ export function listenToMessages(
 /** Delete a chat message (only sender can delete). */
 export async function deleteMessage(chatId: string, messageId: string): Promise<void> {
   await deleteDoc(doc(db, 'chats', chatId, 'messages', messageId));
+}
+
+// ============ TYPING INDICATOR ============
+
+/**
+ * Record that the current user is typing in this chat. Written as
+ * `typingUntil.{uid}` on the chat doc (ISO of a few seconds in the
+ * future). Readers check `typingUntil[otherUid] > now()` to decide
+ * whether to show "typing...". Using a forward-looking expiry means
+ * no follow-up "I stopped typing" write is required.
+ */
+export async function setTypingActive(chatId: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  try {
+    const expiresAt = new Date(Date.now() + 4000).toISOString();
+    await updateDoc(doc(db, 'chats', chatId), {
+      [`typingUntil.${user.uid}`]: expiresAt,
+    });
+  } catch { /* best-effort — rules / offline noise is fine to swallow */ }
+}
+
+/** Listen to the chat doc's typingUntil map and emit the set of uids
+ *  that are currently typing (i.e. their expiry is in the future). */
+export function listenToTyping(
+  chatId: string,
+  callback: (typingUids: Set<string>) => void,
+): () => void {
+  return onSnapshot(doc(db, 'chats', chatId), (snap) => {
+    if (!snap.exists()) { callback(new Set()); return; }
+    const data = snap.data() as { typingUntil?: Record<string, string> };
+    const map = data.typingUntil || {};
+    const now = Date.now();
+    const active = new Set<string>();
+    for (const [uid, iso] of Object.entries(map)) {
+      if (new Date(iso).getTime() > now) active.add(uid);
+    }
+    callback(active);
+  });
 }
 
 /** Send a workout invite to a buddy via chat. */

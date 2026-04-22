@@ -93,7 +93,12 @@ export function GroupSessionBar({ sessionId, showContinue, onContinue }: GroupSe
             <div className="flex -space-x-2">
               {others.map((p) => (
                 <div key={p.uid} className="relative">
-                  <Avatar name={p.name} photoURL={p.photoURL} size="sm" />
+                  <Avatar
+                    name={p.name}
+                    photoURL={p.photoURL}
+                    size="sm"
+                    presence={p.status === 'active' ? 'in-workout' : p.status === 'joined' ? 'online' : undefined}
+                  />
                   {p.status === 'completed' && (
                     <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center">
                       <Check className="w-2 h-2 text-white" />
@@ -158,7 +163,12 @@ export function GroupSessionBar({ sessionId, showContinue, onContinue }: GroupSe
                 <div key={p.uid} className="pt-2">
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
-                      <Avatar name={p.name} photoURL={p.photoURL} size="sm" />
+                      <Avatar
+                    name={p.name}
+                    photoURL={p.photoURL}
+                    size="sm"
+                    presence={p.status === 'active' ? 'in-workout' : p.status === 'joined' ? 'online' : undefined}
+                  />
                       <div>
                         <span className="text-xs font-medium">
                           {p.name} {isMe && <span className="text-zinc-500">(You)</span>}

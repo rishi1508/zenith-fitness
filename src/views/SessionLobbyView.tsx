@@ -159,7 +159,11 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
             >
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <Avatar name={p.name} photoURL={p.photoURL} />
+                  <Avatar
+                    name={p.name}
+                    photoURL={p.photoURL}
+                    presence={p.status === 'active' ? 'in-workout' : p.status === 'joined' ? 'online' : undefined}
+                  />
                   {p.uid === session.hostUid && (
                     <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center">
                       <Crown className="w-2.5 h-2.5 text-white" />
@@ -211,7 +215,7 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
                   className={`flex items-center justify-between p-3 rounded-xl border ${cardBg} ${cardBorder}`}
                 >
                   <div className="flex items-center gap-3">
-                    <Avatar name={buddyName} photoURL={profile?.photoURL} />
+                    <Avatar name={buddyName} photoURL={profile?.photoURL || null} />
                     <div className="font-medium text-sm">{buddyName}</div>
                   </div>
                   <button

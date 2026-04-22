@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, X, Plus, Search, Dumbbell, Trash2, Star } from 'lucide-react';
 import * as storage from '../storage';
+import { addToSharedExerciseLibrary } from '../firestoreSync';
 
 export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   isDark: boolean;
@@ -61,12 +62,20 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
     const allExercises = storage.getExercises();
     const exerciseIndex = allExercises.findIndex(e => e.id === exerciseId);
     if (exerciseIndex >= 0) {
-      allExercises[exerciseIndex] = {
+      const updated = {
         ...allExercises[exerciseIndex],
         notes: editingNotes?.trim() || undefined,
         videoUrl: editingVideoUrl?.trim() || undefined,
       };
+      allExercises[exerciseIndex] = updated;
       storage.saveExercises(allExercises);
+      // Propagate the edit to the shared exercise library so every buddy
+      // who has the same exercise gets the updated notes / video on their
+      // next pull. Fire-and-forget — the local save is the source of truth
+      // for this user; cross-device is best-effort.
+      addToSharedExerciseLibrary(updated).catch((err) =>
+        console.error('[Exercises] Failed to share notes:', err),
+      );
       setExercises(allExercises);
       setEditingNotes(null);
       setEditingVideoUrl(null);

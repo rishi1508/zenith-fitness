@@ -261,6 +261,9 @@ const SHARED_EXERCISES_DOC = 'shared/exerciseLibrary';
 
 /**
  * Push a new exercise to the shared library (all users can see it).
+ * Also used to UPDATE an existing exercise's editable fields (notes,
+ * videoUrl) so a change one user makes in their Exercise Library is
+ * visible to everyone else on next pull.
  */
 export async function addToSharedExerciseLibrary(exercise: Exercise): Promise<void> {
   try {
@@ -268,21 +271,32 @@ export async function addToSharedExerciseLibrary(exercise: Exercise): Promise<vo
     const snap = await getDoc(docRef);
     const existing: Exercise[] = snap.exists() ? (snap.data().exercises || []) : [];
 
-    // Deduplicate by name (case-insensitive)
-    if (existing.some(e => e.name.toLowerCase() === exercise.name.toLowerCase())) {
-      return; // Already exists
+    const nameKey = exercise.name.trim().toLowerCase();
+    const idx = existing.findIndex(e => e.name.trim().toLowerCase() === nameKey);
+    if (idx >= 0) {
+      // Merge: keep original id, overwrite user-editable fields (notes + video).
+      // Favorite is per-user so we never propagate it.
+      existing[idx] = {
+        ...existing[idx],
+        notes: exercise.notes ?? existing[idx].notes,
+        videoUrl: exercise.videoUrl ?? existing[idx].videoUrl,
+      };
+    } else {
+      existing.push(exercise);
     }
-
-    existing.push(exercise);
     await setDoc(docRef, { exercises: existing, updatedAt: Date.now() });
   } catch (err) {
-    console.error('[FirestoreSync] Failed to add to shared library:', err);
+    console.error('[FirestoreSync] Failed to add/update shared library:', err);
   }
 }
 
 /**
- * Pull shared exercises and merge into localStorage (adds missing ones).
- * Returns the number of new exercises added.
+ * Pull shared exercises and merge into localStorage.
+ *   - Exercises that only exist in the shared library are added locally.
+ *   - For exercises that exist in both: if the local copy has no notes /
+ *     no video but the shared copy does, adopt the shared fields. If the
+ *     local copy already has notes, keep them (user's edits win).
+ * Returns the number of local records that changed.
  */
 export async function pullSharedExercises(): Promise<number> {
   try {
@@ -290,24 +304,39 @@ export async function pullSharedExercises(): Promise<number> {
     const snap = await getDoc(docRef);
     if (!snap.exists()) return 0;
 
-    const sharedExercises: Exercise[] = snap.data().exercises || [];
+    const shared: Exercise[] = snap.data().exercises || [];
     const localRaw = localStorage.getItem('zenith_exercises');
     const localExercises: Exercise[] = localRaw ? JSON.parse(localRaw) : [];
-    const localNames = new Set(localExercises.map(e => e.name.toLowerCase()));
 
-    let added = 0;
-    for (const ex of sharedExercises) {
-      if (!localNames.has(ex.name.toLowerCase())) {
-        localExercises.push(ex);
-        localNames.add(ex.name.toLowerCase());
-        added++;
+    const byName = new Map<string, number>();
+    localExercises.forEach((e, i) => byName.set(e.name.trim().toLowerCase(), i));
+
+    let changes = 0;
+    for (const sharedEx of shared) {
+      const key = sharedEx.name.trim().toLowerCase();
+      const idx = byName.get(key);
+      if (idx === undefined) {
+        localExercises.push(sharedEx);
+        byName.set(key, localExercises.length - 1);
+        changes++;
+        continue;
+      }
+      const local = localExercises[idx];
+      const merged: Exercise = {
+        ...local,
+        notes: local.notes ?? sharedEx.notes,
+        videoUrl: local.videoUrl ?? sharedEx.videoUrl,
+      };
+      if (merged.notes !== local.notes || merged.videoUrl !== local.videoUrl) {
+        localExercises[idx] = merged;
+        changes++;
       }
     }
 
-    if (added > 0) {
+    if (changes > 0) {
       localStorage.setItem('zenith_exercises', JSON.stringify(localExercises));
     }
-    return added;
+    return changes;
   } catch (err) {
     console.error('[FirestoreSync] Failed to pull shared exercises:', err);
     return 0;
