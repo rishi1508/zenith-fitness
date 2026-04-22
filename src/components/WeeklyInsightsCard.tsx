@@ -131,10 +131,10 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
             <TrendingUp className="w-5 h-5 text-indigo-400" />
             <span className="font-medium">This Week</span>
           </div>
-          {streak >= 3 && (
+          {streak >= 2 && (
             <div className="flex items-center gap-1 text-orange-400 text-sm">
               <Flame className="w-4 h-4" />
-              {streak} day streak!
+              {streak} week streak!
             </div>
           )}
         </div>

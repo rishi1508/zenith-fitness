@@ -11,7 +11,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt } from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import { settleStreak, isStreakActiveToday } from './streakService';
+import { settleStreak, isStreakActiveThisWeek } from './streakService';
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
@@ -862,7 +862,7 @@ function App() {
                 {stats && (
                   <StreakButton
                     streakCount={stats.currentStreak}
-                    active={isStreakActiveToday()}
+                    active={isStreakActiveThisWeek()}
                     isDark={isDark}
                   />
                 )}

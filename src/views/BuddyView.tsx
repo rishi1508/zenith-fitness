@@ -368,7 +368,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                               </div>
                             ) : (
                               <div className={`text-xs ${subtleText}`}>
-                                {profile?.totalWorkouts || 0} workouts &middot; {profile?.currentStreak || 0} day streak
+                                {profile?.totalWorkouts || 0} workouts &middot; {profile?.currentStreak || 0} week streak
                               </div>
                             )}
                           </div>

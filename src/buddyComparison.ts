@@ -1,4 +1,5 @@
 import type { Workout, Exercise, MuscleGroup, BuddyCompareStats } from './types';
+import { computeWeekStreak } from './streakService';
 
 // ========== Public types ==========
 
@@ -56,39 +57,6 @@ function compareSides(me: SideStat, buddy: SideStat): 'me' | 'buddy' | 'tie' {
   return 'tie';
 }
 
-/**
- * Matches the streak logic in storage.calculateStats:
- *   - Any completed workout (including rest days) counts.
- *   - Today NOT being worked out yet is OK; counting resumes from yesterday.
- *   - A missed day breaks the streak.
- * The previous strict version returned 0 whenever you hadn't worked out
- * yet today, which made Compare and Home disagree.
- */
-function computeCurrentStreak(workouts: Workout[]): number {
-  const activeDates = new Set(
-    workouts
-      .filter((w) => w.completed)
-      .map((w) => w.date.split('T')[0]),
-  );
-  const today = new Date().toISOString().split('T')[0];
-  let streak = 0;
-  const checkDate = new Date();
-  let max = 365;
-  while (max-- > 0) {
-    const ds = checkDate.toISOString().split('T')[0];
-    if (activeDates.has(ds)) {
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else if (ds === today) {
-      // Today hasn't been worked out yet — keep checking backwards.
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
-    }
-  }
-  return streak;
-}
-
 function computeSideStatForExercise(
   workouts: Workout[],
   exerciseId: string,
@@ -133,9 +101,14 @@ function computeHeadline(workouts: Workout[]): HeadlineStats {
       }
     }
   }
+  // Streak is now weekly — matches storage.calculateStats. Buddy compare
+  // snapshot doesn't have access to the local freeze state, so we pass an
+  // empty frozen set. Fine: the worst case is we under-count by the number
+  // of frozen weeks, which is typically 0.
+  const { current: currentStreak } = computeWeekStreak(completed, new Set());
   return {
     totalWorkouts: completed.length,
-    currentStreak: computeCurrentStreak(workouts),
+    currentStreak,
     totalVolume: Math.round(totalVolume),
     avgVolumePerSession: completed.length
       ? Math.round(totalVolume / completed.length)
@@ -252,12 +225,36 @@ export function computeMyCompareStats(
     return summary;
   });
 
+  // Per-day activity volume for the last ~180 days. A small map (< 4KB
+  // serialised even for a daily-lifter) the buddy profile heatmap can
+  // render. Rest days are encoded as -1 so the consumer can tell them
+  // apart from "no workout" days.
+  const activityDays: Record<string, number> = {};
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 180);
+  for (const w of workouts) {
+    if (!w.completed) continue;
+    const d = new Date(w.date);
+    if (d < cutoff) continue;
+    const ds = w.date.slice(0, 10);
+    if (w.type === 'rest') {
+      if (!(ds in activityDays)) activityDays[ds] = -1;
+      continue;
+    }
+    let v = 0;
+    for (const ex of w.exercises) {
+      for (const s of ex.sets) if (s.completed) v += s.weight * s.reps;
+    }
+    activityDays[ds] = Math.max(activityDays[ds] || 0, 0) + v;
+  }
+
   return {
     updatedAt: new Date().toISOString(),
     headline,
     muscleGroupVolumes,
     exerciseMaxes,
     recentWorkouts,
+    activityDays,
   };
 }
 

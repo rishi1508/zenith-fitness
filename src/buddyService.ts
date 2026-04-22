@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { deliverPush } from './pushService';
+import { computeWeekStreak } from './streakService';
 
 /** Recursively strip `undefined` values so Firestore's setDoc doesn't
  *  reject them. Preserves arrays, nulls, and primitives as-is. */
@@ -467,31 +468,13 @@ export async function getBuddyStats(buddyUid: string): Promise<UserStats | null>
     }, 0);
   }, 0);
 
-  // Calculate streak
-  const dates = completed
-    .map((w) => new Date(w.date).toDateString())
-    .filter((d, i, arr) => arr.indexOf(d) === i)
-    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-
-  let currentStreak = 0;
-  let longestStreak = 0;
-  let streak = 0;
+  // Weekly streak — matches storage.calculateStats. No access to buddy's
+  // freeze state from our side, so we pass an empty frozen set.
+  const { current: currentStreak, longest: longestStreak } = computeWeekStreak(
+    completed, new Set(),
+  );
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  for (let i = 0; i < dates.length; i++) {
-    const d = new Date(dates[i]);
-    d.setHours(0, 0, 0, 0);
-    const expected = new Date(today);
-    expected.setDate(expected.getDate() - i);
-    if (d.getTime() === expected.getTime()) {
-      streak++;
-    } else {
-      break;
-    }
-  }
-  currentStreak = streak;
-  longestStreak = Math.max(currentStreak, longestStreak);
 
   // This week's workouts
   const startOfWeek = new Date(today);

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
-import { StartSessionModal } from '../components';
+import { StartSessionModal, ActivityHeatmap } from '../components';
 
 interface BuddyProfileViewProps {
   buddyUid: string;
@@ -174,7 +174,7 @@ export function BuddyProfileView({
         <div className="grid grid-cols-2 gap-3">
           {[
             { icon: <Dumbbell className="w-5 h-5" />, value: stats.totalWorkouts, label: 'Workouts', color: 'text-orange-400', bg: 'bg-orange-500/10' },
-            { icon: <Flame className="w-5 h-5" />, value: `${stats.currentStreak}d`, label: 'Streak', color: 'text-red-400', bg: 'bg-red-500/10' },
+            { icon: <Flame className="w-5 h-5" />, value: `${stats.currentStreak}w`, label: 'Streak', color: 'text-red-400', bg: 'bg-red-500/10' },
             { icon: <TrendingUp className="w-5 h-5" />, value: stats.thisWeekWorkouts, label: 'This Week', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
             { icon: <Zap className="w-5 h-5" />, value: stats.avgVolumePerSession > 0 ? `${Math.round(stats.avgVolumePerSession / 1000)}k` : '0', label: 'Avg Volume (kg)', color: 'text-blue-400', bg: 'bg-blue-500/10' },
           ].map(({ icon, value, label, color, bg }, i) => (
@@ -187,6 +187,13 @@ export function BuddyProfileView({
             </div>
           ))}
         </div>
+      )}
+
+      {/* Activity heatmap — buddy-visible courtesy of the activityDays
+          snapshot on their compareStats. Works even though we can't read
+          their raw workout docs across accounts. */}
+      {profile?.compareStats?.activityDays && Object.keys(profile.compareStats.activityDays).length > 0 && (
+        <ActivityHeatmap activityDays={profile.compareStats.activityDays} isDark={isDark} />
       )}
 
       {/* Action Buttons */}

@@ -131,7 +131,7 @@ export function ProfileLanding({
         <div className="grid grid-cols-4 gap-2">
           {[
             { icon: <Dumbbell className="w-4 h-4" />, value: completedCount, label: 'Workouts', color: 'text-orange-400', bg: 'bg-orange-500/10' },
-            { icon: <Flame className="w-4 h-4" />, value: `${stats.currentStreak}d`, label: 'Streak', color: 'text-red-400', bg: 'bg-red-500/10' },
+            { icon: <Flame className="w-4 h-4" />, value: `${stats.currentStreak}w`, label: 'Streak', color: 'text-red-400', bg: 'bg-red-500/10' },
             { icon: <TrendingUp className="w-4 h-4" />, value: thisWeek, label: 'This week', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
             { icon: <Dumbbell className="w-4 h-4" />, value: stats.avgVolumePerSession > 0 ? `${Math.round(stats.avgVolumePerSession / 1000)}k` : '0', label: 'Avg kg', color: 'text-blue-400', bg: 'bg-blue-500/10' },
           ].map((s, i) => (

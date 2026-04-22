@@ -1,47 +1,73 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import type { Workout } from '../types';
 
 interface Props {
-  workouts: Workout[];
+  workouts?: Workout[];
+  /** Pre-computed per-day activity map (from BuddyCompareStats.activityDays).
+   *  Values: positive = workout volume, -1 = rest day, 0 / absent = inactive. */
+  activityDays?: Record<string, number>;
   isDark: boolean;
   /** How many weeks of history to show (default: 26 ≈ half a year). */
   weeks?: number;
 }
 
+type Cell =
+  | { date: string; volume: number; isRest: boolean; inFuture: boolean }
+  | null;
+
+const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
 /**
  * GitHub-contribution-style heatmap. 7 rows × N columns, one cell per
  * day; deeper orange = more volume for that day. Rest days get a subtle
- * tint so they don't read as missed.
+ * purple tint so they don't read as missed.
+ *
+ * Interactions:
+ *   - Desktop hover → floating tooltip with date + volume.
+ *   - Mobile long-press (400ms) → same tooltip, positioned above the
+ *     fingertip. Release / drag cancels it.
+ *   - Left column shows day-of-week initials (S M T W T F S) to make
+ *     it obvious which row is which without inspecting a tooltip.
+ *
+ * Accepts either raw `workouts` (own profile) or a precomputed
+ * `activityDays` map (buddy profile — cross-user workouts aren't readable).
  */
-export function ActivityHeatmap({ workouts, isDark, weeks = 26 }: Props) {
+export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: Props) {
   const { cells, maxVolume, totalActiveDays } = useMemo(() => {
+    // Build per-day volume map, either from raw workouts or the prebuilt
+    // map. The -1 sentinel means "rest day" in the buddy snapshot.
     const dayVolume = new Map<string, { volume: number; isRest: boolean }>();
-    for (const w of workouts) {
-      if (!w.completed) continue;
-      const d = w.date.slice(0, 10);
-      let v = 0;
-      if (w.type !== 'rest') {
-        for (const ex of w.exercises) {
-          for (const s of ex.sets) if (s.completed) v += s.weight * s.reps;
-        }
+    if (activityDays) {
+      for (const [ds, v] of Object.entries(activityDays)) {
+        if (v < 0) dayVolume.set(ds, { volume: 0, isRest: true });
+        else dayVolume.set(ds, { volume: v, isRest: false });
       }
-      const prev = dayVolume.get(d);
-      dayVolume.set(d, {
-        volume: (prev?.volume || 0) + v,
-        isRest: w.type === 'rest' ? true : prev?.isRest ?? false,
-      });
+    } else if (workouts) {
+      for (const w of workouts) {
+        if (!w.completed) continue;
+        const d = w.date.slice(0, 10);
+        let v = 0;
+        if (w.type !== 'rest') {
+          for (const ex of w.exercises) {
+            for (const s of ex.sets) if (s.completed) v += s.weight * s.reps;
+          }
+        }
+        const prev = dayVolume.get(d);
+        dayVolume.set(d, {
+          volume: (prev?.volume || 0) + v,
+          isRest: w.type === 'rest' ? true : prev?.isRest ?? false,
+        });
+      }
     }
 
-    // End on today, span `weeks * 7` days backwards, aligned to Sunday columns.
+    // End on the upcoming Saturday so the grid ends on a full column.
     const today = new Date();
     const end = new Date(today);
-    // Move end forward to the upcoming Saturday so the grid ends on a full column.
     end.setDate(end.getDate() + (6 - end.getDay()));
     const totalDays = weeks * 7;
     const start = new Date(end);
     start.setDate(end.getDate() - totalDays + 1);
 
-    type Cell = { date: string; volume: number; isRest: boolean; inFuture: boolean } | null;
     const grid: Cell[] = [];
     let max = 0;
     let active = 0;
@@ -61,7 +87,7 @@ export function ActivityHeatmap({ workouts, isDark, weeks = 26 }: Props) {
       }
     }
     return { cells: grid, maxVolume: max, totalActiveDays: active };
-  }, [workouts, weeks]);
+  }, [workouts, activityDays, weeks]);
 
   const emptyColor = isDark ? 'bg-zinc-800/50' : 'bg-gray-100';
   const restColor = isDark ? 'bg-purple-500/30' : 'bg-purple-200';
@@ -75,10 +101,54 @@ export function ActivityHeatmap({ workouts, isDark, weeks = 26 }: Props) {
   };
 
   // Split cells into columns (weeks). First entry is Sunday by construction.
-  const columns: typeof cells[] = [];
+  const columns: Cell[][] = [];
   for (let i = 0; i < cells.length; i += 7) {
     columns.push(cells.slice(i, i + 7));
   }
+
+  // --- Tooltip state ---
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState<
+    | { x: number; y: number; cell: NonNullable<Cell> }
+    | null
+  >(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressClick = useRef(false);
+
+  const showTipAt = (clientX: number, clientY: number, cell: NonNullable<Cell>) => {
+    const bounds = containerRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    setTip({ x: clientX - bounds.left, y: clientY - bounds.top, cell });
+  };
+  const hideTip = () => setTip(null);
+
+  // Auto-hide tooltip after a short idle period on mobile so it doesn't
+  // linger forever once the user's finger leaves the cell.
+  useEffect(() => {
+    if (!tip) return;
+    const t = setTimeout(hideTip, 2500);
+    return () => clearTimeout(t);
+  }, [tip]);
+
+  const onCellPointerEnter = (e: React.PointerEvent, cell: NonNullable<Cell>) => {
+    // Treat mouse hovers as immediate tooltips. Touch pointers go through
+    // the long-press path below.
+    if (e.pointerType === 'mouse') showTipAt(e.clientX, e.clientY, cell);
+  };
+  const onCellPointerDown = (e: React.PointerEvent, cell: NonNullable<Cell>) => {
+    if (e.pointerType === 'mouse') return;
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      suppressClick.current = true;
+      showTipAt(e.clientX, e.clientY, cell);
+    }, 400);
+  };
+  const clearLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
 
   return (
     <div className={`rounded-xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
@@ -90,8 +160,30 @@ export function ActivityHeatmap({ workouts, isDark, weeks = 26 }: Props) {
           {totalActiveDays} active day{totalActiveDays === 1 ? '' : 's'}
         </div>
       </div>
-      <div className="overflow-x-auto">
+
+      <div
+        ref={containerRef}
+        className="relative overflow-x-auto"
+        onPointerLeave={() => { clearLongPress(); hideTip(); }}
+        onPointerUp={clearLongPress}
+        onPointerCancel={clearLongPress}
+      >
         <div className="inline-flex gap-1">
+          {/* Day-of-week label column. Single letters to save horizontal
+              space; aligned 1:1 with the 7 rows on its right. */}
+          <div className="flex flex-col gap-1 mr-0.5 select-none">
+            {DAY_LABELS.map((lbl, i) => (
+              <div
+                key={i}
+                className={`w-3 h-3 flex items-center justify-center text-[9px] font-semibold leading-none ${
+                  isDark ? 'text-zinc-500' : 'text-gray-400'
+                }`}
+              >
+                {lbl}
+              </div>
+            ))}
+          </div>
+
           {columns.map((col, ci) => (
             <div key={ci} className="flex flex-col gap-1">
               {col.map((cell, ri) => {
@@ -102,15 +194,50 @@ export function ActivityHeatmap({ workouts, isDark, weeks = 26 }: Props) {
                 return (
                   <div
                     key={ri}
-                    title={`${cell.date}${cell.volume > 0 ? ` · ${Math.round(cell.volume)} kg` : cell.isRest ? ' · rest day' : ''}`}
-                    className={`w-3 h-3 rounded-sm ${color}`}
+                    className={`w-3 h-3 rounded-sm ${color} cursor-pointer touch-manipulation`}
+                    onPointerEnter={(e) => onCellPointerEnter(e, cell)}
+                    onPointerDown={(e) => onCellPointerDown(e, cell)}
+                    onClick={(e) => {
+                      // If the long-press already triggered, swallow the
+                      // synthetic click so we don't immediately hide.
+                      if (suppressClick.current) {
+                        suppressClick.current = false;
+                        e.preventDefault();
+                        return;
+                      }
+                      showTipAt(e.clientX, e.clientY, cell);
+                    }}
                   />
                 );
               })}
             </div>
           ))}
         </div>
+
+        {/* Floating tooltip. Positioned relative to the container, always
+            placed above the cell with a small tail. */}
+        {tip && (
+          <div
+            className={`pointer-events-none absolute z-10 px-2 py-1 rounded-md text-[11px] font-medium shadow-lg whitespace-nowrap ${
+              isDark ? 'bg-zinc-900 text-white border border-zinc-700' : 'bg-gray-900 text-white'
+            }`}
+            style={{
+              left: Math.max(8, Math.min((containerRef.current?.clientWidth || 240) - 120, tip.x - 60)),
+              top: Math.max(8, tip.y - 40),
+            }}
+          >
+            <div>{formatDate(tip.cell.date)}</div>
+            <div className={`text-[10px] ${isDark ? 'text-zinc-300' : 'text-zinc-200'}`}>
+              {tip.cell.isRest
+                ? 'Rest day'
+                : tip.cell.volume > 0
+                  ? `${formatVolume(tip.cell.volume)} kg`
+                  : 'No activity'}
+            </div>
+          </div>
+        )}
       </div>
+
       {/* Legend */}
       <div className="flex items-center gap-1.5 mt-3 text-[10px] text-zinc-500">
         <span>Less</span>
@@ -124,4 +251,19 @@ export function ActivityHeatmap({ workouts, isDark, weeks = 26 }: Props) {
       </div>
     </div>
   );
+}
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function formatVolume(v: number): string {
+  if (v >= 10_000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return Math.round(v).toString();
 }

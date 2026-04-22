@@ -201,7 +201,7 @@ export function BuddyComparisonView({
         <div className="space-y-2">
           {[
             { label: 'Workouts', me: headline.me.totalWorkouts, buddy: headline.buddy.totalWorkouts, suffix: '' },
-            { label: 'Streak', me: headline.me.currentStreak, buddy: headline.buddy.currentStreak, suffix: 'd' },
+            { label: 'Streak', me: headline.me.currentStreak, buddy: headline.buddy.currentStreak, suffix: 'w' },
             { label: 'Total volume', me: formatVolume(headline.me.totalVolume), buddy: formatVolume(headline.buddy.totalVolume), suffix: 'kg' },
             { label: 'Avg / session', me: formatVolume(headline.me.avgVolumePerSession), buddy: formatVolume(headline.buddy.avgVolumePerSession), suffix: 'kg' },
           ].map((row) => {

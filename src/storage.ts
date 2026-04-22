@@ -1,5 +1,6 @@
 import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, BodyMeasurementEntry, BodyMeasurementField, VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from './types';
 import { queueFirestoreSync, addToSharedExerciseLibrary } from './firestoreSync';
+import { computeWeekStreak } from './streakService';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'zenith_workouts',
@@ -572,50 +573,22 @@ export function calculateStats(): UserStats {
     new Date(w.date) >= weekStart
   ).length;
   
-  // Calculate streaks (include rest days for continuity)
-  let currentStreak = 0;
-  let longestStreak = 0;
-  let tempStreak = 0;
-  
-  // Include both workout AND rest days for streak calculation
-  const activeDates = new Set(allWorkouts.map(w => w.date.split('T')[0]));
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Check current streak with iteration guard (max 1 year)
-  let checkDate = new Date();
-  let maxIterations = 365;
-  while (maxIterations-- > 0) {
-    const dateStr = checkDate.toISOString().split('T')[0];
-    if (activeDates.has(dateStr)) {
-      currentStreak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else if (dateStr === today) {
-      // Today hasn't been worked out yet, check yesterday
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
+  // Weekly streak — one point per week that has ≥1 non-rest workout.
+  // See streakService.computeWeekStreak for the exact algorithm. We
+  // pull frozen weeks out of localStorage directly to avoid an import
+  // cycle (streakService → storage → streakService).
+  let frozenWeeks: Set<string> = new Set();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.STREAK);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { freezeConsumedDates?: string[] };
+      frozenWeeks = new Set(parsed.freezeConsumedDates || []);
     }
-  }
-  
-  // Calculate longest streak
-  const allDates = Array.from(activeDates).sort();
-  for (let i = 0; i < allDates.length; i++) {
-    if (i === 0) {
-      tempStreak = 1;
-    } else {
-      const prev = new Date(allDates[i - 1]);
-      const curr = new Date(allDates[i]);
-      const diffDays = Math.floor((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 1) {
-        tempStreak++;
-      } else {
-        tempStreak = 1;
-      }
-    }
-    longestStreak = Math.max(longestStreak, tempStreak);
-  }
-  
+  } catch { /* ignore */ }
+  const { current: currentStreak, longest: longestStreak } = computeWeekStreak(
+    workoutOnly, frozenWeeks,
+  );
+
   return {
     totalWorkouts: workoutOnly.length,
     currentStreak,

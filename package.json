@@ -1,7 +1,7 @@
 {
   "name": "zenith-fitness",
   "private": true,
-  "version": "3.14.12",
+  "version": "3.14.13",
   "type": "module",
   "scripts": {
     "dev": "vite",

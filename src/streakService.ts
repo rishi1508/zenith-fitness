@@ -3,18 +3,62 @@ import * as storage from './storage';
 
 const STREAK_KEY = 'zenith_streak';
 export const MAX_FREEZES = 2;
-const DAYS_TO_EARN_FREEZE = 30;
+export const DAYS_TO_EARN_FREEZE = 30;
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 function isoDate(d: Date): string {
+  // Use local-time midnight so that rendering and comparison work the same
+  // whether the user is on UTC or IST or anything else. Uses a tz-offset
+  // trick to get a YYYY-MM-DD string for the user's local day.
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD of the Sunday that starts the week containing `d`. */
+export function weekStartISO(d: Date): string {
+  const copy = new Date(d);
+  copy.setHours(0, 0, 0, 0);
+  copy.setDate(copy.getDate() - copy.getDay()); // getDay() 0 = Sun
+  return isoDate(copy);
+}
+
+/** Collapses every non-rest completed workout to its week-start. */
+export function activeWeekSet(workouts: Workout[]): Set<string> {
+  const out = new Set<string>();
+  for (const w of workouts) {
+    if (!w.completed || w.type === 'rest') continue;
+    out.add(weekStartISO(new Date(w.date)));
+  }
+  return out;
+}
+
+/** Adds `n` days to a YYYY-MM-DD and returns a YYYY-MM-DD. */
+function addDays(yyyymmdd: string, n: number): string {
+  const d = new Date(yyyymmdd + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return isoDate(d);
+}
+
+function normalizeFrozenWeeks(dates: string[]): string[] {
+  // Legacy entries were per-day. Snap any non-Sunday entry to its
+  // containing week-start so the weekly logic treats it sensibly.
+  const out = new Set<string>();
+  for (const d of dates) {
+    try { out.add(weekStartISO(new Date(d + 'T00:00:00'))); } catch { /* ignore */ }
+  }
+  return Array.from(out);
 }
 
 function getRaw(): StreakState {
   try {
     const raw = localStorage.getItem(STREAK_KEY);
-    if (raw) return JSON.parse(raw) as StreakState;
+    if (raw) {
+      const parsed = JSON.parse(raw) as StreakState;
+      return {
+        ...parsed,
+        freezeConsumedDates: normalizeFrozenWeeks(parsed.freezeConsumedDates || []),
+      };
+    }
   } catch { /* ignore */ }
   // Initial state — grant 1 freeze to brand-new users
   return {
@@ -30,10 +74,54 @@ function setRaw(next: StreakState): void {
 }
 
 /**
- * Run once on app mount. Walks the days between `lastProcessedDate` and
- * today, consuming a freeze for each missed day (if one is available)
- * and awarding a new freeze for every DAYS_TO_EARN_FREEZE consecutive
- * non-missed days — up to MAX_FREEZES.
+ * Compute the current + longest weekly streak.
+ *
+ * A week counts as "active" if it has at least one completed, non-rest
+ * workout OR it's in the frozen set (rescued by a freeze). We walk from
+ * the current week backwards, stopping at the first inactive week.
+ *
+ * The current incomplete week never counts as a miss: if the user hasn't
+ * worked out yet this week (and it's still Wed), we don't penalise them
+ * — we start counting from last week instead.
+ */
+export function computeWeekStreak(
+  workouts: Workout[],
+  frozenWeeks: ReadonlySet<string>,
+): { current: number; longest: number } {
+  const activeThisWeek = activeWeekSet(workouts);
+  const allWeeks = new Set<string>([...activeThisWeek, ...frozenWeeks]);
+
+  // current streak — walk backwards from this week
+  const thisWS = weekStartISO(new Date());
+  let cursor = allWeeks.has(thisWS) ? thisWS : addDays(thisWS, -7);
+  let current = 0;
+  let guard = 520; // ~10 years
+  while (guard-- > 0 && allWeeks.has(cursor)) {
+    current++;
+    cursor = addDays(cursor, -7);
+  }
+
+  // longest streak — walk through every sorted active week and count runs
+  const sorted = Array.from(allWeeks).sort();
+  let longest = 0;
+  let run = 0;
+  let prev: string | null = null;
+  for (const ws of sorted) {
+    if (prev !== null && ws === addDays(prev, 7)) run++;
+    else run = 1;
+    longest = Math.max(longest, run);
+    prev = ws;
+  }
+  return { current, longest };
+}
+
+/**
+ * Run once on app mount. For every past week between `lastProcessedDate`
+ * and the start of this week: if the user didn't work out at all that
+ * week AND it isn't already frozen, consume one freeze to "rescue" it.
+ * Separately, tick `streakDaysSinceFreezeGain` for each day the streak
+ * is alive; every DAYS_TO_EARN_FREEZE consecutive alive days grants a
+ * new freeze up to MAX_FREEZES.
  *
  * Idempotent: calling twice on the same day is a no-op.
  */
@@ -42,46 +130,51 @@ export function settleStreak(): StreakState {
   const todayStr = today();
   if (state.lastProcessedDate === todayStr) return state;
 
-  // Collect "active" dates: any completed workout OR rest day already
-  // on the workouts list counts. freezeConsumedDates also count.
   const workouts = storage.getWorkouts();
-  const activeDates = new Set<string>(
-    workouts
-      .filter((w: Workout) => w.completed)
-      .map((w: Workout) => w.date.slice(0, 10)),
-  );
-  for (const d of state.freezeConsumedDates) activeDates.add(d);
+  const activeWeeks = activeWeekSet(workouts);
+  const frozenWeeks = new Set<string>(state.freezeConsumedDates);
 
-  let cursor = new Date(state.lastProcessedDate + 'T00:00:00');
+  // 1) Rescue every inactive completed week in the processing window.
+  //    "Completed" = week-start strictly less than this week's start.
+  const thisWS = weekStartISO(new Date());
+  const lastProcWS = weekStartISO(new Date(state.lastProcessedDate + 'T00:00:00'));
+  let weekCursor = lastProcWS;
+  while (weekCursor < thisWS) {
+    if (!activeWeeks.has(weekCursor) && !frozenWeeks.has(weekCursor)) {
+      if (state.freezes > 0) {
+        state.freezes -= 1;
+        state.freezeConsumedDates.push(weekCursor);
+        frozenWeeks.add(weekCursor);
+      }
+      // If no freeze available, the week is a miss. `computeWeekStreak`
+      // then returns 0 for current, which is correct.
+    }
+    weekCursor = addDays(weekCursor, 7);
+  }
+
+  // 2) Freeze-earn ticker: tick every day while the streak is alive.
+  //    A day is "streak alive" if the week containing it is either active
+  //    or frozen. If the streak ever breaks, the ticker resets.
+  const allWeeks = new Set<string>([...activeWeeks, ...frozenWeeks]);
+  let dayCursor = new Date(state.lastProcessedDate + 'T00:00:00');
   const todayDate = new Date(todayStr + 'T00:00:00');
-  cursor.setDate(cursor.getDate() + 1); // start day AFTER lastProcessed
+  dayCursor.setDate(dayCursor.getDate() + 1);
 
-  while (cursor <= todayDate) {
-    const ds = isoDate(cursor);
-    if (activeDates.has(ds)) {
+  while (dayCursor <= todayDate) {
+    const dayWS = weekStartISO(dayCursor);
+    // Current week gets the benefit of the doubt — even if empty, we
+    // keep the ticker going until the week is over.
+    const alive = allWeeks.has(dayWS) || dayWS === thisWS;
+    if (alive) {
       state.streakDaysSinceFreezeGain += 1;
       if (state.streakDaysSinceFreezeGain >= DAYS_TO_EARN_FREEZE && state.freezes < MAX_FREEZES) {
         state.freezes += 1;
         state.streakDaysSinceFreezeGain = 0;
       }
-    } else if (ds !== todayStr) {
-      // Missed day that isn't today — consume a freeze if available
-      if (state.freezes > 0) {
-        state.freezes -= 1;
-        state.freezeConsumedDates.push(ds);
-        activeDates.add(ds);
-        // Day still counts toward the freeze-earn streak (user didn't miss effectively)
-        state.streakDaysSinceFreezeGain += 1;
-        if (state.streakDaysSinceFreezeGain >= DAYS_TO_EARN_FREEZE && state.freezes < MAX_FREEZES) {
-          state.freezes += 1;
-          state.streakDaysSinceFreezeGain = 0;
-        }
-      } else {
-        // No freeze left — reset the earn-progress
-        state.streakDaysSinceFreezeGain = 0;
-      }
+    } else {
+      state.streakDaysSinceFreezeGain = 0;
     }
-    cursor.setDate(cursor.getDate() + 1);
+    dayCursor.setDate(dayCursor.getDate() + 1);
   }
 
   state.lastProcessedDate = todayStr;
@@ -99,18 +192,14 @@ export function daysUntilNextFreeze(state: StreakState): number {
   return Math.max(0, DAYS_TO_EARN_FREEZE - state.streakDaysSinceFreezeGain);
 }
 
-/** Is `yyyyMmDd` inside the user's current contiguous streak (workouts +
- *  rest days + freezes)? Used to pick the inactive vs. active streak
- *  icon on the Home header. */
+/** True if the user has any non-rest workout in the current week. */
+export function isStreakActiveThisWeek(): boolean {
+  const ws = weekStartISO(new Date());
+  const active = activeWeekSet(storage.getWorkouts());
+  return active.has(ws);
+}
+
+/** Back-compat alias — old call sites still import this name. */
 export function isStreakActiveToday(): boolean {
-  const state = getRaw();
-  const workouts = storage.getWorkouts();
-  const logged = new Set(workouts.filter((w) => w.completed).map((w) => w.date.slice(0, 10)));
-  for (const d of state.freezeConsumedDates) logged.add(d);
-  const t = today();
-  if (logged.has(t)) return true;
-  // Yesterday must be logged / frozen for the streak to still be "going" today
-  const y = new Date();
-  y.setDate(y.getDate() - 1);
-  return logged.has(isoDate(y));
+  return isStreakActiveThisWeek();
 }

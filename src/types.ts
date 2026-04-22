@@ -211,6 +211,13 @@ export interface BuddyCompareStats {
     totalVolume: number;
     topExercises: Array<{ name: string; setCount: number; maxWeight: number }>;
   }>;
+  /**
+   * Compact per-day activity volume for the last ~180 days. Keyed by
+   * YYYY-MM-DD. Powers the buddy-profile heatmap without requiring any
+   * cross-user workout reads. 'rest' is a sentinel volume — negative so
+   * the heatmap can distinguish a rest day from an inactive day.
+   */
+  activityDays?: Record<string, number>;
 }
 
 /** Public user profile (searchable by other users) */
