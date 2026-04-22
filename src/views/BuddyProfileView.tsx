@@ -12,7 +12,7 @@ interface BuddyProfileViewProps {
   buddyName: string;
   isDark: boolean;
   onBack: () => void;
-  onOpenChat: (chatId: string, buddyName: string) => void;
+  onOpenChat: (buddyUid: string, chatId: string, buddyName: string) => void;
   onStartSession: (sessionId: string) => void;
   onCompare: (buddyUid: string, buddyName: string, photoURL: string | null) => void;
 }
@@ -193,7 +193,7 @@ export function BuddyProfileView({
       {buddy && (
         <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={() => onOpenChat(buddy.chatId, buddyName)}
+            onClick={() => onOpenChat(buddyUid, buddy.chatId, buddyName)}
             className={`flex items-center justify-center gap-1.5 py-3 rounded-xl font-medium text-xs transition-colors ${
               isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
             }`}

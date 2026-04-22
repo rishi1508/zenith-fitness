@@ -8,6 +8,7 @@ interface Toast {
   id: string;
   message: string;
   type: BuddyNotification['type'];
+  fromUid: string;
   fromName: string;
   data?: Record<string, string>;
   timeout: ReturnType<typeof setTimeout>;
@@ -15,7 +16,7 @@ interface Toast {
 
 interface NotificationToastProps {
   onOpenSession?: (sessionId: string) => void;
-  onOpenChat?: (chatId: string, buddyName: string) => void;
+  onOpenChat?: (buddyUid: string, chatId: string, buddyName: string) => void;
 }
 
 export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToastProps) {
@@ -44,6 +45,7 @@ export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToa
         id: notif.id,
         message: notif.message,
         type: notif.type,
+        fromUid: notif.fromUid,
         fromName: notif.fromName,
         data: notif.data,
         timeout,
@@ -90,17 +92,21 @@ export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToa
 
     const seenIds = loadSeen();
 
+    console.info('[Notif][Toast] effect starting for uid', user.uid);
     const unsub = buddyService.listenToNotifications((notifications) => {
+      let newCount = 0;
       let changed = false;
       for (const notif of notifications) {
         if (!seenIds.has(notif.id)) {
           seenIds.add(notif.id);
           changed = true;
+          newCount++;
           addToast(notif);
         }
       }
       if (changed) saveSeen(seenIds);
-    });
+      console.info('[Notif][Toast] callback — unread:', notifications.length, 'new-this-render:', newCount);
+    }, user.uid);
 
     return unsub;
   }, [user, addToast]);
@@ -112,7 +118,7 @@ export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToa
       removeToast(toast.id);
     } else if (toast.type === 'chat_message' && toast.data?.chatId && onOpenChatRef.current) {
       buddyService.markNotificationRead(toast.id);
-      onOpenChatRef.current(toast.data.chatId, toast.fromName);
+      onOpenChatRef.current(toast.fromUid, toast.data.chatId, toast.fromName);
       removeToast(toast.id);
     }
   };

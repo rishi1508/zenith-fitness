@@ -59,7 +59,7 @@ function App() {
     const unsubNotifs = buddyService.listenToNotifications((n) => {
       notifs = n.length;
       update();
-    });
+    }, user.uid);
     return () => { unsubReqs(); unsubNotifs(); };
   }, [user]);
 
@@ -727,8 +727,8 @@ function App() {
       {user && (
         <NotificationToast
           onOpenSession={openSession}
-          onOpenChat={(chatId, name) => {
-            setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL: prev.photoURL }));
+          onOpenChat={(uid, chatId, name) => {
+            setBuddyContext((prev) => ({ ...prev, uid, chatId, name, photoURL: prev.photoURL }));
             navigateTo('buddy-chat');
           }}
         />
@@ -1043,8 +1043,8 @@ function App() {
               setBuddyContext({ uid, name, photoURL });
               navigateTo('buddy-profile');
             }}
-            onOpenChat={(chatId, name, photoURL) => {
-              setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL }));
+            onOpenChat={(uid, chatId, name, photoURL) => {
+              setBuddyContext({ uid, chatId, name, photoURL });
               navigateTo('buddy-chat');
             }}
             onOpenSession={openSession}
@@ -1056,8 +1056,8 @@ function App() {
             buddyName={buddyContext.name}
             isDark={isDark}
             onBack={() => goBack()}
-            onOpenChat={(chatId, name) => {
-              setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL: prev.photoURL }));
+            onOpenChat={(uid, chatId, name) => {
+              setBuddyContext((prev) => ({ ...prev, uid, chatId, name, photoURL: prev.photoURL }));
               navigateTo('buddy-chat');
             }}
             onStartSession={(sessionId) => {

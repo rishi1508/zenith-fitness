@@ -13,7 +13,7 @@ interface BuddyViewProps {
   isDark: boolean;
   onBack: () => void;
   onViewProfile: (buddyUid: string, buddyName: string, photoURL?: string | null) => void;
-  onOpenChat: (chatId: string, buddyName: string, photoURL?: string | null) => void;
+  onOpenChat: (buddyUid: string, chatId: string, buddyName: string, photoURL?: string | null) => void;
   onOpenSession: (sessionId: string) => void;
 }
 
@@ -171,7 +171,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       if (sessionId) onOpenSession(sessionId);
     } else if (notif.type === 'chat_message') {
       const chatId = notif.data?.chatId;
-      if (chatId) onOpenChat(chatId, notif.fromName);
+      if (chatId) onOpenChat(notif.fromUid, chatId, notif.fromName);
     } else if (notif.type === 'buddy_accepted' || notif.type === 'workout_started') {
       onViewProfile(notif.fromUid, notif.fromName);
     }
@@ -379,7 +379,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                       {/* Quick Actions */}
                       <div className="grid grid-cols-3 gap-2 mt-3">
                         <button
-                          onClick={() => onOpenChat(buddy.chatId, buddyName, profile?.photoURL)}
+                          onClick={() => onOpenChat(buddyUid, buddy.chatId, buddyName, profile?.photoURL)}
                           className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition-colors ${
                             isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
                           }`}

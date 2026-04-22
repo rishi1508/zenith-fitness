@@ -217,19 +217,32 @@ export async function deliverPush(params: {
   data?: Record<string, string>;
 }): Promise<void> {
   const endpoint = import.meta.env.VITE_PUSH_ENDPOINT as string | undefined;
-  if (!endpoint) return;
+  if (!endpoint) {
+    console.warn('[Push] deliverPush skipped — VITE_PUSH_ENDPOINT is not set at build time');
+    return;
+  }
   const user = auth.currentUser;
-  if (!user) return;
-  if (params.recipientUid === user.uid) return; // don't push to self
+  if (!user) {
+    console.warn('[Push] deliverPush skipped — no authenticated user');
+    return;
+  }
+  if (params.recipientUid === user.uid) {
+    console.info('[Push] deliverPush skipped — recipient equals sender');
+    return;
+  }
   try {
     const idToken = await user.getIdToken();
-    await fetch(endpoint, {
+    console.info('[Push] POST', endpoint, 'recipient:', params.recipientUid, 'title:', params.title);
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...params, idToken }),
     });
+    const text = await resp.text().catch(() => '');
+    console.info('[Push] endpoint responded', resp.status, text.slice(0, 200));
   } catch (err) {
-    // Swallow — the in-app notification is already queued via Firestore.
+    // Don't let a push failure bubble up — the in-app toast is already
+    // queued via Firestore, so the notification is not lost.
     console.warn('[Push] deliverPush failed:', err);
   }
 }

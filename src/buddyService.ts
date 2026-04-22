@@ -539,6 +539,14 @@ export async function sendMessage(
 
   await addDoc(collection(db, 'chats', chatId, 'messages'), msg);
 
+  // v3.14.11 regression note: every chat MUST have a recipientUid, or the
+  // notification doc is silently skipped and the buddy gets nothing —
+  // neither in-app toast NOR push. BuddyChatView passes buddyUid from the
+  // view chain; loud-fail here if a future caller forgets.
+  if (recipientUid === undefined || recipientUid === '') {
+    console.error('[Chat] sendMessage called without recipientUid — buddy will NOT be notified. chatId:', chatId);
+  }
+
   if (recipientUid && recipientUid !== user.uid) {
     // `chat_message` so the toast can render a chat-bubble icon and the
     // tap handler routes to the chat — the legacy 'buddy_accepted'
@@ -547,8 +555,9 @@ export async function sendMessage(
       ? `${user.displayName || 'Your buddy'} sent you a workout invite!`
       : `${user.displayName || 'Your buddy'}: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`;
 
+    console.info('[Chat] writing notification for recipient', recipientUid, 'from', user.uid, 'chatId:', chatId);
     try {
-      await addDoc(collection(db, 'notifications', recipientUid, 'items'), {
+      const ref = await addDoc(collection(db, 'notifications', recipientUid, 'items'), {
         type: type === 'workout_invite' ? 'workout_invite' : 'chat_message',
         fromUid: user.uid,
         fromName: user.displayName || 'Anonymous',
@@ -557,8 +566,9 @@ export async function sendMessage(
         read: false,
         data: { chatId },
       });
+      console.info('[Chat] notification written — notifications/' + recipientUid + '/items/' + ref.id);
     } catch (err) {
-      console.error('[Chat] Failed to deliver message notification:', err);
+      console.error('[Chat] notification write FAILED — recipient will NOT see an in-app toast:', err);
     }
     // Fire a system push regardless of whether the Firestore write
     // succeeded — system push is the more urgent delivery path.
@@ -568,6 +578,10 @@ export async function sendMessage(
       body: notifMessage,
       data: { chatId, type: type === 'workout_invite' ? 'workout_invite' : 'chat_message' },
     }).catch(() => { /* logged inside */ });
+  } else if (recipientUid === user.uid) {
+    console.warn('[Chat] recipientUid equals sender uid — skipping notification (self-send)');
+  } else {
+    console.warn('[Chat] no recipientUid provided — notification NOT queued');
   }
 }
 
@@ -740,15 +754,27 @@ export async function getNotifications(): Promise<BuddyNotification[]> {
     .filter((n) => !n.read);
 }
 
-/** Listen to notifications in real-time. */
+/** Listen to notifications in real-time.
+ *
+ *  Pass `uid` explicitly to avoid relying on auth.currentUser, which can be
+ *  null in the tiny window between React rerender and Firebase auth state
+ *  propagation. Falls back to auth.currentUser for legacy callers.
+ */
 export function listenToNotifications(
   callback: (notifications: BuddyNotification[]) => void,
+  uid?: string,
 ): () => void {
-  const user = auth.currentUser;
-  if (!user) return () => {};
+  const targetUid = uid || auth.currentUser?.uid;
+  if (!targetUid) {
+    console.warn('[Notif] listenToNotifications called without uid — listener NOT attached');
+    return () => {};
+  }
+
+  const path = `notifications/${targetUid}/items`;
+  console.info('[Notif] attaching listener to', path);
 
   const q = query(
-    collection(db, 'notifications', user.uid, 'items'),
+    collection(db, 'notifications', targetUid, 'items'),
     orderBy('createdAt', 'desc'),
     limit(50),
   );
@@ -756,15 +782,45 @@ export function listenToNotifications(
   return onSnapshot(
     q,
     (snap) => {
-      const notifications = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() } as BuddyNotification))
-        .filter((n) => !n.read);
-      callback(notifications);
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BuddyNotification));
+      const unread = all.filter((n) => !n.read);
+      console.info(
+        '[Notif] snapshot fired @',
+        path,
+        '— total:', all.length,
+        'unread:', unread.length,
+        'changes:', snap.docChanges().map((c) => c.type).join(','),
+      );
+      callback(unread);
     },
     (err) => {
-      console.error('[Buddy] Notification listener failed:', err);
+      console.error('[Notif] listener FAILED on', path, '— check Firestore rules:', err);
     },
   );
+}
+
+/** Diagnostic: write a notification to the current user's OWN items
+ *  subcollection and fire a fake push. If this triggers a toast, the
+ *  listener + toast pipeline is healthy and the real-world bug is in
+ *  the cross-user write path (rules / recipientUid resolution). If it
+ *  does NOT trigger a toast, the listener is broken.
+ */
+export async function sendTestNotification(): Promise<string> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  const payload = {
+    type: 'chat_message' as const,
+    fromUid: user.uid,
+    fromName: 'Self-Test',
+    message: `🧪 Test notification at ${new Date().toLocaleTimeString()}`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    data: {},
+  };
+  console.info('[Notif][TEST] writing test notification to notifications/', user.uid, '/items with payload:', payload);
+  const ref = await addDoc(collection(db, 'notifications', user.uid, 'items'), payload);
+  console.info('[Notif][TEST] wrote doc id', ref.id, '— if toast does not appear within 1s, the listener is not attached or the filter dropped it.');
+  return ref.id;
 }
 
 /** Mark a notification as read. */

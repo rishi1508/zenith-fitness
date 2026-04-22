@@ -843,10 +843,32 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
           make sure you're on the latest APK.
         </p>
       ) : perm === 'granted' ? (
-        <p className="text-xs text-emerald-400">
-          ✓ Enabled on this device. You'll get a push when buddies message
-          you, invite you to a session, or send a workout invite.
-        </p>
+        <div className="space-y-2">
+          <p className="text-xs text-emerald-400">
+            ✓ Enabled on this device. You'll get a push when buddies message
+            you, invite you to a session, or send a workout invite.
+          </p>
+          <button
+            onClick={async () => {
+              try {
+                await buddyService.sendTestNotification();
+                // No alert — if the toast appears, the pipeline works.
+                // If not, the user will see console logs starting with
+                // [Notif][TEST] indicating where the break is.
+              } catch (err) {
+                alert('Test notification FAILED: ' + (err as Error).message);
+              }
+            }}
+            className="w-full py-1.5 rounded-lg text-[11px] font-medium border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 transition-colors"
+          >
+            🧪 Send test notification (to yourself)
+          </button>
+          <p className="text-[10px] text-zinc-500 leading-tight">
+            If you see a toast appear, the in-app pipeline is healthy. If
+            not, open the browser console (or <code>adb logcat</code> on
+            Android) and look for lines starting with <code>[Notif]</code>.
+          </p>
+        </div>
       ) : perm === 'denied' ? (
         <div className="text-xs text-red-400 space-y-1.5">
           <p>Notifications are blocked for this app.</p>
