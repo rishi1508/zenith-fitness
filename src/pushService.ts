@@ -44,8 +44,11 @@ export async function pushSupported(): Promise<boolean> {
 export async function pushPermissionState(): Promise<'granted' | 'denied' | 'prompt' | 'unsupported'> {
   if (!(await pushSupported())) return 'unsupported';
   if (Capacitor.isNativePlatform()) {
+    // checkPermissions() is the read-only variant. Using requestPermissions()
+    // here would *prompt* every time the Settings screen renders on
+    // Android < 13 (where no OS prompt is needed, permission is auto-granted).
     try {
-      const result = await PushNotifications.requestPermissions();
+      const result = await PushNotifications.checkPermissions();
       return result.receive === 'granted' ? 'granted' : result.receive === 'denied' ? 'denied' : 'prompt';
     } catch { return 'prompt'; }
   }
@@ -69,11 +72,36 @@ export async function enablePushNotifications(): Promise<string | null> {
   // ---- Native (Capacitor APK / iOS) ----
   if (Capacitor.isNativePlatform()) {
     try {
+      // Ensure a 'default' channel exists on Android 8+. FCM pushes from
+      // api/push.ts use channelId: 'default'; without a matching channel,
+      // Android silently drops the notification. Idempotent — create is
+      // a no-op if the channel is already there.
+      if (Capacitor.getPlatform() === 'android') {
+        try {
+          await PushNotifications.createChannel({
+            id: 'default',
+            name: 'General',
+            description: 'General app notifications',
+            importance: 4, // IMPORTANCE_HIGH → heads-up notification
+            visibility: 1, // VISIBILITY_PUBLIC
+            lights: true,
+            vibration: true,
+          });
+        } catch (err) {
+          console.warn('[Push] createChannel failed (continuing):', err);
+        }
+      }
+
       const perm = await PushNotifications.requestPermissions();
+      console.info('[Push] native requestPermissions →', perm.receive);
       if (perm.receive !== 'granted') return null;
+
       return await new Promise<string | null>((resolve) => {
         let resolved = false;
         const settle = (v: string | null) => { if (!resolved) { resolved = true; resolve(v); } };
+
+        // Listeners must be attached BEFORE register() so the very first
+        // event (which can fire synchronously on some devices) isn't lost.
         PushNotifications.addListener('registration', async (t) => {
           console.info('[Push] native registration got token:', t.value.slice(0, 20) + '…');
           try {
@@ -89,7 +117,11 @@ export async function enablePushNotifications(): Promise<string | null> {
           console.warn('[Push] native registration error:', err);
           settle(null);
         });
-        PushNotifications.register().catch((err: unknown) => { console.warn('[Push] native register failed:', err); settle(null); });
+
+        PushNotifications.register()
+          .then(() => console.info('[Push] native register() resolved, awaiting token…'))
+          .catch((err: unknown) => { console.warn('[Push] native register failed:', err); settle(null); });
+
         // Safety timeout — Firebase usually emits within a couple of seconds.
         setTimeout(() => settle(null), 15_000);
       });
@@ -106,9 +138,26 @@ export async function enablePushNotifications(): Promise<string | null> {
   }
 
   try {
-    // Firebase expects the messaging sw at /firebase-messaging-sw.js by default.
-    const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    await navigator.serviceWorker.ready;
+    // Reuse the single SW registered by main.tsx at scope '/'. Previously we
+    // also registered '/firebase-messaging-sw.js' here, which fought the app
+    // SW for the same scope and caused the "AbortError: Registration failed
+    // - push service error" from getToken(). The unified /sw.js now loads
+    // the Firebase messaging compat scripts itself, so we just hand FCM
+    // that registration. See public/sw.js for the merged code.
+    const reg = await navigator.serviceWorker.ready;
+
+    // Clean up any stale firebase-messaging-sw.js registration left over
+    // from pre-3.14.10 versions so it never reclaims the scope again.
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs) {
+        const url = r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL;
+        if (url && url.endsWith('/firebase-messaging-sw.js')) {
+          console.info('[Push] unregistering legacy firebase-messaging-sw.js');
+          await r.unregister();
+        }
+      }
+    } catch { /* best effort */ }
 
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') {
@@ -198,6 +247,26 @@ export async function autoRegisterPushIfNeeded(): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
   if (!(await pushSupported())) return;
+
+  // Ensure the 'default' notification channel exists on Android regardless
+  // of whether we still need to register a token. Users who already had a
+  // token before v3.14.10 would otherwise get FCM pushes silently dropped
+  // because the server-side channelId has no matching channel on the
+  // device. Idempotent.
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+    try {
+      await PushNotifications.createChannel({
+        id: 'default',
+        name: 'General',
+        description: 'General app notifications',
+        importance: 4,
+        visibility: 1,
+        lights: true,
+        vibration: true,
+      });
+    } catch { /* channel may already exist — ignore */ }
+  }
+
   const state = await pushPermissionState();
   if (state !== 'granted') return; // don't auto-trigger a prompt
 

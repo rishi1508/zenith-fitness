@@ -33,9 +33,34 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!--
+          FCM uses this channel id when the server-side payload doesn't
+          specify one. We also create a matching channel at runtime from
+          pushService.ts so Android has something to attach the push to.
+          Without this, heads-up notifications silently drop on Android 8+
+          because no valid channel is attached.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="default" />
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      POST_NOTIFICATIONS (Android 13 / API 33+) — REQUIRED for push to
+      work. Without this declared, the Capacitor plugin's
+      requestPermissions() call never shows the system prompt and the
+      user stays at PERMISSION_DENIED forever. That single omission is
+      why push was silently failing on modern devices.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- FCM runtime dependencies — recommended for reliable delivery. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

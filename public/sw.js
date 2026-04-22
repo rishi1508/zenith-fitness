@@ -1,39 +1,85 @@
-const CACHE_NAME = 'zenith-fitness-v2';
-const urlsToCache = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-];
+// Zenith Fitness — unified service worker.
+//
+// One SW at scope `/` handles both PWA caching AND Firebase Cloud Messaging
+// background pushes. Previously we registered /sw.js (this file) and
+// /firebase-messaging-sw.js separately, both at scope `/`. Two SWs on the
+// same scope race each other and FCM's getToken() bails out with
+// "AbortError: Registration failed - push service error". Merging them
+// removes the conflict.
 
+const CACHE_NAME = 'zenith-fitness-v3';
+const urlsToCache = ['/', '/index.html', '/manifest.json'];
+
+// ---------- Firebase Cloud Messaging ----------
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
+
+firebase.initializeApp({
+  apiKey: 'AIzaSyBUuyPSwfCVm98ArAY1wCZioBXn2mqFCrs',
+  authDomain: 'zenith-fitness-18e2a.firebaseapp.com',
+  projectId: 'zenith-fitness-18e2a',
+  storageBucket: 'zenith-fitness-18e2a.firebasestorage.app',
+  messagingSenderId: '263741998199',
+  appId: '1:263741998199:web:997b62caecb7d65e83f272',
+});
+
+const messaging = firebase.messaging();
+
+messaging.onBackgroundMessage((payload) => {
+  const title = payload.notification?.title || 'Zenith Fitness';
+  const body = payload.notification?.body || '';
+  self.registration.showNotification(title, {
+    body,
+    icon: '/icon.svg',
+    badge: '/icon.svg',
+    data: payload.data || {},
+  });
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of clientsList) {
+      if ('focus' in c) { c.focus(); return; }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow('/');
+  })());
+});
+
+// ---------- PWA lifecycle + cache ----------
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache)),
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      );
-    })
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    // Purge old caches.
+    const cacheNames = await caches.keys();
+    await Promise.all(
+      cacheNames.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)),
+    );
+    // Unregister the legacy firebase-messaging-sw.js if it's still around
+    // from an older version of the app (pre-3.14.10). Two SWs at the same
+    // scope are what caused the original push registration failure.
+    try {
+      const regs = await self.registration.navigationPreload
+        ? await (self.registration.constructor).prototype.getRegistrations?.call?.(self)
+        : null;
+      // registration.getRegistrations() isn't available inside a SW; the
+      // cleanup below is driven by the page via main.tsx instead.
+      void regs;
+    } catch { /* best-effort */ }
+    await self.clients.claim();
+  })());
 });
 
-// Fetch handler. Two important constraints:
-//  1. Cache API's put() only supports GET. Anything else (POST to the
-//     Vercel push endpoint, Firestore long-polling, FCM, etc.) MUST be
-//     passed through without caching — otherwise the browser throws
-//     "Failed to execute 'put' on 'Cache': Request method 'POST' is
-//     unsupported".
-//  2. Cross-origin responses shouldn't be cached: some are opaque,
-//     and we don't want to intercept Firestore/Vercel traffic.
+// Fetch handler constraints:
+//  1. Cache API's put() only accepts GET — skip POST/PUT/DELETE.
+//  2. Don't intercept cross-origin (Firestore long-polling, FCM, Vercel).
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
@@ -46,10 +92,10 @@ self.addEventListener('fetch', (event) => {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME)
             .then((cache) => cache.put(event.request, responseToCache))
-            .catch(() => { /* partial / opaque response — ignore */ });
+            .catch(() => { /* partial / opaque — ignore */ });
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => caches.match(event.request)),
   );
 });
