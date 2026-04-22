@@ -1,7 +1,7 @@
 {
   "name": "zenith-fitness",
   "private": true,
-  "version": "3.14.1",
+  "version": "3.14.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "@capacitor/cli": "^8.0.2",
     "@capacitor/core": "^8.0.2",
     "@capacitor/haptics": "^8.0.1",
+    "@capacitor/push-notifications": "^8.0.3",
     "@capacitor/status-bar": "^8.0.0",
     "@vercel/node": "^3.2.29",
     "express": "^5.2.1",

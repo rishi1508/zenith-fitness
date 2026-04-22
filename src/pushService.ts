@@ -1,28 +1,15 @@
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { db, auth } from './firebase';
 
-// -------- Capacitor native-push bridge (Android APK / iOS) --------
-// The @capacitor/push-notifications plugin isn't in package.json yet — we
-// lazily ask Capacitor whether it's registered. If not, we fall through
-// to the web-push path. Once the user runs:
-//
-//   npm install @capacitor/push-notifications
-//   npx cap sync
-//
-// ...the plugin becomes available and the native branch takes over on
-// APK / iOS builds.
-interface NativePushPlugin {
-  requestPermissions(): Promise<{ receive: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale' }>;
-  register(): Promise<void>;
-  addListener(eventName: 'registration', cb: (token: { value: string }) => void): Promise<{ remove: () => Promise<void> }>;
-  addListener(eventName: 'registrationError', cb: (err: unknown) => void): Promise<{ remove: () => Promise<void> }>;
-  addListener(eventName: 'pushNotificationReceived' | 'pushNotificationActionPerformed', cb: (n: unknown) => void): Promise<{ remove: () => Promise<void> }>;
-}
-const NativePush: NativePushPlugin | null = Capacitor.isPluginAvailable('PushNotifications')
-  ? registerPlugin<NativePushPlugin>('PushNotifications')
-  : null;
+/**
+ * @capacitor/push-notifications ships with the app, so on Android APK /
+ * iOS builds we use it directly. On web we fall back to the Firebase
+ * Web SDK (service worker + VAPID). `Capacitor.isNativePlatform()` is
+ * the runtime switch.
+ */
 
 /**
  * Web Push wiring for Firebase Cloud Messaging.
@@ -46,7 +33,7 @@ const VAPID_KEY = import.meta.env.VITE_FCM_VAPID_KEY as string | undefined;
 /** True if this runtime can receive push — either the native Capacitor
  *  plugin is available (APK / iOS build) or the browser supports web push. */
 export async function pushSupported(): Promise<boolean> {
-  if (NativePush && Capacitor.isNativePlatform()) return true;
+  if (Capacitor.isNativePlatform()) return true;
   if (typeof window === 'undefined') return false;
   if (!('serviceWorker' in navigator)) return false;
   if (!('Notification' in window)) return false;
@@ -56,9 +43,9 @@ export async function pushSupported(): Promise<boolean> {
 /** Current permission state ('granted' | 'denied' | 'prompt' | 'unsupported'). */
 export async function pushPermissionState(): Promise<'granted' | 'denied' | 'prompt' | 'unsupported'> {
   if (!(await pushSupported())) return 'unsupported';
-  if (NativePush && Capacitor.isNativePlatform()) {
+  if (Capacitor.isNativePlatform()) {
     try {
-      const result = await NativePush.requestPermissions();
+      const result = await PushNotifications.requestPermissions();
       return result.receive === 'granted' ? 'granted' : result.receive === 'denied' ? 'denied' : 'prompt';
     } catch { return 'prompt'; }
   }
@@ -80,14 +67,14 @@ export async function enablePushNotifications(): Promise<string | null> {
   if (!user) return null;
 
   // ---- Native (Capacitor APK / iOS) ----
-  if (NativePush && Capacitor.isNativePlatform()) {
+  if (Capacitor.isNativePlatform()) {
     try {
-      const perm = await NativePush.requestPermissions();
+      const perm = await PushNotifications.requestPermissions();
       if (perm.receive !== 'granted') return null;
       return await new Promise<string | null>((resolve) => {
         let resolved = false;
         const settle = (v: string | null) => { if (!resolved) { resolved = true; resolve(v); } };
-        NativePush.addListener('registration', async (t) => {
+        PushNotifications.addListener('registration', async (t) => {
           try {
             await setDoc(
               doc(db, 'userProfiles', user.uid, 'fcmTokens', t.value),
@@ -96,11 +83,11 @@ export async function enablePushNotifications(): Promise<string | null> {
           } catch (err) { console.warn('[Push] token save failed:', err); }
           settle(t.value);
         });
-        NativePush.addListener('registrationError', (err) => {
+        PushNotifications.addListener('registrationError', (err) => {
           console.warn('[Push] native registration error:', err);
           settle(null);
         });
-        NativePush.register().catch((err) => { console.warn('[Push] native register failed:', err); settle(null); });
+        PushNotifications.register().catch((err: unknown) => { console.warn('[Push] native register failed:', err); settle(null); });
         // Safety timeout — Firebase usually emits within a couple of seconds.
         setTimeout(() => settle(null), 15_000);
       });
