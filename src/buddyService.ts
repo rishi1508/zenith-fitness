@@ -551,9 +551,14 @@ export async function sendMessage(
     // `chat_message` so the toast can render a chat-bubble icon and the
     // tap handler routes to the chat — the legacy 'buddy_accepted'
     // re-use opened an unrelated profile view, which wasn't ideal.
+    // Keep the notification body as the plain message text. The sender's
+    // name is rendered on a separate line by the in-app toast and is also
+    // the FCM `title` — having it embedded in the body too produces the
+    // duplicated "Rishi Mishra\nRishi Mishra: hi" that the user flagged.
+    const truncated = text.slice(0, 140) + (text.length > 140 ? '…' : '');
     const notifMessage = type === 'workout_invite'
-      ? `${user.displayName || 'Your buddy'} sent you a workout invite!`
-      : `${user.displayName || 'Your buddy'}: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`;
+      ? 'sent you a workout invite!'
+      : truncated;
 
     console.info('[Chat] writing notification for recipient', recipientUid, 'from', user.uid, 'chatId:', chatId);
     try {
@@ -572,11 +577,18 @@ export async function sendMessage(
     }
     // Fire a system push regardless of whether the Firestore write
     // succeeded — system push is the more urgent delivery path.
+    // `data` carries fromUid + fromName so the tap-handler can route to
+    // the correct chat view without having to look up who sent it.
     deliverPush({
       recipientUid,
       title: user.displayName || 'Zenith Fitness',
       body: notifMessage,
-      data: { chatId, type: type === 'workout_invite' ? 'workout_invite' : 'chat_message' },
+      data: {
+        chatId,
+        type: type === 'workout_invite' ? 'workout_invite' : 'chat_message',
+        fromUid: user.uid,
+        fromName: user.displayName || 'Anonymous',
+      },
     }).catch(() => { /* logged inside */ });
   } else if (recipientUid === user.uid) {
     console.warn('[Chat] recipientUid equals sender uid — skipping notification (self-send)');

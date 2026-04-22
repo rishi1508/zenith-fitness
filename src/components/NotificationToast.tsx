@@ -159,7 +159,17 @@ export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToa
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-white truncate">{toast.message}</p>
+              {/* Sender name first (chat_message + workout_invite), then message
+                  body below — mirrors the native push layout the user is used
+                  to and avoids the "Name\nName: text" duplication. */}
+              {(toast.type === 'chat_message' || toast.type === 'workout_invite') && toast.fromName ? (
+                <>
+                  <p className="text-sm font-semibold text-white truncate">{toast.fromName}</p>
+                  <p className="text-xs text-zinc-300 truncate mt-0.5">{toast.message}</p>
+                </>
+              ) : (
+                <p className="text-sm text-white truncate">{toast.message}</p>
+              )}
               {isClickable && (
                 <p className="text-[11px] text-orange-400 mt-0.5">
                   {toast.type === 'chat_message' ? 'Tap to reply' : 'Tap to join session'}

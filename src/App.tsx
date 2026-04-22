@@ -17,7 +17,7 @@ import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
 import { flushPendingWrites } from './firestoreSync';
-import { autoRegisterPushIfNeeded } from './pushService';
+import { autoRegisterPushIfNeeded, attachPushTapHandler } from './pushService';
 import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 
@@ -378,6 +378,38 @@ function App() {
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [user]);
+
+  // Tap-to-open-chat: when the user taps an Android system push (or clicks
+  // a web notification), pushService emits a `zenith-push-tap` CustomEvent
+  // carrying { chatId, type, fromUid, fromName }. We route it here to the
+  // matching chat view. Runs once per mount.
+  useEffect(() => {
+    const detach = attachPushTapHandler();
+    const onTap = (e: Event) => {
+      const detail = (e as CustomEvent<Record<string, string>>).detail || {};
+      console.info('[Push] tap handler firing — routing detail:', detail);
+      if (detail.type === 'chat_message' || detail.type === 'workout_invite') {
+        if (detail.chatId && detail.fromUid) {
+          setBuddyContext({
+            uid: detail.fromUid,
+            chatId: detail.chatId,
+            name: detail.fromName || 'Buddy',
+          });
+          navigateTo('buddy-chat');
+        } else {
+          console.warn('[Push] tap missing chatId or fromUid — cannot open chat:', detail);
+        }
+      } else if (detail.type === 'session_invite' && detail.sessionId) {
+        openSession(detail.sessionId);
+      }
+    };
+    window.addEventListener('zenith-push-tap', onTap);
+    return () => {
+      window.removeEventListener('zenith-push-tap', onTap);
+      detach();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Flush any in-flight localStorage → Firestore writes when the tab is
   // hidden / the app is closed, so edits made within the debounce window

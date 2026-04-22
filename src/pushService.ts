@@ -303,6 +303,84 @@ export async function autoRegisterPushIfNeeded(): Promise<void> {
   else console.warn('[Push] auto-register: failed to acquire token');
 }
 
+/** Wire up the "user tapped a push" handlers so the app can deep-link into
+ *  the chat / session the push is about.
+ *
+ *  Both the native Capacitor event and the Web Push notificationclick path
+ *  funnel into a single `zenith-push-tap` CustomEvent on `window`. App.tsx
+ *  listens for that event once and routes the user. Call this ONCE on app
+ *  start.
+ */
+export function attachPushTapHandler(): () => void {
+  const unsubs: Array<() => void> = [];
+
+  // ---- Native (Capacitor) ----
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const handle = PushNotifications.addListener(
+        'pushNotificationActionPerformed',
+        (event) => {
+          const data = event.notification?.data as Record<string, string> | undefined;
+          console.info('[Push] native tap → data:', data);
+          if (data) {
+            window.dispatchEvent(new CustomEvent('zenith-push-tap', { detail: data }));
+          }
+        },
+      );
+      // addListener returns a Promise<PluginListenerHandle> on newer
+      // Capacitor — handle both shapes defensively.
+      unsubs.push(() => {
+        Promise.resolve(handle).then((h) => h?.remove?.()).catch(() => {});
+      });
+    } catch (err) {
+      console.warn('[Push] attachPushTapHandler (native) failed:', err);
+    }
+  }
+
+  // ---- Web Push ----
+  // The unified /sw.js posts a { type: 'zenith-push-tap', data } message to
+  // the controlling client when the user clicks a system notification.
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    const onMsg = (event: MessageEvent) => {
+      const payload = event.data;
+      if (payload && typeof payload === 'object' && payload.type === 'zenith-push-tap') {
+        console.info('[Push] web tap → data:', payload.data);
+        window.dispatchEvent(new CustomEvent('zenith-push-tap', { detail: payload.data || {} }));
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    unsubs.push(() => navigator.serviceWorker.removeEventListener('message', onMsg));
+  }
+
+  // Cold-start case (web): the SW opens /?chatId=…&fromUid=…&type=… so the
+  // React app can pick it up even if it hadn't been alive when the push
+  // was tapped. We replay that into the same CustomEvent channel.
+  if (typeof window !== 'undefined' && window.location.search) {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has('chatId') && params.get('type') === 'chat_message') {
+        const data = {
+          chatId: params.get('chatId') || '',
+          type: 'chat_message',
+          fromUid: params.get('fromUid') || '',
+          fromName: params.get('fromName') || '',
+        };
+        console.info('[Push] cold-start tap from URL:', data);
+        // Fire after mount so App.tsx's listener is attached first.
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('zenith-push-tap', { detail: data }));
+          // Strip query so a refresh doesn't re-open the chat.
+          try {
+            window.history.replaceState({}, '', window.location.pathname);
+          } catch { /* ignore */ }
+        }, 100);
+      }
+    } catch { /* ignore */ }
+  }
+
+  return () => { for (const u of unsubs) { try { u(); } catch { /* ignore */ } } };
+}
+
 /** Revoke the current device's token. */
 export async function disablePushNotifications(token: string | null): Promise<void> {
   if (!token) return;

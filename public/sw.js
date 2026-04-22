@@ -38,12 +38,28 @@ messaging.onBackgroundMessage((payload) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  // FCM notifications from api/push.ts carry a `data` object: { chatId,
+  // type, fromUid, fromName } for chat pushes. We forward it to the
+  // foreground client (warm-start) via postMessage, or encode it into the
+  // URL query when cold-starting a new window.
+  const data = event.notification.data || {};
   event.waitUntil((async () => {
     const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of clientsList) {
-      if ('focus' in c) { c.focus(); return; }
+      if ('focus' in c) {
+        try { c.postMessage({ type: 'zenith-push-tap', data }); } catch { /* ignore */ }
+        c.focus();
+        return;
+      }
     }
-    if (self.clients.openWindow) await self.clients.openWindow('/');
+    if (self.clients.openWindow) {
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(data)) {
+        if (typeof v === 'string') params.append(k, v);
+      }
+      const target = params.toString() ? '/?' + params.toString() : '/';
+      await self.clients.openWindow(target);
+    }
   })());
 });
 
