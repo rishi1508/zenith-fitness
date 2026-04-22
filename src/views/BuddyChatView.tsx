@@ -231,31 +231,55 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
       {/* Chat Header — swapped for the selection-mode action bar when
           one or more messages are selected (long-press → multi-select). */}
       {inSelectionMode ? (
-        <div className={`flex items-center gap-2 pb-3 rounded-lg px-2 py-1.5 ${isDark ? 'bg-orange-500/10' : 'bg-orange-50'}`}>
-          <button
-            onClick={clearSelection}
-            className={`p-2 rounded-lg transition-colors ${hoverBg}`}
-            title="Cancel selection"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <div className="flex-1 text-sm font-semibold text-orange-400">
-            {selectedIds.size} selected
+        <div className={`flex flex-col gap-2 pb-3 rounded-lg px-2 py-1.5 ${isDark ? 'bg-orange-500/10' : 'bg-orange-50'}`}>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={clearSelection}
+              className={`p-2 rounded-lg transition-colors ${hoverBg}`}
+              title="Cancel selection"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="flex-1 text-sm font-semibold text-orange-400">
+              {selectedIds.size} selected
+            </div>
+            <button
+              onClick={handleCopy}
+              className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-orange-500/20 text-zinc-200' : 'hover:bg-orange-100 text-gray-700'}`}
+              title="Copy"
+            >
+              <Copy className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleDelete}
+              className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-red-500/20 text-red-400' : 'hover:bg-red-50 text-red-600'}`}
+              title={allMine ? 'Delete selected' : "Delete (only your own messages will be removed)"}
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={handleCopy}
-            className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-orange-500/20 text-zinc-200' : 'hover:bg-orange-100 text-gray-700'}`}
-            title="Copy"
-          >
-            <Copy className="w-5 h-5" />
-          </button>
-          <button
-            onClick={handleDelete}
-            className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-red-500/20 text-red-400' : 'hover:bg-red-50 text-red-600'}`}
-            title={allMine ? 'Delete selected' : "Delete (only your own messages will be removed)"}
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+          {/* Reaction picker — only shown when exactly one message is
+              selected, since reactions apply per-message. */}
+          {selectedIds.size === 1 && (
+            <div className="flex items-center justify-center gap-1 px-2">
+              {['👍', '❤️', '💪', '🔥', '😂', '😢'].map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={async () => {
+                    const targetId = [...selectedIds][0];
+                    await buddyService.toggleMessageReaction(chatId, targetId, emoji);
+                    clearSelection();
+                  }}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition-colors ${
+                    isDark ? 'hover:bg-orange-500/20' : 'hover:bg-orange-100'
+                  }`}
+                  title={`React with ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-3 pb-3">
@@ -391,6 +415,32 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                       } text-right`}>
                         {formatTime(msg.timestamp)}
                       </p>
+                      {/* Reactions pills — clicking toggles the current
+                          user's reaction (remove if already reacted). */}
+                      {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                        <div className={`flex flex-wrap gap-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                          {Object.entries(msg.reactions).map(([emoji, uids]) => {
+                            const youReacted = user ? uids.includes(user.uid) : false;
+                            return (
+                              <button
+                                key={emoji}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  buddyService.toggleMessageReaction(chatId, msg.id, emoji);
+                                }}
+                                className={`px-1.5 py-0.5 rounded-full text-[10px] flex items-center gap-0.5 border transition-colors ${
+                                  youReacted
+                                    ? isDark ? 'bg-orange-500/25 border-orange-500/50 text-orange-200' : 'bg-orange-100 border-orange-300 text-orange-700'
+                                    : isDark ? 'bg-zinc-800/80 border-zinc-700 text-zinc-300' : 'bg-white border-gray-200 text-gray-600'
+                                }`}
+                              >
+                                <span>{emoji}</span>
+                                <span className="font-semibold">{uids.length}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

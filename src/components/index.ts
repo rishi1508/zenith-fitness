@@ -17,3 +17,6 @@ export { StartSessionModal } from './StartSessionModal';
 export { OfflineBanner } from './OfflineBanner';
 export { OfflineGate } from './OfflineGate';
 export { DeloadSuggestion } from './DeloadSuggestion';
+export { StreakButton } from './StreakButton';
+export { StreakModal } from './StreakModal';
+export { ActivityHeatmap } from './ActivityHeatmap';

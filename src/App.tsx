@@ -9,8 +9,9 @@ import { UpdateChecker } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate } from './components';
+import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton } from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { settleStreak, isStreakActiveToday } from './streakService';
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
@@ -148,6 +149,9 @@ function App() {
     // Fill in missed days with auto-rest so streaks reflect real consistency
     // (up to 7 days per gap). Idempotent so running on every mount is safe.
     storage.autoLogMissedRestDays();
+    // Consume/earn streak freezes based on days that have passed since
+    // the last app open. Also idempotent.
+    settleStreak();
     // Rebuild PRs from workout history so stored records stay consistent with the
     // current max-weight-then-reps hierarchy (also heals records from older logic).
     storage.recomputePersonalRecords();
@@ -810,14 +814,22 @@ function App() {
             )}
             {view !== 'active' && (
               <>
-                <button 
+                {/* Duolingo-style streak pill — tap to open calendar + freeze state */}
+                {stats && (
+                  <StreakButton
+                    streakCount={stats.currentStreak}
+                    active={isStreakActiveToday()}
+                    isDark={isDark}
+                  />
+                )}
+                <button
                   onClick={toggleTheme}
                   className={`p-2 transition-colors ${isDark ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
                   title={isDark ? 'Light mode' : 'Dark mode'}
                 >
                   {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                 </button>
-                <button 
+                <button
                   onClick={() => navigateTo('settings')}
                   className={`p-2 transition-colors ${isDark ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
                 >

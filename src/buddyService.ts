@@ -566,6 +566,36 @@ export async function deleteMessage(chatId: string, messageId: string): Promise<
   await deleteDoc(doc(db, 'chats', chatId, 'messages', messageId));
 }
 
+/**
+ * Toggle the current user's reaction `emoji` on a message. If the user
+ * has already reacted with that emoji, remove it; otherwise add it.
+ * Stored in `reactions: { emoji: [uid, ...] }` on the message doc.
+ */
+export async function toggleMessageReaction(
+  chatId: string,
+  messageId: string,
+  emoji: string,
+): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  const ref = doc(db, 'chats', chatId, 'messages', messageId);
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const data = snap.data() as ChatMessage;
+    const current = { ...(data.reactions || {}) };
+    const users = current[emoji] || [];
+    const idx = users.indexOf(user.uid);
+    if (idx >= 0) users.splice(idx, 1);
+    else users.push(user.uid);
+    if (users.length === 0) delete current[emoji];
+    else current[emoji] = users;
+    await updateDoc(ref, { reactions: current });
+  } catch (err) {
+    console.warn('[Chat] toggle reaction failed:', err);
+  }
+}
+
 // ============ TYPING INDICATOR ============
 
 /**

@@ -145,6 +145,24 @@ export interface BodyMeasurementEntry {
   notes?: string;
 }
 
+/**
+ * Per-user streak tracking + freeze tokens.
+ *   - `freezes`: 0..MAX_FREEZES currently held
+ *   - `daysSinceLastFreeze`: how long since a freeze was consumed OR last
+ *     earned. Rolls over to 0 when a new freeze is awarded.
+ *   - `freezeConsumedDates`: ISO dates (YYYY-MM-DD) the freeze covered
+ *     so calculateStats / buddy views can render them as "frozen" not
+ *     "missed".
+ *   - `lastProcessedDate`: the YYYY-MM-DD we last settled freeze state
+ *     for (idempotency — processing on every app mount stays safe).
+ */
+export interface StreakState {
+  freezes: number;
+  freezeConsumedDates: string[]; // YYYY-MM-DD strings
+  lastProcessedDate: string; // YYYY-MM-DD
+  streakDaysSinceFreezeGain: number; // resets to 0 when a freeze is awarded
+}
+
 // Weekly volume goals per muscle group
 export interface VolumeGoal {
   muscleGroup: MuscleGroup;
@@ -248,6 +266,9 @@ export interface ChatMessage {
     workoutName?: string;
     exerciseCount?: number;
   };
+  /** Map of emoji → array of uids who reacted with it. Stored inline on
+   *  the message doc so reactions stream down with the same listener. */
+  reactions?: Record<string, string[]>;
 }
 
 /** In-app buddy notification */

@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import type { UserStats, Workout } from '../types';
 import { useAuth } from '../auth/AuthContext';
+import { ActivityHeatmap } from '../components';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as buddyService from '../buddyService';
@@ -144,6 +145,9 @@ export function ProfileLanding({
           ))}
         </div>
       )}
+
+      {/* Activity heatmap — last 26 weeks */}
+      <ActivityHeatmap workouts={workouts} isDark={isDark} />
 
       {/* Sections */}
       <div className="space-y-2">
