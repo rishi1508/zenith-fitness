@@ -86,20 +86,26 @@ export function StreakModal({ onClose, isDark }: Props) {
 
   return (
     <>
-      {/* Two siblings at the app's portal root — no h-full inheritance
-          through a fixed parent (which Android WebView has historically
-          been flaky about). Backdrop has its own z-index below the sheet. */}
+      {/* Backdrop — separate element so the fade-in animation can't
+          fight with the sheet's transform-based centering (which broke
+          on some browser engines when both used `transform`). */}
       <div
         className="fixed inset-0 bg-black/60 z-[99] animate-fadeIn"
         onClick={onClose}
         aria-hidden
       />
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className={`fixed inset-0 z-[100] overflow-hidden flex flex-col sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[480px] sm:max-w-[92vw] sm:max-h-[92vh] sm:rounded-2xl animate-fadeIn ${
-          isDark ? 'bg-[#0f0f0f] text-white' : 'bg-white text-gray-900'
-        }`}
-      >
+      {/* Wrapper uses flex centering (no translate) so there's no
+          transform conflict and no h-full/inset-0 vs sm:inset-auto
+          specificity tangle. On mobile: default items-stretch makes
+          the sheet fill the viewport. On desktop: items-center +
+          justify-center centers the card with padding. */}
+      <div className="fixed inset-0 z-[100] flex sm:items-center sm:justify-center sm:p-4 pointer-events-none">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={`w-full sm:w-[480px] sm:max-w-[92vw] sm:max-h-[92vh] sm:rounded-2xl overflow-hidden flex flex-col pointer-events-auto ${
+            isDark ? 'bg-[#0f0f0f] text-white' : 'bg-white text-gray-900'
+          }`}
+        >
         {/* Sticky close bar, respecting the Android status bar inset */}
         <div
           className="flex items-center justify-end flex-none"
@@ -293,6 +299,7 @@ export function StreakModal({ onClose, isDark }: Props) {
               </ul>
             </details>
           </div>
+        </div>
         </div>
       </div>
     </>
