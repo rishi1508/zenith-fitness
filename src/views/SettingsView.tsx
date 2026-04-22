@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import {
   ChevronLeft, FileSpreadsheet, Download, Upload,
   CheckCircle2, Copy, Volume2, Palette, Sun, Moon, Clock, User, LogOut, LogIn,
-  Cloud,
+  Cloud, Bell,
 } from 'lucide-react';
 import * as storage from '../storage';
 import { useAuth } from '../auth/AuthContext';
@@ -10,6 +10,8 @@ import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as buddyService from '../buddyService';
 import { manualCheckForUpdates } from '../UpdateChecker';
+import { enablePushNotifications, pushSupported } from '../pushService';
+import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '../healthSync';
 
 declare const __APP_VERSION__: string;
 
@@ -722,6 +724,8 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
       </div>
 
       {/* Check for updates */}
+      <PushNotificationsSection isDark={isDark} />
+      <HealthSyncSection isDark={isDark} />
       <CheckForUpdatesSection isDark={isDark} />
 
       {/* App Info */}
@@ -729,6 +733,125 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
         <p>Zenith Fitness v{__APP_VERSION__}</p>
         <p>Built by Rishi</p>
       </div>
+    </div>
+  );
+}
+
+function HealthSyncSection({ isDark }: { isDark: boolean }) {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [enabled, setEnabled] = useState(() => isHealthSyncEnabled());
+
+  useState(() => {
+    canWriteHealthData().then(setAvailable);
+    return undefined;
+  });
+
+  const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
+  const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
+
+  return (
+    <div className={`rounded-xl p-4 border space-y-3 ${cardBg} ${cardBorder}`}>
+      <div className="flex items-center gap-2">
+        <Cloud className="w-5 h-5 text-green-400" />
+        <span className="font-medium">Health sync</span>
+      </div>
+      {available === false ? (
+        <p className="text-xs text-zinc-500">
+          Install the Android / iOS build to sync workouts to Apple Health
+          or Google Health Connect. Not available in the browser.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-zinc-500">
+            When enabled, every finished workout is pushed to your phone's
+            Health app with duration and an approximate calorie estimate.
+          </p>
+          <label className="flex items-center justify-between gap-3 pt-1">
+            <span className="text-sm">Sync completed workouts</span>
+            <button
+              onClick={() => {
+                const next = !enabled;
+                setEnabled(next);
+                setHealthSyncEnabled(next);
+              }}
+              className={`w-10 h-6 rounded-full transition-colors relative ${
+                enabled ? 'bg-orange-500' : isDark ? 'bg-zinc-700' : 'bg-gray-300'
+              }`}
+              aria-pressed={enabled}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${enabled ? 'translate-x-4' : ''}`} />
+            </button>
+          </label>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PushNotificationsSection({ isDark }: { isDark: boolean }) {
+  const [perm, setPerm] = useState<'default' | 'granted' | 'denied' | 'unsupported'>(() => {
+    if (typeof Notification === 'undefined') return 'unsupported';
+    return Notification.permission as 'default' | 'granted' | 'denied';
+  });
+  const [supported, setSupported] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useState(() => {
+    pushSupported().then(setSupported);
+    return undefined;
+  });
+
+  const handleEnable = async () => {
+    setBusy(true);
+    try {
+      const token = await enablePushNotifications();
+      if (typeof Notification !== 'undefined') setPerm(Notification.permission as 'default' | 'granted' | 'denied');
+      if (!token) {
+        alert('Push notifications could not be enabled. Check that the Firebase VAPID key is configured.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
+  const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
+
+  return (
+    <div className={`rounded-xl p-4 border space-y-3 ${cardBg} ${cardBorder}`}>
+      <div className="flex items-center gap-2">
+        <Bell className="w-5 h-5 text-orange-400" />
+        <span className="font-medium">Push notifications</span>
+      </div>
+      {perm === 'unsupported' || supported === false ? (
+        <p className="text-xs text-zinc-500">
+          Your browser doesn't support push notifications.
+        </p>
+      ) : perm === 'granted' ? (
+        <p className="text-xs text-emerald-400">
+          ✓ Enabled on this device. You'll get a push when buddies message
+          you, invite you to a session, or send a workout invite.
+        </p>
+      ) : perm === 'denied' ? (
+        <p className="text-xs text-red-400">
+          You previously denied notifications in this browser. Re-enable
+          from the browser's site settings to opt back in.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-zinc-500">
+            Get notified when buddies message you, invite you to a workout,
+            or start a session — even when the app isn't open.
+          </p>
+          <button
+            onClick={handleEnable}
+            disabled={busy}
+            className="w-full py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 disabled:opacity-60 transition-opacity"
+          >
+            {busy ? 'Requesting…' : 'Enable notifications'}
+          </button>
+        </>
+      )}
     </div>
   );
 }

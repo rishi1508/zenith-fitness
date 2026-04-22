@@ -17,6 +17,7 @@ import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
 import { flushPendingWrites } from './firestoreSync';
+import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 
 type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile';
@@ -589,6 +590,11 @@ function App() {
         duration,
       };
       storage.saveWorkout(finished);
+
+      // Fire-and-forget push to iOS HealthKit / Android Health Connect
+      // when the user has enabled sync. No-op on web or when the plugin
+      // isn't installed.
+      syncWorkoutToHealth(finished).catch(() => { /* best-effort */ });
 
       // Clear the persisted active workout (session is done)
       localStorage.removeItem('zenith_active_workout');
