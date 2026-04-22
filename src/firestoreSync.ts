@@ -13,6 +13,8 @@ const STORAGE_TO_FIRESTORE: Record<string, string> = {
   zenith_active_plan: 'activePlan',
   zenith_last_day: 'lastDay',
   zenith_body_weight: 'bodyWeight',
+  zenith_body_measurements: 'bodyMeasurements',
+  zenith_streak: 'streakState',
   zenith_deload_weeks: 'deloadWeeks',
   zenith_prs: 'records',
   zenith_sound_settings: 'soundSettings',

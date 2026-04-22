@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ArrowLeft, Dumbbell, ChevronRight, Calculator, Trophy, Scale, Layers,
+  ArrowLeft, Dumbbell, ChevronRight, Calculator, Trophy, Scale, Layers, Ruler,
 } from 'lucide-react';
 import { PlateCalculator, OneRMCalculator } from '../components';
 
@@ -10,10 +10,11 @@ interface ServicesViewProps {
   onOpenExerciseLibrary: () => void;
   onOpenCommonTemplates: () => void;
   onOpenBodyWeight: () => void;
+  onOpenBodyMeasurements: () => void;
 }
 
 export function ServicesView({
-  isDark, onBack, onOpenExerciseLibrary, onOpenCommonTemplates, onOpenBodyWeight,
+  isDark, onBack, onOpenExerciseLibrary, onOpenCommonTemplates, onOpenBodyWeight, onOpenBodyMeasurements,
 }: ServicesViewProps) {
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [showOneRM, setShowOneRM] = useState(false);
@@ -70,6 +71,14 @@ export function ServicesView({
       color: 'text-purple-400',
       bg: isDark ? 'bg-purple-500/15' : 'bg-purple-100',
       onClick: onOpenBodyWeight,
+    },
+    {
+      label: 'Body Measurements',
+      hint: 'Log circumferences for chest, arms, waist and more',
+      icon: <Ruler className="w-5 h-5" />,
+      color: 'text-blue-400',
+      bg: isDark ? 'bg-blue-500/15' : 'bg-blue-100',
+      onClick: onOpenBodyMeasurements,
     },
   ];
 

@@ -14,3 +14,6 @@ export { NotificationToast } from './NotificationToast';
 export { GroupSessionBar } from './GroupSessionBar';
 export { PostWorkoutComparison } from './PostWorkoutComparison';
 export { StartSessionModal } from './StartSessionModal';
+export { OfflineBanner } from './OfflineBanner';
+export { OfflineGate } from './OfflineGate';
+export { DeloadSuggestion } from './DeloadSuggestion';

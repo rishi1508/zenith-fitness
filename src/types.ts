@@ -3,10 +3,15 @@ export interface Exercise {
   name: string;
   muscleGroup: MuscleGroup;
   isCompound: boolean;
+  /** Finer-grained bucket than isCompound — drives smart defaults like
+   *  rest-timer length. If omitted we derive it from isCompound. */
+  category?: ExerciseCategory;
   notes?: string; // Personal notes: form cues, pain points, RPE targets
   videoUrl?: string; // YouTube or form guide link
   isFavorite?: boolean; // Mark as favorite for quick access
 }
+
+export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'core' | 'other';
 
 export type MuscleGroup = 
   | 'chest' 
@@ -125,6 +130,19 @@ export interface BodyWeightEntry {
   date: string; // ISO date string
   weight: number; // in kg
   notes?: string; // e.g., "morning weight", "after workout", "bloated"
+}
+
+/** Body-part circumference measurements (cm). All fields optional so the
+ *  user can log whichever subset they care about. */
+export type BodyMeasurementField =
+  | 'chest' | 'waist' | 'hips' | 'leftArm' | 'rightArm'
+  | 'leftThigh' | 'rightThigh' | 'leftCalf' | 'rightCalf' | 'neck' | 'shoulders';
+
+export interface BodyMeasurementEntry {
+  id: string;
+  date: string; // ISO
+  measurements: Partial<Record<BodyMeasurementField, number>>; // cm
+  notes?: string;
 }
 
 // Weekly volume goals per muscle group

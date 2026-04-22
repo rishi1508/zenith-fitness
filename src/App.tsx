@@ -9,15 +9,16 @@ import { UpdateChecker } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison } from './components';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding } from './views';
+import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate } from './components';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
 import { flushPendingWrites } from './firestoreSync';
 import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'common-templates' | 'profile';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -65,6 +66,12 @@ function App() {
   const [sessionMode, setSessionMode] = useState<'host' | 'participant' | null>(null);
   const [buddyProgress, setBuddyProgress] = useState<Map<string, { buddyName: string; weight: number; reps: number }>>(new Map());
   const sessionSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Online/offline probe + "Proceed offline" acknowledgement. Once the
+  // user dismisses the gate we don't show it again this session — they
+  // can still reconnect via the thin banner.
+  const { state: connState, retry: retryConnection } = useOnlineStatus();
+  const [dismissedOfflineGate, setDismissedOfflineGate] = useState(false);
 
   // Auto-theme check every minute when in auto mode
   useEffect(() => {
@@ -690,6 +697,18 @@ function App() {
     <div className={`h-dvh flex flex-col overflow-hidden transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Update Checker */}
       <UpdateChecker />
+      {/* Thin persistent banner when we're offline — sits above everything
+          else and can't be dismissed (only fixed by reconnecting). */}
+      <OfflineBanner state={connState} onRetry={retryConnection} />
+      {/* First-launch gate: blocks UI until the user retries or
+          explicitly chooses to proceed offline. */}
+      {!dismissedOfflineGate && (
+        <OfflineGate
+          state={connState}
+          onRetry={retryConnection}
+          onProceedOffline={() => setDismissedOfflineGate(true)}
+        />
+      )}
       {user && (
         <NotificationToast
           onOpenSession={openSession}
@@ -970,10 +989,14 @@ function App() {
             onOpenExerciseLibrary={() => navigateTo('exercises')}
             onOpenCommonTemplates={() => navigateTo('common-templates')}
             onOpenBodyWeight={() => navigateTo('body-weight')}
+            onOpenBodyMeasurements={() => navigateTo('body-measurements')}
           />
         )}
         {view === 'body-weight' && (
           <BodyWeightView isDark={isDark} onBack={() => goBack()} />
+        )}
+        {view === 'body-measurements' && (
+          <BodyMeasurementsView isDark={isDark} onBack={() => goBack()} />
         )}
         {view === 'common-templates' && (
           <CommonTemplatesView isDark={isDark} onBack={() => goBack()} />
@@ -1095,7 +1118,7 @@ function App() {
             <NavButton
               icon={<Layers />}
               label="Services"
-              active={view === 'services' || view === 'body-weight' || view === 'common-templates' || view === 'exercises'}
+              active={view === 'services' || view === 'body-weight' || view === 'body-measurements' || view === 'common-templates' || view === 'exercises'}
               onClick={() => navigateTo('services')}
             />
             {!isGuest && (

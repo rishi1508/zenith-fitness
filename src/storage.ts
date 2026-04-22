@@ -1,4 +1,4 @@
-import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from './types';
+import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, BodyMeasurementEntry, BodyMeasurementField, VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from './types';
 import { queueFirestoreSync, addToSharedExerciseLibrary } from './firestoreSync';
 
 const STORAGE_KEYS = {
@@ -12,7 +12,9 @@ const STORAGE_KEYS = {
   ACTIVE_PLAN: 'zenith_active_plan',
   LAST_DAY: 'zenith_last_day', // Last used day number in active plan
   BODY_WEIGHT: 'zenith_body_weight', // Body weight tracking entries
+  BODY_MEASUREMENTS: 'zenith_body_measurements', // Per-part circumference log
   DELOAD_WEEKS: 'zenith_deload_weeks', // Array of ISO week strings that were deload weeks
+  STREAK: 'zenith_streak', // Streak freeze state (see StreakState in types)
 };
 
 // Generic storage helpers
@@ -1142,6 +1144,35 @@ export function getLatestBodyWeight(): BodyWeightEntry | null {
 }
 
 // Get body weight change over a period
+// ============ BODY MEASUREMENTS (cm circumferences) ============
+
+export function getBodyMeasurements(): BodyMeasurementEntry[] {
+  const entries = getItem<BodyMeasurementEntry[]>(STORAGE_KEYS.BODY_MEASUREMENTS, []);
+  return entries.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+export function addBodyMeasurementEntry(
+  measurements: Partial<Record<BodyMeasurementField, number>>,
+  notes?: string,
+  date?: string,
+): BodyMeasurementEntry {
+  const entry: BodyMeasurementEntry = {
+    id: crypto.randomUUID(),
+    date: date || new Date().toISOString(),
+    measurements,
+    ...(notes ? { notes } : {}),
+  };
+  const entries = getBodyMeasurements();
+  entries.push(entry);
+  setItem(STORAGE_KEYS.BODY_MEASUREMENTS, entries);
+  return entry;
+}
+
+export function deleteBodyMeasurementEntry(id: string): void {
+  const entries = getBodyMeasurements().filter((e) => e.id !== id);
+  setItem(STORAGE_KEYS.BODY_MEASUREMENTS, entries);
+}
+
 export function getBodyWeightChange(days: number = 7): { change: number; startWeight: number; endWeight: number } | null {
   const entries = getBodyWeightEntries();
   if (entries.length < 2) return null;

@@ -16,6 +16,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [editingVideoUrl, setEditingVideoUrl] = useState<string | null>(null);
+  const [editingCategory, setEditingCategory] = useState<import('../types').ExerciseCategory | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   
   const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other'];
@@ -66,6 +67,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
         ...allExercises[exerciseIndex],
         notes: editingNotes?.trim() || undefined,
         videoUrl: editingVideoUrl?.trim() || undefined,
+        category: editingCategory ?? allExercises[exerciseIndex].category,
       };
       allExercises[exerciseIndex] = updated;
       storage.saveExercises(allExercises);
@@ -79,6 +81,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
       setExercises(allExercises);
       setEditingNotes(null);
       setEditingVideoUrl(null);
+      setEditingCategory(null);
       setExpandedExerciseId(null);
       onExercisesChange();
     }
@@ -274,7 +277,38 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
                         } focus:outline-none focus:border-orange-500`}
                       />
                     </div>
-                    
+
+                    {/* Category — drives the smart rest-timer defaults */}
+                    <div className="space-y-2">
+                      <label className={`text-sm font-medium ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+                        Category
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(['compound','isolation','cardio','core','other'] as const).map((cat) => {
+                          const current = editingCategory ?? exercise.category ?? (exercise.isCompound ? 'compound' : 'isolation');
+                          const active = current === cat;
+                          return (
+                            <button
+                              key={cat}
+                              onClick={() => setEditingCategory(cat)}
+                              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                                active
+                                  ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white'
+                                  : isDark
+                                    ? 'bg-[#252525] text-zinc-400 hover:bg-[#303030]'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              }`}
+                            >
+                              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className={`text-[11px] ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                        Compound exercises get a longer default rest (3 min) than isolation (75 s).
+                      </div>
+                    </div>
+
                     <button
                       onClick={() => handleSaveNotes(exercise.id)}
                       className="w-full py-2 bg-orange-500 text-white font-medium rounded-lg hover:bg-orange-400 transition-colors"

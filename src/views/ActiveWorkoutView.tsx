@@ -6,6 +6,7 @@ import {
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
 import { hapticImpact, hapticNotification } from '../haptics';
+import { defaultRestSecondsFor } from '../restTimer';
 
 // Module-level AudioContext so oscillators don't constantly warm up a new
 // context (which Android autoplay policy keeps in "suspended"). Lazily
@@ -243,10 +244,17 @@ export function ActiveWorkoutView({
     newWorkout.exercises[exerciseIndex].sets[setIndex] = updatedSet;
     onUpdate(newWorkout);
 
-    // Start rest timer when completing a set
+    // Start rest timer when completing a set. Pull a smart default
+    // based on the exercise's category (compound → 3 min, isolation → 75s,
+    // etc.) instead of a flat 90 s.
     if (updates.completed && !workout.exercises[exerciseIndex].sets[setIndex].completed) {
-      startRestTimer(90); // 90 second default rest
-      
+      const exForRest = newWorkout.exercises[exerciseIndex];
+      const libraryEntry = storage.getExercises().find(
+        (e) => e.id === exForRest.exerciseId
+          || e.name.trim().toLowerCase() === exForRest.exerciseName.trim().toLowerCase(),
+      );
+      startRestTimer(defaultRestSecondsFor(libraryEntry));
+
       const exercise = newWorkout.exercises[exerciseIndex];
       
       if (updatedSet.weight > 0 && updatedSet.reps > 0) {

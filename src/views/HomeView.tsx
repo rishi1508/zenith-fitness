@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ChevronRight, Settings, Trash2, ArrowRight, Clock } from 'lucide-react';
 import type { Workout, WorkoutTemplate } from '../types';
 import { WeeklyPlanSelector } from '../components/WeeklyPlanSelector';
+import { DeloadSuggestion } from '../components/DeloadSuggestion';
+import { computeDeloadSuggestion } from '../deloadDetector';
 import { VersionInfo } from '../UpdateChecker';
 import { useAuth } from '../auth/AuthContext';
 
@@ -19,6 +21,7 @@ interface HomeViewProps {
 export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onManagePlans, activeWorkout, onResumeWorkout, onDiscardWorkout }: HomeViewProps) {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'Champ';
+  const deload = useMemo(() => computeDeloadSuggestion(workouts), [workouts]);
 
   // Elapsed timer for paused workout banner
   const [pausedElapsed, setPausedElapsed] = useState('');
@@ -100,6 +103,9 @@ export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onMa
           </div>
         </div>
       )}
+
+      {/* Deload recommendation — only renders when rising-volume streak ≥ 3 weeks */}
+      <DeloadSuggestion data={deload} isDark={isDark} />
 
       {/* Greeting — compact */}
       <div>

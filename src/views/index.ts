@@ -19,3 +19,4 @@ export { ServicesView } from './ServicesView';
 export { BodyWeightView } from './BodyWeightView';
 export { CommonTemplatesView } from './CommonTemplatesView';
 export { ProfileLanding } from './ProfileView';
+export { BodyMeasurementsView } from './BodyMeasurementsView';
