@@ -6,6 +6,21 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { deliverPush } from './pushService';
+
+/** Recursively strip `undefined` values so Firestore's setDoc doesn't
+ *  reject them. Preserves arrays, nulls, and primitives as-is. */
+function scrubUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(scrubUndefined) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v === undefined) continue;
+      out[k] = scrubUndefined(v);
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
 import type {
   UserProfile, BuddyRequest, BuddyRelationship,
   ChatMessage, BuddyNotification, Workout, UserStats, BuddyCompareStats,
@@ -49,7 +64,10 @@ export async function upsertUserProfile(
       profile.compareStats = compareStats;
     }
 
-    await setDoc(ref, profile, { merge: true });
+    // Firestore rejects any undefined field values. Walk the object and
+    // drop undefineds before writing — this protects us against future
+    // optional fields that may slip through the type system.
+    await setDoc(ref, scrubUndefined(profile), { merge: true });
   } catch (err) {
     console.error('[Buddy] Failed to upsert profile — check Firestore rules for userProfiles collection:', err);
   }
@@ -80,7 +98,7 @@ export async function setWorkingOutStatus(
  */
 export async function touchHeartbeat(): Promise<void> {
   const user = auth.currentUser;
-  if (!user) return;
+  if (!user || !user.uid) return;
   try {
     const ref = doc(db, 'userProfiles', user.uid);
     await setDoc(ref, { lastActive: new Date().toISOString() }, { merge: true });
@@ -182,8 +200,12 @@ export async function getAllUsers(): Promise<UserProfile[]> {
   }
 }
 
-/** Get a specific user's profile. */
+/** Get a specific user's profile. Guards against empty uid (would
+ *  otherwise throw "Document references must have an even number of
+ *  segments" — we've seen this from presence/intervals firing before a
+ *  buddy context is populated). */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  if (!uid) return null;
   const ref = doc(db, 'userProfiles', uid);
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data() as UserProfile) : null;

@@ -237,16 +237,19 @@ export function computeMyCompareStats(
       }
       if (setCount > 0) perEx.push({ name: ex.exerciseName, setCount, maxWeight });
     }
-    return {
+    // Firestore rejects `undefined` field values, so only include
+    // `duration` when the workout has one.
+    const summary: NonNullable<BuddyCompareStats['recentWorkouts']>[number] = {
       id: w.id,
       date: w.date,
       name: w.name,
       type: w.type,
-      duration: w.duration,
       exerciseCount: w.exercises.length,
       totalVolume: Math.round(totalVolume),
       topExercises: perEx,
     };
+    if (typeof w.duration === 'number') summary.duration = w.duration;
+    return summary;
   });
 
   return {

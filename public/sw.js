@@ -1,11 +1,10 @@
-const CACHE_NAME = 'zenith-fitness-v1';
+const CACHE_NAME = 'zenith-fitness-v2';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
 ];
 
-// Install - cache essential files
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -14,7 +13,6 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -28,22 +26,30 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch - network first, fallback to cache
+// Fetch handler. Two important constraints:
+//  1. Cache API's put() only supports GET. Anything else (POST to the
+//     Vercel push endpoint, Firestore long-polling, FCM, etc.) MUST be
+//     passed through without caching — otherwise the browser throws
+//     "Failed to execute 'put' on 'Cache': Request method 'POST' is
+//     unsupported".
+//  2. Cross-origin responses shouldn't be cached: some are opaque,
+//     and we don't want to intercept Firestore/Vercel traffic.
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone and cache successful responses
         if (response.status === 200) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME)
-            .then((cache) => cache.put(event.request, responseToCache));
+            .then((cache) => cache.put(event.request, responseToCache))
+            .catch(() => { /* partial / opaque response — ignore */ });
         }
         return response;
       })
-      .catch(() => {
-        // Fallback to cache
-        return caches.match(event.request);
-      })
+      .catch(() => caches.match(event.request))
   );
 });
