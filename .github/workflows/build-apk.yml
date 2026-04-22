@@ -36,6 +36,13 @@ jobs:
         run: npm ci
 
       - name: Build web app
+        env:
+          # Baked into the Vite bundle at build time. Both are required
+          # for push notifications:
+          #   - VAPID key is the public half of the Web Push keypair
+          #   - PUSH_ENDPOINT is the Vercel /api/push URL that sends FCM
+          VITE_FCM_VAPID_KEY: ${{ secrets.VITE_FCM_VAPID_KEY }}
+          VITE_PUSH_ENDPOINT: ${{ secrets.VITE_PUSH_ENDPOINT }}
         run: npm run build
 
       # ---- Firebase Hosting + Firestore rules Deploy ----
