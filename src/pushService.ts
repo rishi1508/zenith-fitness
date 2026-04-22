@@ -75,12 +75,14 @@ export async function enablePushNotifications(): Promise<string | null> {
         let resolved = false;
         const settle = (v: string | null) => { if (!resolved) { resolved = true; resolve(v); } };
         PushNotifications.addListener('registration', async (t) => {
+          console.info('[Push] native registration got token:', t.value.slice(0, 20) + '…');
           try {
             await setDoc(
               doc(db, 'userProfiles', user.uid, 'fcmTokens', t.value),
               { token: t.value, createdAt: new Date().toISOString(), platform: Capacitor.getPlatform() },
             );
-          } catch (err) { console.warn('[Push] token save failed:', err); }
+            console.info('[Push] native token saved to Firestore');
+          } catch (err) { console.error('[Push] token save FAILED — check Firestore rules for userProfiles/{uid}/fcmTokens:', err); }
           settle(t.value);
         });
         PushNotifications.addListener('registrationError', (err) => {
@@ -119,13 +121,23 @@ export async function enablePushNotifications(): Promise<string | null> {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: reg,
     });
-    if (!token) return null;
+    if (!token) {
+      console.warn('[Push] web getToken returned empty — VAPID key wrong or FCM blocked');
+      return null;
+    }
+    console.info('[Push] web token acquired:', token.slice(0, 20) + '…');
 
     // Persist token under the user so a trigger can look it up.
-    await setDoc(
-      doc(db, 'userProfiles', user.uid, 'fcmTokens', token),
-      { token, createdAt: new Date().toISOString(), ua: navigator.userAgent },
-    );
+    try {
+      await setDoc(
+        doc(db, 'userProfiles', user.uid, 'fcmTokens', token),
+        { token, createdAt: new Date().toISOString(), ua: navigator.userAgent },
+      );
+      console.info('[Push] web token saved to Firestore');
+    } catch (err) {
+      console.error('[Push] token save FAILED — check Firestore rules for userProfiles/{uid}/fcmTokens:', err);
+      throw err;
+    }
 
     // Foreground messages — route through the existing in-app toast.
     onMessage(messaging, (payload) => {

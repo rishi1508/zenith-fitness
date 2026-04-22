@@ -30,6 +30,14 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if signedIn() && request.auth.uid == uid;
       allow delete: if false;
+
+      // FCM push-notification tokens. Only the owner can see / manage
+      // their own device tokens. The Vercel push function reads these
+      // via the firebase-admin SDK which bypasses rules, so we don't
+      // need to open this to other users.
+      match /fcmTokens/{tokenId} {
+        allow read, write, delete: if signedIn() && request.auth.uid == uid;
+      }
     }
 
     // ---------- per-user private data ----------
