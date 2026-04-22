@@ -243,6 +243,18 @@ function App() {
           !activeWorkout.completed) {
         finishWorkoutRef.current?.({ skipValidation: true });
       }
+      if (s.status === 'cancelled' &&
+          activeWorkout?.sessionId === activeSessionId) {
+        // Host cancelled the session → drop our local workout (don't
+        // save to history) and bounce back to home.
+        localStorage.removeItem('zenith_active_workout');
+        setActiveWorkout(null);
+        setActiveSessionId(null);
+        if (user) buddyService.setWorkingOutStatus(false);
+        navigationHistory.current = ['home'];
+        setView('home');
+        alert('The host cancelled this workout session.');
+      }
     });
     return unsub;
   }, [activeSessionId, activeWorkout, user]);
@@ -602,18 +614,34 @@ function App() {
     setView('home');
   }, []);
 
-  const discardWorkout = useCallback(() => {
-    if (activeWorkout && confirm('Discard this workout? All progress will be lost.')) {
-      // Clear the persisted active workout
-      localStorage.removeItem('zenith_active_workout');
-      setActiveWorkout(null);
-      // Clear working-out status
-      if (user) buddyService.setWorkingOutStatus(false);
-      // Reset navigation history since we discarded
-      navigationHistory.current = ['home'];
-      setView('home');
+  const discardWorkout = useCallback(async () => {
+    if (!activeWorkout) return;
+    const tiedSessionId = activeWorkout.sessionId;
+    const isSessionWorkout = tiedSessionId && activeSessionId === tiedSessionId;
+    const prompt = isSessionWorkout && sessionMode === 'host'
+      ? 'Cancel the group session? Everyone\'s progress will be discarded — this can\'t be undone.'
+      : 'Discard this workout? All progress will be lost.';
+    if (!confirm(prompt)) return;
+
+    if (isSessionWorkout && sessionMode === 'host') {
+      // Host-only path: tear down the shared session so every
+      // participant's app sees status='cancelled' and auto-discards.
+      try {
+        await sessionService.cancelSession(tiedSessionId!);
+      } catch (err) {
+        console.error('[Session] cancel failed:', err);
+        alert(`Couldn't cancel the session: ${err instanceof Error ? err.message : 'unknown error'}`);
+        return;
+      }
+      setActiveSessionId(null);
     }
-  }, [activeWorkout, user]);
+
+    localStorage.removeItem('zenith_active_workout');
+    setActiveWorkout(null);
+    if (user) buddyService.setWorkingOutStatus(false);
+    navigationHistory.current = ['home'];
+    setView('home');
+  }, [activeWorkout, activeSessionId, sessionMode, user]);
 
   const handleBackfillRestDays = () => {
     storage.backfillRestDays(missingDays);
@@ -641,7 +669,15 @@ function App() {
     <div className={`h-dvh flex flex-col overflow-hidden transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
       {/* Update Checker */}
       <UpdateChecker />
-      {user && <NotificationToast onOpenSession={openSession} />}
+      {user && (
+        <NotificationToast
+          onOpenSession={openSession}
+          onOpenChat={(chatId, name) => {
+            setBuddyContext((prev) => ({ ...prev, chatId, name, photoURL: prev.photoURL }));
+            navigateTo('buddy-chat');
+          }}
+        />
+      )}
       
       {/* Missing Days Prompt */}
       {missingDays.length > 0 && (

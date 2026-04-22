@@ -334,3 +334,24 @@ export async function finishSessionForAll(sessionId: string): Promise<void> {
     completedAt: new Date().toISOString(),
   });
 }
+
+/**
+ * Host cancels the session entirely. Flips status='cancelled' — every
+ * participant's client listens for this and discards its in-progress
+ * workout instead of saving to history (see App.tsx watcher).
+ */
+export async function cancelSession(sessionId: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+
+  const sessionRef = doc(db, 'workoutSessions', sessionId);
+  const snap = await getDoc(sessionRef);
+  if (!snap.exists()) throw new Error('Session not found');
+  const session = snap.data() as WorkoutSession;
+  if (session.hostUid !== user.uid) throw new Error('Only the host can cancel the session');
+
+  await updateDoc(sessionRef, {
+    status: 'cancelled',
+    completedAt: new Date().toISOString(),
+  });
+}

@@ -478,7 +478,11 @@ export async function getBuddyStats(buddyUid: string): Promise<UserStats | null>
 
 // ============ CHAT ============
 
-/** Send a chat message. Optionally notifies the recipient. */
+/** Send a chat message. Optionally notifies the recipient.
+ *  The notification write is isolated from the message write so a
+ *  notification-rule failure or transient error can't silently eat the
+ *  user's message — they're decoupled, and any notification failure is
+ *  surfaced to the console so it's diagnosable. */
 export async function sendMessage(
   chatId: string,
   text: string,
@@ -500,21 +504,27 @@ export async function sendMessage(
 
   await addDoc(collection(db, 'chats', chatId, 'messages'), msg);
 
-  // Notify recipient if UID provided
   if (recipientUid && recipientUid !== user.uid) {
-    const notifType = type === 'workout_invite' ? 'workout_invite' as const : 'buddy_accepted' as const;
+    // `chat_message` so the toast can render a chat-bubble icon and the
+    // tap handler routes to the chat — the legacy 'buddy_accepted'
+    // re-use opened an unrelated profile view, which wasn't ideal.
     const notifMessage = type === 'workout_invite'
       ? `${user.displayName || 'Your buddy'} sent you a workout invite!`
-      : `${user.displayName || 'Your buddy'}: ${text.slice(0, 60)}${text.length > 60 ? '...' : ''}`;
+      : `${user.displayName || 'Your buddy'}: ${text.slice(0, 60)}${text.length > 60 ? '…' : ''}`;
 
-    await addDoc(collection(db, 'notifications', recipientUid, 'items'), {
-      type: notifType,
-      fromUid: user.uid,
-      fromName: user.displayName || 'Anonymous',
-      message: notifMessage,
-      createdAt: new Date().toISOString(),
-      read: false,
-    });
+    try {
+      await addDoc(collection(db, 'notifications', recipientUid, 'items'), {
+        type: type === 'workout_invite' ? 'workout_invite' : 'chat_message',
+        fromUid: user.uid,
+        fromName: user.displayName || 'Anonymous',
+        message: notifMessage,
+        createdAt: new Date().toISOString(),
+        read: false,
+        data: { chatId },
+      });
+    } catch (err) {
+      console.error('[Chat] Failed to deliver message notification:', err);
+    }
   }
 }
 
@@ -557,26 +567,41 @@ export async function setTypingActive(chatId: string): Promise<void> {
     await updateDoc(doc(db, 'chats', chatId), {
       [`typingUntil.${user.uid}`]: expiresAt,
     });
-  } catch { /* best-effort — rules / offline noise is fine to swallow */ }
+  } catch (err) {
+    // Surface so the root cause is visible in the console instead of a silent no-op.
+    console.warn('[Chat] typing write failed:', err);
+  }
 }
 
-/** Listen to the chat doc's typingUntil map and emit the set of uids
- *  that are currently typing (i.e. their expiry is in the future). */
+/**
+ * Listen to the chat doc's typingUntil map and emit the set of uids
+ * currently typing. A local ticker re-evaluates expiry every 1s so
+ * "typing…" clears promptly when the sender stops, without waiting
+ * for another Firestore write.
+ */
 export function listenToTyping(
   chatId: string,
   callback: (typingUids: Set<string>) => void,
 ): () => void {
-  return onSnapshot(doc(db, 'chats', chatId), (snap) => {
-    if (!snap.exists()) { callback(new Set()); return; }
-    const data = snap.data() as { typingUntil?: Record<string, string> };
-    const map = data.typingUntil || {};
+  let latestMap: Record<string, string> = {};
+  const emit = () => {
     const now = Date.now();
     const active = new Set<string>();
-    for (const [uid, iso] of Object.entries(map)) {
+    for (const [uid, iso] of Object.entries(latestMap)) {
       if (new Date(iso).getTime() > now) active.add(uid);
     }
     callback(active);
+  };
+  const unsub = onSnapshot(doc(db, 'chats', chatId), (snap) => {
+    if (!snap.exists()) { latestMap = {}; emit(); return; }
+    const data = snap.data() as { typingUntil?: Record<string, string> };
+    latestMap = data.typingUntil || {};
+    emit();
+  }, (err) => {
+    console.warn('[Chat] typing listener error:', err);
   });
+  const tick = setInterval(emit, 1000);
+  return () => { unsub(); clearInterval(tick); };
 }
 
 /** Send a workout invite to a buddy via chat. */

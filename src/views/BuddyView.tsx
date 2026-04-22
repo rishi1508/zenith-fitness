@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ArrowLeft, Search, UserPlus, Users, Bell, Check, X,
-  Dumbbell, Flame, MessageCircle, ChevronRight, Loader2, UserCheck, Clock,
+  Dumbbell, Flame, MessageCircle, ChevronRight, Loader2, UserCheck, Clock, MessagesSquare,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Avatar } from '../components';
@@ -166,6 +166,9 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
     } else if (notif.type === 'session_invite') {
       const sessionId = notif.data?.sessionId;
       if (sessionId) onOpenSession(sessionId);
+    } else if (notif.type === 'chat_message') {
+      const chatId = notif.data?.chatId;
+      if (chatId) onOpenChat(chatId, notif.fromName);
     } else if (notif.type === 'buddy_accepted' || notif.type === 'workout_started') {
       onViewProfile(notif.fromUid, notif.fromName);
     }
@@ -531,12 +534,16 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                           ? 'bg-emerald-500/20 text-emerald-400'
                           : notif.type === 'buddy_accepted'
                             ? 'bg-blue-500/20 text-blue-400'
-                            : 'bg-orange-500/20 text-orange-400'
+                            : notif.type === 'chat_message'
+                              ? 'bg-purple-500/20 text-purple-400'
+                              : 'bg-orange-500/20 text-orange-400'
                       }`}>
                         {notif.type === 'workout_started' || notif.type === 'session_invite' ? (
                           <Dumbbell className="w-5 h-5" />
                         ) : notif.type === 'buddy_accepted' ? (
                           <UserCheck className="w-5 h-5" />
+                        ) : notif.type === 'chat_message' ? (
+                          <MessagesSquare className="w-5 h-5" />
                         ) : (
                           <UserPlus className="w-5 h-5" />
                         )}

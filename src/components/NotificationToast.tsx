@@ -15,14 +15,17 @@ interface Toast {
 
 interface NotificationToastProps {
   onOpenSession?: (sessionId: string) => void;
+  onOpenChat?: (chatId: string, buddyName: string) => void;
 }
 
-export function NotificationToast({ onOpenSession }: NotificationToastProps) {
+export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToastProps) {
   const { user } = useAuth();
   const [toasts, setToasts] = useState<Toast[]>([]);
-  // Keep latest handler in a ref so listener effect (keyed on `user`) stays stable.
+  // Keep latest handlers in refs so listener effect (keyed on `user`) stays stable.
   const onOpenSessionRef = useRef(onOpenSession);
+  const onOpenChatRef = useRef(onOpenChat);
   useEffect(() => { onOpenSessionRef.current = onOpenSession; }, [onOpenSession]);
+  useEffect(() => { onOpenChatRef.current = onOpenChat; }, [onOpenChat]);
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => {
@@ -107,6 +110,10 @@ export function NotificationToast({ onOpenSession }: NotificationToastProps) {
       buddyService.markNotificationRead(toast.id);
       onOpenSessionRef.current(toast.data.sessionId);
       removeToast(toast.id);
+    } else if (toast.type === 'chat_message' && toast.data?.chatId && onOpenChatRef.current) {
+      buddyService.markNotificationRead(toast.id);
+      onOpenChatRef.current(toast.data.chatId, toast.fromName);
+      removeToast(toast.id);
     }
   };
 
@@ -115,7 +122,9 @@ export function NotificationToast({ onOpenSession }: NotificationToastProps) {
   return (
     <div className="fixed top-16 left-4 right-4 z-50 space-y-2 pointer-events-none">
       {toasts.map((toast) => {
-        const isClickable = toast.type === 'session_invite' && !!toast.data?.sessionId;
+        const isClickable =
+          (toast.type === 'session_invite' && !!toast.data?.sessionId) ||
+          (toast.type === 'chat_message' && !!toast.data?.chatId);
         return (
           <div
             key={toast.id}
@@ -129,7 +138,9 @@ export function NotificationToast({ onOpenSession }: NotificationToastProps) {
                 ? 'bg-emerald-500/20 text-emerald-400'
                 : toast.type === 'buddy_accepted'
                   ? 'bg-blue-500/20 text-blue-400'
-                  : 'bg-orange-500/20 text-orange-400'
+                  : toast.type === 'chat_message'
+                    ? 'bg-purple-500/20 text-purple-400'
+                    : 'bg-orange-500/20 text-orange-400'
             }`}>
               {toast.type === 'workout_started' || toast.type === 'workout_invite' || toast.type === 'session_invite' ? (
                 <Dumbbell className="w-4 h-4" />
@@ -144,7 +155,9 @@ export function NotificationToast({ onOpenSession }: NotificationToastProps) {
             <div className="flex-1 min-w-0">
               <p className="text-sm text-white truncate">{toast.message}</p>
               {isClickable && (
-                <p className="text-[11px] text-orange-400 mt-0.5">Tap to join session</p>
+                <p className="text-[11px] text-orange-400 mt-0.5">
+                  {toast.type === 'chat_message' ? 'Tap to reply' : 'Tap to join session'}
+                </p>
               )}
             </div>
             <button

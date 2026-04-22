@@ -373,13 +373,19 @@ export function ActiveWorkoutView({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={onDiscard}
-            className="p-2 text-zinc-500 hover:text-red-400 transition-colors"
-            title="Discard workout"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+          {/* Dustbin: visible for personal workouts and for hosts in a
+              group session (cancels the whole session). Hidden for
+              non-host participants — only the host can cancel on
+              everyone's behalf. */}
+          {sessionMode !== 'participant' && (
+            <button
+              onClick={onDiscard}
+              className="p-2 text-zinc-500 hover:text-red-400 transition-colors"
+              title={sessionMode === 'host' ? 'Cancel session for all' : 'Discard workout'}
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
           {sessionMode === 'participant' ? (
             <div className="px-3 py-2 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-400">
               Waiting for host…

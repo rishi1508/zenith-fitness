@@ -235,7 +235,7 @@ export interface ChatMessage {
 /** In-app buddy notification */
 export interface BuddyNotification {
   id: string;
-  type: 'buddy_request' | 'buddy_accepted' | 'workout_started' | 'workout_invite' | 'session_invite';
+  type: 'buddy_request' | 'buddy_accepted' | 'workout_started' | 'workout_invite' | 'session_invite' | 'chat_message';
   fromUid: string;
   fromName: string;
   message: string;
@@ -246,7 +246,7 @@ export interface BuddyNotification {
 
 // ============ GROUP WORKOUT SESSIONS ============
 
-export type SessionStatus = 'waiting' | 'active' | 'completed';
+export type SessionStatus = 'waiting' | 'active' | 'completed' | 'cancelled';
 export type ParticipantStatus = 'invited' | 'joined' | 'active' | 'completed' | 'declined';
 
 /** Summary of one participant in a group workout (stored in session doc). */
