@@ -214,24 +214,28 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
           ))}
         </div>
 
-        {/* Floating tooltip. Positioned relative to the container, always
-            placed above the cell with a small tail. */}
+        {/* Floating tooltip. Positioned well above the finger so a long-
+            press user can actually SEE it. 64px clearance above the
+            touch point is enough for a thumb + fingernail. */}
         {tip && (
           <div
-            className={`pointer-events-none absolute z-10 px-2 py-1 rounded-md text-[11px] font-medium shadow-lg whitespace-nowrap ${
+            className={`pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md text-[11px] font-medium shadow-xl whitespace-nowrap ${
               isDark ? 'bg-zinc-900 text-white border border-zinc-700' : 'bg-gray-900 text-white'
             }`}
             style={{
-              left: Math.max(8, Math.min((containerRef.current?.clientWidth || 240) - 120, tip.x - 60)),
-              top: Math.max(8, tip.y - 40),
+              left: Math.max(8, Math.min((containerRef.current?.clientWidth || 240) - 140, tip.x - 60)),
+              // Negative offset keeps the card clear of the fingertip.
+              // If the row is near the top, flip below the finger instead
+              // (via max(8, …)) so it stays on-screen.
+              top: Math.max(8, tip.y - 64),
             }}
           >
             <div>{formatDate(tip.cell.date)}</div>
-            <div className={`text-[10px] ${isDark ? 'text-zinc-300' : 'text-zinc-200'}`}>
+            <div className={`text-[10px] mt-0.5 ${isDark ? 'text-zinc-300' : 'text-zinc-200'}`}>
               {tip.cell.isRest
                 ? 'Rest day'
                 : tip.cell.volume > 0
-                  ? `${formatVolume(tip.cell.volume)} kg`
+                  ? `${formatVolume(tip.cell.volume)} kg total volume`
                   : 'No activity'}
             </div>
           </div>

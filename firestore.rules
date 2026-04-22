@@ -90,7 +90,14 @@ service cloud.firestore {
         allow read:   if signedIn() &&
           request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.users;
         allow create: if signedIn() && request.auth.uid == request.resource.data.senderId;
-        allow update: if false;
+        // Allow ONLY the `reactions` field to change, and only by a chat
+        // participant. The old rule was a blanket `if false` which
+        // silently dropped every reaction toggle — local state flipped,
+        // the listener then overwrote it with server state, and the
+        // reaction vanished.
+        allow update: if signedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.users &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']);
         allow delete: if signedIn() && request.auth.uid == resource.data.senderId;
       }
     }

@@ -8,6 +8,35 @@ import { Avatar } from '../components';
 import type { UserProfile, BuddyRequest, BuddyRelationship, BuddyNotification } from '../types';
 import * as buddyService from '../buddyService';
 import { StartSessionModal } from '../components';
+import { computeWeekStreak } from '../streakService';
+
+/**
+ * Recompute a buddy's weekly streak LOCALLY from their activityDays
+ * snapshot. We can't trust profile.currentStreak — older clients still
+ * write it as a day count, so a buddy with an actually-modest 3-week
+ * streak can display as "219 week streak" if they used to workout daily.
+ *
+ * Falls back to profile.currentStreak only when activityDays isn't
+ * present — and we clamp that to a sane ceiling so stale day-counts
+ * don't leak into the UI.
+ */
+function buddyWeekStreak(profile: UserProfile | undefined): number {
+  if (!profile) return 0;
+  const activity = profile.compareStats?.activityDays;
+  if (activity) {
+    const synthetic = Object.entries(activity)
+      .filter(([, v]) => v > 0)
+      .map(([ds]) => ({
+        completed: true, type: 'workout' as const, date: ds,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any));
+    return computeWeekStreak(synthetic, new Set()).current;
+  }
+  // No activityDays snapshot → legacy client. The number is almost
+  // certainly a day-count, so we show 0 rather than lie with a week
+  // unit. Better to under-display than mislead.
+  return 0;
+}
 
 interface BuddyViewProps {
   isDark: boolean;
@@ -368,7 +397,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
                               </div>
                             ) : (
                               <div className={`text-xs ${subtleText}`}>
-                                {profile?.totalWorkouts || 0} workouts &middot; {profile?.currentStreak || 0} week streak
+                                {profile?.totalWorkouts || 0} workouts &middot; {buddyWeekStreak(profile)} week streak
                               </div>
                             )}
                           </div>

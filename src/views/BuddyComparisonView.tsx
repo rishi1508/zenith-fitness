@@ -10,6 +10,7 @@ import {
   computeMyCompareStats, computeComparisonFromStats,
   type ComparisonResult,
 } from '../buddyComparison';
+import { computeWeekStreak } from '../streakService';
 
 interface BuddyComparisonViewProps {
   buddyUid: string;
@@ -62,16 +63,26 @@ export function BuddyComparisonView({
           // Buddy hasn't opened the updated app yet — no snapshot to compare against.
           setError(`${buddyName} hasn't synced comparison data yet. Ask them to open the app once and try again.`);
         } else {
-          // Pad cs.headline values with whatever the public profile carries
-          // in the legacy totalWorkouts / currentStreak fields, in case the
-          // buddy's snapshot was produced by an older build with the broken
-          // streak logic.
+          // Recompute the streak LOCALLY from activityDays so the unit
+          // is always "weeks" — never trust headline.currentStreak or
+          // profile.currentStreak, an older client could have written a
+          // day count there.
           const cs = profile.compareStats;
+          let buddyWeekStreak = 0;
+          if (cs.activityDays) {
+            const synthetic = Object.entries(cs.activityDays)
+              .filter(([, v]) => v > 0)
+              .map(([ds]) => ({
+                completed: true, type: 'workout' as const, date: ds,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              } as any));
+            buddyWeekStreak = computeWeekStreak(synthetic, new Set()).current;
+          }
           setBuddyStats({
             ...cs,
             headline: {
               ...cs.headline,
-              currentStreak: Math.max(cs.headline.currentStreak, profile.currentStreak || 0),
+              currentStreak: buddyWeekStreak,
               totalWorkouts: Math.max(cs.headline.totalWorkouts, profile.totalWorkouts || 0),
             },
           });

@@ -6,6 +6,7 @@ import {
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
 import { StartSessionModal, ActivityHeatmap } from '../components';
+import { computeWeekStreak, weekStartISO } from '../streakService';
 
 interface BuddyProfileViewProps {
   buddyUid: string;
@@ -42,23 +43,41 @@ export function BuddyProfileView({
         // stats (volume, this-week count) without needing cross-user workout reads.
         if (p) {
           const cs = p.compareStats;
-          // Always take the max of every available signal so values stay
-          // consistent across Search / Buddies / Profile / Compare even if
-          // the buddy's device is running an older version where one of
-          // the fields is stale.
-          const profileStreak = p.currentStreak || 0;
           const profileWorkouts = p.totalWorkouts || 0;
-          const csStreak = cs?.headline.currentStreak || 0;
           const csWorkouts = cs?.headline.totalWorkouts || 0;
-          const weekAgo = new Date();
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          const thisWeek = (cs?.recentWorkouts || []).filter(
-            (w) => new Date(w.date).getTime() >= weekAgo.getTime(),
-          ).length;
+
+          // Recompute the streak WEEKLY on our side from the buddy's
+          // activityDays snapshot. Never trust profile.currentStreak or
+          // compareStats.headline.currentStreak — a buddy running an
+          // older version of the app might be writing that field as a
+          // day-count, which produces the "219 week streak" we were
+          // showing on the buddy list before.
+          let currentStreak = 0;
+          let longestStreak = 0;
+          if (cs?.activityDays) {
+            const synthetic = Object.entries(cs.activityDays)
+              .filter(([, v]) => v > 0)
+              .map(([ds]) => ({
+                completed: true,
+                type: 'workout' as const,
+                date: ds,
+              } as unknown as Workout));
+            const { current, longest } = computeWeekStreak(synthetic, new Set());
+            currentStreak = current;
+            longestStreak = longest;
+          }
+
+          const thisWS = weekStartISO(new Date());
+          const thisWeek = cs?.activityDays
+            ? Object.entries(cs.activityDays).filter(([ds, v]) => v > 0 && weekStartISO(new Date(ds + 'T00:00:00')) === thisWS).length
+            : (cs?.recentWorkouts || []).filter((w) => {
+              const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+              return new Date(w.date).getTime() >= weekAgo.getTime();
+            }).length;
           setStats({
             totalWorkouts: Math.max(csWorkouts, profileWorkouts),
-            currentStreak: Math.max(csStreak, profileStreak),
-            longestStreak: Math.max(csStreak, profileStreak),
+            currentStreak,
+            longestStreak,
             thisWeekWorkouts: thisWeek,
             totalVolume: cs?.headline.totalVolume || 0,
             avgVolumePerSession: cs?.headline.avgVolumePerSession || 0,
@@ -189,12 +208,23 @@ export function BuddyProfileView({
         </div>
       )}
 
-      {/* Activity heatmap — buddy-visible courtesy of the activityDays
-          snapshot on their compareStats. Works even though we can't read
-          their raw workout docs across accounts. */}
-      {profile?.compareStats?.activityDays && Object.keys(profile.compareStats.activityDays).length > 0 && (
-        <ActivityHeatmap activityDays={profile.compareStats.activityDays} isDark={isDark} />
-      )}
+      {/* Activity heatmap — always rendered. Prefer the activityDays
+          snapshot (v3.14.13+), otherwise fall back to recentWorkouts so
+          older clients still produce a sparser but non-empty chart. */}
+      {profile?.compareStats && (() => {
+        const cs = profile.compareStats;
+        let activityMap = cs.activityDays;
+        if (!activityMap || Object.keys(activityMap).length === 0) {
+          activityMap = {};
+          for (const rw of cs.recentWorkouts || []) {
+            const ds = rw.date.slice(0, 10);
+            if (rw.type === 'rest') { activityMap[ds] = -1; continue; }
+            activityMap[ds] = (activityMap[ds] || 0) + (rw.totalVolume || 0);
+          }
+        }
+        if (Object.keys(activityMap).length === 0) return null;
+        return <ActivityHeatmap activityDays={activityMap} isDark={isDark} />;
+      })()}
 
       {/* Action Buttons */}
       {buddy && (

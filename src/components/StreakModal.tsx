@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Flame, Snowflake, Dumbbell, Moon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Flame, Snowflake, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 import * as storage from '../storage';
 import { getStreakState, daysUntilNextFreeze, MAX_FREEZES, weekStartISO } from '../streakService';
 
@@ -10,39 +10,35 @@ interface Props {
 }
 
 /**
- * Streak modal — Duolingo-inspired, now with a WEEKLY streak model.
+ * Streak modal — Duolingo-inspired.
  *
- * A week (Sun → Sat) is "active" if the user did any non-rest workout
- * that week. One inactive week breaks the streak unless a freeze rescues
- * it. The calendar shows both per-day detail AND a colored pill on the
- * left of each week row so users can see at a glance which weeks counted.
- *
- * The outer fixed container uses flex centering (not translate) so Android
- * WebView can't disagree with the browser about sizing.
+ * Week-centric visual: every calendar row (Sun–Sat) for a week that has
+ * any non-rest workout becomes a big orange pill that sweeps across the
+ * whole row. Today gets a blue teardrop marker. The design mirrors
+ * Duolingo's "day streak" screen so the "one workout a week is enough"
+ * rule is instantly readable: a highlighted row = you made it.
  */
 export function StreakModal({ onClose, isDark }: Props) {
   const state = getStreakState();
   const stats = useMemo(() => storage.calculateStats(), []);
   const workouts = useMemo(() => storage.getWorkouts(), []);
 
-  // Day-type sets keyed by YYYY-MM-DD.
-  const { workedOut, restDays } = useMemo(() => {
+  const { workedOutDays, restDays } = useMemo(() => {
     const w = new Set<string>(); const r = new Set<string>();
     for (const wk of workouts) {
       if (!wk.completed) continue;
       const d = wk.date.slice(0, 10);
       if (wk.type === 'rest') r.add(d); else w.add(d);
     }
-    return { workedOut: w, restDays: r };
+    return { workedOutDays: w, restDays: r };
   }, [workouts]);
   const frozenWeeks = useMemo(() => new Set(state.freezeConsumedDates), [state.freezeConsumedDates]);
 
   const todayIso = new Date().toISOString().slice(0, 10);
-  const thisWeekISO = weekStartISO(new Date());
   const now = new Date();
+  const thisWeekISO = weekStartISO(now);
 
-  // Viewed month — prev/next paginates, with a linear slide animation so the
-  // transition doesn't feel like a hard cut.
+  // Viewed month — prev/next paginates with a linear slide animation.
   const [viewedMonth, setViewedMonth] = useState(() => ({ year: now.getFullYear(), month: now.getMonth() }));
   const [slide, setSlide] = useState<'idle' | 'left' | 'right'>('idle');
   const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,14 +47,12 @@ export function StreakModal({ onClose, isDark }: Props) {
   const animateTo = (direction: 'left' | 'right', apply: () => void) => {
     if (animTimer.current) clearTimeout(animTimer.current);
     setSlide(direction);
-    // Let the out-animation play, then swap content, then slide back in.
     animTimer.current = setTimeout(() => {
       apply();
       setSlide(direction === 'left' ? 'right' : 'left');
       animTimer.current = setTimeout(() => setSlide('idle'), 20);
     }, 180);
   };
-
   const goPrev = () => animateTo('right', () => setViewedMonth(({ year, month }) => {
     if (month === 0) return { year: year - 1, month: 11 };
     return { year, month: month - 1 };
@@ -71,9 +65,7 @@ export function StreakModal({ onClose, isDark }: Props) {
     }));
   };
 
-  // Touch-swipe handling on the calendar. Horizontal swipes >50px change
-  // month; small vertical-dominant drags are ignored so scrolling stays
-  // responsive.
+  // Touch swipe support — horizontal >50px changes month.
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const onTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
@@ -90,73 +82,77 @@ export function StreakModal({ onClose, isDark }: Props) {
     if (dx < 0) goNext(); else goPrev();
   };
 
-  // Weeks = array of 6 rows × 7 cells. Each row is one calendar week.
-  type DayCell =
-    | { kind: 'pad' }
-    | { kind: 'day'; day: number; ds: string; type: 'workout' | 'rest' | 'frozen' | 'today' | 'missed' | 'future' };
-  type WeekRow = {
-    weekStart: string; // YYYY-MM-DD Sunday
-    cells: DayCell[];
-    // rolled-up state
-    status: 'active' | 'rest-only' | 'frozen' | 'missed' | 'current' | 'future';
+  // Build calendar rows. Each row represents one week (Sun–Sat).
+  type DayKind = 'workout' | 'rest' | 'today' | 'missed' | 'future' | 'pad';
+  type Row = {
+    weekStart: string;
+    cells: Array<{ day: number | null; ds: string; kind: DayKind }>;
+    status: 'active' | 'frozen' | 'missed' | 'current' | 'future';
+    // Column-range of the active span in this row — used to draw the
+    // pill as a single rounded rect, which is the signature Duolingo look.
+    pillStart: number;
+    pillEnd: number;
   };
 
-  const weeks = useMemo<WeekRow[]>(() => {
+  const rows = useMemo<Row[]>(() => {
     const first = new Date(viewedMonth.year, viewedMonth.month, 1);
     const daysInMonth = new Date(viewedMonth.year, viewedMonth.month + 1, 0).getDate();
     const startWeekday = first.getDay();
 
-    const all: DayCell[] = [];
-    for (let i = 0; i < startWeekday; i++) all.push({ kind: 'pad' });
+    type Cell = { day: number | null; ds: string; kind: DayKind };
+    const all: Cell[] = [];
+    // Leading pads with their ACTUAL dates (previous month tail) so the
+    // pill can visually flow across the month boundary if needed.
+    for (let i = startWeekday - 1; i >= 0; i--) {
+      const d = new Date(viewedMonth.year, viewedMonth.month, -i);
+      all.push({ day: d.getDate(), ds: d.toISOString().slice(0, 10), kind: 'pad' });
+    }
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(viewedMonth.year, viewedMonth.month, day);
       const ds = d.toISOString().slice(0, 10);
-      let type: Extract<DayCell, { kind: 'day' }>['type'];
-      if (ds > todayIso) type = 'future';
-      else if (workedOut.has(ds)) type = 'workout';
-      else if (restDays.has(ds)) type = 'rest';
-      else if (ds === todayIso) type = 'today';
-      else type = 'missed';
-      all.push({ kind: 'day', day, ds, type });
+      let kind: DayKind;
+      if (ds > todayIso) kind = 'future';
+      else if (workedOutDays.has(ds)) kind = 'workout';
+      else if (restDays.has(ds)) kind = 'rest';
+      else if (ds === todayIso) kind = 'today';
+      else kind = 'missed';
+      all.push({ day, ds, kind });
     }
-    // Pad trailing to complete the last week.
-    while (all.length % 7 !== 0) all.push({ kind: 'pad' });
+    // Trailing pads to complete the last week.
+    while (all.length % 7 !== 0) {
+      const lastDs = all[all.length - 1].ds;
+      const d = new Date(lastDs + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      all.push({ day: d.getDate(), ds: d.toISOString().slice(0, 10), kind: 'pad' });
+    }
 
-    const rows: WeekRow[] = [];
+    const out: Row[] = [];
     for (let i = 0; i < all.length; i += 7) {
-      const row = all.slice(i, i + 7);
-      // Week-start is the Sunday cell — figure it out from the first day
-      // cell in the row (pads are from the previous month / after-month).
-      const firstDay = row.find((c) => c.kind === 'day') as Extract<DayCell, { kind: 'day' }> | undefined;
-      let weekStart = '';
-      if (firstDay) {
-        const d = new Date(firstDay.ds + 'T00:00:00');
-        d.setDate(d.getDate() - d.getDay());
-        weekStart = d.toISOString().slice(0, 10);
-      }
-      // Roll up a week-level status so we can highlight the row.
-      let status: WeekRow['status'] = 'missed';
-      const anyDay = row.find((c) => c.kind === 'day');
-      if (!anyDay) status = 'future';
-      else {
-        const hasWorkout = row.some((c) => c.kind === 'day' && c.type === 'workout');
-        const allFuture = row.every((c) => c.kind !== 'day' || c.type === 'future');
-        const isThisWeek = weekStart === thisWeekISO;
-        if (hasWorkout) status = 'active';
-        else if (frozenWeeks.has(weekStart)) status = 'frozen';
-        else if (allFuture) status = 'future';
-        else if (isThisWeek) status = 'current';
-        else {
-          // Row has some days and none are workouts — "rest-only" if at
-          // least one logged rest, else it's an outright miss.
-          const hasRest = row.some((c) => c.kind === 'day' && c.type === 'rest');
-          status = hasRest ? 'rest-only' : 'missed';
+      const cells = all.slice(i, i + 7);
+      const weekStart = cells[0].ds;
+      // Figure out the pill span: first and last WORKOUT cell in the row.
+      // If there's no workout cell, the pill is absent (start > end).
+      let pillStart = 7;
+      let pillEnd = -1;
+      for (let j = 0; j < 7; j++) {
+        if (cells[j].kind === 'workout') {
+          if (j < pillStart) pillStart = j;
+          if (j > pillEnd) pillEnd = j;
         }
       }
-      rows.push({ weekStart, cells: row, status });
+      let status: Row['status'] = 'missed';
+      const hasWorkout = pillEnd >= 0;
+      const allFuture = cells.every((c) => c.kind === 'future' || (c.kind === 'pad'));
+      const isThisWeek = weekStart === thisWeekISO;
+      if (hasWorkout) status = 'active';
+      else if (frozenWeeks.has(weekStart)) status = 'frozen';
+      else if (allFuture) status = 'future';
+      else if (isThisWeek) status = 'current';
+      else status = 'missed';
+      out.push({ weekStart, cells, status, pillStart, pillEnd });
     }
-    return rows;
-  }, [viewedMonth, workedOut, restDays, frozenWeeks, todayIso, thisWeekISO]);
+    return out;
+  }, [viewedMonth, workedOutDays, restDays, frozenWeeks, todayIso, thisWeekISO]);
 
   const nextFreezeIn = daysUntilNextFreeze(state);
   const longestStreak = stats.longestStreak || stats.currentStreak || 0;
@@ -166,26 +162,13 @@ export function StreakModal({ onClose, isDark }: Props) {
     month: 'long', year: 'numeric',
   });
 
-  // Row-pill color per week status.
-  const pillClass = (s: WeekRow['status']): string => {
-    switch (s) {
-      case 'active': return 'bg-gradient-to-b from-orange-400 to-red-600';
-      case 'frozen': return 'bg-sky-500';
-      case 'current': return isDark ? 'bg-zinc-700' : 'bg-gray-300';
-      case 'rest-only': return 'bg-purple-500';
-      case 'missed': return isDark ? 'bg-zinc-800' : 'bg-gray-200';
-      case 'future': return 'bg-transparent';
-    }
-  };
-
   const weekStreakLabel = stats.currentStreak === 0
     ? 'Start your streak'
     : `${stats.currentStreak} week streak!`;
-  const weekStreakHint = stats.currentStreak === 0
+  const heroHint = stats.currentStreak === 0
     ? 'One workout anywhere this week lights it up.'
-    : 'Come back any day this week to keep it alive.';
+    : 'You earned more this week — keep it alive!';
 
-  // Portal to document.body so header `backdrop-filter` doesn't trap us.
   return createPortal(
     <>
       <div className="fixed inset-0 bg-black/60 z-[99] animate-fadeIn" onClick={onClose} aria-hidden />
@@ -196,11 +179,11 @@ export function StreakModal({ onClose, isDark }: Props) {
             isDark ? 'bg-[#0f0f0f] text-white' : 'bg-white text-gray-900'
           }`}
         >
+          {/* Top bar */}
           <div
-            className="flex items-center justify-end flex-none"
+            className="flex items-center justify-between flex-none px-2"
             style={{
               paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)',
-              paddingRight: '10px',
               paddingBottom: '6px',
             }}
           >
@@ -213,52 +196,132 @@ export function StreakModal({ onClose, isDark }: Props) {
             >
               <X className="w-5 h-5" />
             </button>
+            <div className="text-sm font-bold tracking-wide">Streak</div>
+            <div className="w-9" />
           </div>
 
+          {/* Scrollable body */}
           <div
             className="flex-1 overflow-y-auto"
             style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}
           >
-            {/* Hero */}
-            <div className="flex flex-col items-center text-center px-6 pt-2 pb-6 bg-gradient-to-b from-orange-500/20 via-orange-500/5 to-transparent">
-              <div className="relative inline-flex items-center justify-center">
-                <Flame
-                  className="w-28 h-28 text-orange-500 drop-shadow-[0_4px_12px_rgba(249,115,22,0.45)]"
-                  fill="currentColor"
-                  strokeWidth={1.25}
-                />
-                <span
-                  className="absolute inset-0 flex items-center justify-center text-5xl font-black text-white"
-                  style={{ textShadow: '0 2px 6px rgba(0,0,0,0.45)' }}
-                >
-                  {stats.currentStreak}
-                </span>
-              </div>
-              <div className="mt-4 text-2xl font-extrabold">{weekStreakLabel}</div>
-              <p className={`text-sm mt-1 ${subtle}`}>{weekStreakHint}</p>
-            </div>
-
-            {/* Stats grid */}
-            <div className="px-6 pb-4 grid grid-cols-2 gap-3">
-              <div className={`rounded-xl border p-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
-                <div className={`text-[10px] font-semibold uppercase tracking-wider ${subtle}`}>
-                  Personal best
+            {/* Hero — Duolingo-style giant number + flame */}
+            <div className="px-6 pt-4 pb-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  {stats.currentStreak >= 4 && (
+                    <div className="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-yellow-400/20 text-yellow-400 mb-1">
+                      Streak Society
+                    </div>
+                  )}
+                  <div className="text-[56px] leading-[1] font-black text-orange-500 tracking-tight">
+                    {stats.currentStreak}
+                  </div>
+                  <div className="text-xl font-extrabold text-orange-500 mt-1">
+                    {stats.currentStreak === 1 ? 'week streak!' : stats.currentStreak === 0 ? weekStreakLabel : 'week streak!'}
+                  </div>
                 </div>
-                <div className="text-lg font-bold text-orange-400 mt-0.5">{longestStreak} {longestStreak === 1 ? 'week' : 'weeks'}</div>
-              </div>
-              <div className={`rounded-xl border p-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
-                <div className={`text-[10px] font-semibold uppercase tracking-wider ${subtle}`}>
-                  Freezes
-                </div>
-                <div className="text-lg font-bold text-sky-400 mt-0.5">
-                  {state.freezes} / {MAX_FREEZES}
+                <div className="relative w-24 h-24 flex-shrink-0 flex items-center justify-center">
+                  <Flame
+                    className="w-24 h-24 text-orange-500 drop-shadow-[0_6px_18px_rgba(249,115,22,0.5)]"
+                    fill="currentColor"
+                    strokeWidth={1.25}
+                  />
                 </div>
               </div>
             </div>
 
-            {/* Freeze slots */}
+            {/* Motivational card */}
             <div className="px-6 pb-4">
-              <div className={`rounded-xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
+              <div className={`rounded-2xl border flex items-center gap-3 p-3.5 ${
+                isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div className="w-10 h-10 rounded-xl bg-yellow-400/20 flex items-center justify-center flex-shrink-0">
+                  <Zap className="w-5 h-5 text-yellow-400" fill="currentColor" />
+                </div>
+                <div className="text-sm leading-tight">
+                  {heroHint}
+                </div>
+              </div>
+            </div>
+
+            {/* Calendar */}
+            <div className="px-6 pb-4">
+              <h3 className="text-lg font-extrabold mb-3">Streak Calendar</h3>
+
+              <div
+                className={`rounded-2xl border overflow-hidden ${
+                  isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'
+                }`}
+              >
+                {/* Header row */}
+                <div className="flex items-center justify-between px-3 py-2">
+                  <button
+                    onClick={goPrev}
+                    aria-label="Previous month"
+                    className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-white/5 text-zinc-400' : 'hover:bg-black/5 text-gray-500'}`}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="text-sm font-bold">{monthLabel}</div>
+                  <button
+                    onClick={goNext}
+                    disabled={isCurrentMonth}
+                    aria-label="Next month"
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      isCurrentMonth
+                        ? isDark ? 'text-zinc-700' : 'text-gray-300'
+                        : isDark ? 'hover:bg-white/5 text-zinc-400' : 'hover:bg-black/5 text-gray-500'
+                    }`}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Weekday header */}
+                <div className="grid grid-cols-7 text-center px-3">
+                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d, i) => (
+                    <div key={i} className={`text-[11px] font-bold uppercase tracking-wider py-1 ${subtle}`}>{d}</div>
+                  ))}
+                </div>
+
+                {/* Animated swipe wrapper */}
+                <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+                  <div
+                    className="transition-transform duration-200 ease-linear px-3 pb-3"
+                    style={{
+                      transform: slide === 'left' ? 'translateX(-24px)' : slide === 'right' ? 'translateX(24px)' : 'translateX(0)',
+                      opacity: slide === 'idle' ? 1 : 0.35,
+                    }}
+                  >
+                    {rows.map((row, rowIdx) => (
+                      <WeekRow
+                        key={rowIdx}
+                        row={row}
+                        todayIso={todayIso}
+                        isDark={isDark}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Stats + Freezes */}
+            <div className="px-6 pb-4 grid grid-cols-2 gap-3">
+              <div className={`rounded-2xl border p-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
+                <div className={`text-[10px] font-bold uppercase tracking-wider ${subtle}`}>Personal best</div>
+                <div className="text-xl font-extrabold text-orange-400 mt-0.5">{longestStreak}w</div>
+              </div>
+              <div className={`rounded-2xl border p-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
+                <div className={`text-[10px] font-bold uppercase tracking-wider ${subtle}`}>Freezes</div>
+                <div className="text-xl font-extrabold text-sky-400 mt-0.5">{state.freezes} / {MAX_FREEZES}</div>
+              </div>
+            </div>
+
+            {/* Freeze detail */}
+            <div className="px-6 pb-4">
+              <div className={`rounded-2xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex gap-1.5 flex-shrink-0">
                     {Array.from({ length: MAX_FREEZES }).map((_, i) => {
@@ -266,12 +329,12 @@ export function StreakModal({ onClose, isDark }: Props) {
                       return (
                         <div
                           key={i}
-                          className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                             filled
                               ? 'bg-gradient-to-br from-sky-400 to-sky-600 text-white shadow-md'
                               : isDark
-                                ? 'bg-[#0f0f0f] border border-dashed border-zinc-700 text-zinc-600'
-                                : 'bg-white border border-dashed border-gray-300 text-gray-400'
+                                ? 'bg-[#0f0f0f] border-2 border-dashed border-zinc-700 text-zinc-600'
+                                : 'bg-white border-2 border-dashed border-gray-300 text-gray-400'
                           }`}
                         >
                           <Snowflake className="w-5 h-5" />
@@ -280,7 +343,7 @@ export function StreakModal({ onClose, isDark }: Props) {
                     })}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold">
+                    <div className="text-sm font-bold">
                       {state.freezes === MAX_FREEZES ? 'All freezes stocked'
                         : state.freezes > 0 ? `${state.freezes} freeze ready`
                           : 'No freezes right now'}
@@ -303,118 +366,15 @@ export function StreakModal({ onClose, isDark }: Props) {
               </div>
             </div>
 
-            {/* Monthly calendar — animated month change + row-level week status */}
-            <div className="px-6 pb-4">
-              <div className="flex items-center justify-between mb-3">
-                <button
-                  onClick={goPrev}
-                  aria-label="Previous month"
-                  className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-[#1a1a1a] text-zinc-400' : 'hover:bg-gray-100 text-gray-500'}`}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <div className="text-sm font-semibold">{monthLabel}</div>
-                <button
-                  onClick={goNext}
-                  disabled={isCurrentMonth}
-                  aria-label="Next month"
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    isCurrentMonth
-                      ? isDark ? 'text-zinc-700' : 'text-gray-300'
-                      : isDark ? 'hover:bg-[#1a1a1a] text-zinc-400' : 'hover:bg-gray-100 text-gray-500'
-                  }`}
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Animated wrapper. translate-x + opacity are driven by the
-                  `slide` state so the user sees a smooth swap instead of
-                  an instant jump. Duration kept <200ms per side to stay
-                  responsive. */}
-              <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-                <div
-                  className="transition-transform duration-200 ease-linear"
-                  style={{
-                    transform: slide === 'left' ? 'translateX(-24px)' : slide === 'right' ? 'translateX(24px)' : 'translateX(0)',
-                    opacity: slide === 'idle' ? 1 : 0.35,
-                  }}
-                >
-                  {/* Weekday header — aligned with the 7 columns below, offset by
-                      the week-status pill column on the left. */}
-                  <div className="flex items-center gap-2 mb-1 pl-4">
-                    <div className="grid grid-cols-7 flex-1 text-center">
-                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                        <div key={i} className={`text-[10px] font-semibold ${subtle}`}>{d}</div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    {weeks.map((week, rowIdx) => (
-                      <div key={rowIdx} className="flex items-stretch gap-2">
-                        {/* Week-status pill — the visual that makes it obvious
-                            whether this WEEK counted toward the streak. */}
-                        <div
-                          className={`w-1.5 rounded-full self-stretch flex-shrink-0 ${pillClass(week.status)}`}
-                          title={week.status}
-                        />
-                        <div className="grid grid-cols-7 gap-1 flex-1">
-                          {week.cells.map((c, i) => {
-                            if (c.kind === 'pad') return <div key={i} className="aspect-square" />;
-                            const isToday = c.ds === todayIso;
-                            let bg = isDark ? 'bg-[#1a1a1a] text-zinc-500' : 'bg-gray-50 text-gray-400';
-                            let icon: React.ReactNode = null;
-                            if (c.type === 'workout') { bg = 'bg-gradient-to-br from-orange-400 to-red-600 text-white'; icon = <Dumbbell className="w-3 h-3" />; }
-                            else if (c.type === 'rest') { bg = 'bg-purple-500 text-white'; icon = <Moon className="w-3 h-3" />; }
-                            else if (c.type === 'future') { bg = isDark ? 'bg-transparent text-zinc-700' : 'bg-transparent text-gray-300'; }
-                            // Subtle row-level tint for any week that was
-                            // active or frozen — makes the whole week feel
-                            // "counted" at a glance, which is the new mental
-                            // model.
-                            const rowTint = (week.status === 'active' || week.status === 'frozen')
-                              && (c.type === 'missed' || c.type === 'today')
-                              ? (isDark ? 'ring-1 ring-inset ring-orange-500/30' : 'ring-1 ring-inset ring-orange-400/40')
-                              : '';
-                            return (
-                              <div
-                                key={i}
-                                className={`aspect-square rounded-md flex flex-col items-center justify-center text-[11px] font-medium ${bg} ${rowTint} ${
-                                  isToday ? 'ring-2 ring-orange-400 ring-offset-1 ring-offset-transparent' : ''
-                                }`}
-                              >
-                                <span>{c.day}</span>
-                                {icon && <span className="opacity-85 -mt-0.5">{icon}</span>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Legend */}
-              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-[10px]">
-                <span className="flex items-center gap-1"><span className="w-2 h-3 rounded-full bg-gradient-to-b from-orange-400 to-red-600" /> Active week</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-3 rounded-full bg-sky-500" /> Frozen week</span>
-                <span className={`flex items-center gap-1 ${subtle}`}><span className={`w-2 h-3 rounded-full ${isDark ? 'bg-zinc-800' : 'bg-gray-200'}`} /> Missed week</span>
-                <span className="flex items-center gap-1"><span className="w-4 h-4 rounded-md bg-gradient-to-br from-orange-400 to-red-600 flex items-center justify-center"><Dumbbell className="w-2.5 h-2.5 text-white" /></span> Workout day</span>
-                <span className="flex items-center gap-1"><span className="w-4 h-4 rounded-md bg-purple-500 flex items-center justify-center"><Moon className="w-2.5 h-2.5 text-white" /></span> Rest day</span>
-              </div>
-            </div>
-
             {/* How it works */}
             <div className="px-6 pb-8">
-              <details className={`rounded-xl border p-3 text-xs ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-400' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                <summary className="cursor-pointer font-semibold select-none">How the streak works</summary>
-                <ul className="mt-2 space-y-1.5 pl-4 list-disc marker:text-orange-400">
-                  <li>Your streak counts <strong>weeks</strong>, not days. One non-rest workout anywhere in a week (Sun–Sat) marks that whole week active.</li>
-                  <li>Miss an entire week? A freeze rescues it automatically — the week still counts toward your streak.</li>
+              <details className={`rounded-2xl border p-3.5 text-xs ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-400' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                <summary className="cursor-pointer font-bold select-none text-sm text-orange-500">How the streak works</summary>
+                <ul className="mt-3 space-y-2 pl-4 list-disc marker:text-orange-400">
+                  <li>Your streak counts <strong>weeks</strong>, not days. One non-rest workout anywhere in a week (Sun–Sat) marks that whole week active — the row lights up orange.</li>
+                  <li>Miss an entire week? A freeze automatically rescues it, so the streak keeps going.</li>
                   <li>A missed week without a freeze resets the streak to 0.</li>
                   <li>You earn a freeze after every 30 consecutive days the streak stays alive, up to 2 in the bank.</li>
-                  <li>The row pill on the calendar shows each week's status at a glance — the whole row lights up when you've worked out any day that week.</li>
                 </ul>
               </details>
             </div>
@@ -423,5 +383,96 @@ export function StreakModal({ onClose, isDark }: Props) {
       </div>
     </>,
     document.body,
+  );
+}
+
+/**
+ * A single week row in the calendar. The active-week pill is drawn
+ * behind the day numbers as an absolutely-positioned element, spanning
+ * from the first worked-out day to the last — so the whole row feels
+ * "complete" the moment you've worked out any day in the week. This
+ * is the signature Duolingo look.
+ */
+function WeekRow({
+  row, todayIso, isDark,
+}: {
+  row: {
+    weekStart: string;
+    cells: Array<{ day: number | null; ds: string; kind: 'workout' | 'rest' | 'today' | 'missed' | 'future' | 'pad' }>;
+    status: 'active' | 'frozen' | 'missed' | 'current' | 'future';
+    pillStart: number;
+    pillEnd: number;
+  };
+  todayIso: string;
+  isDark: boolean;
+}) {
+  const hasPill = row.pillEnd >= 0;
+  // Pill metrics: each column is 1/7 of the row width. We size it with
+  // a small inset so the rounded ends don't touch adjacent cells.
+  const pillLeftPct = (row.pillStart / 7) * 100;
+  const pillWidthPct = ((row.pillEnd - row.pillStart + 1) / 7) * 100;
+
+  // Frozen-week pill (no workouts but rescued by a freeze) gets a sky
+  // tint so the user can still tell the week counted.
+  const frozenOnly = !hasPill && row.status === 'frozen';
+
+  return (
+    <div className="grid grid-cols-7 relative py-1.5">
+      {/* Active-week pill behind day numbers */}
+      {hasPill && (
+        <div
+          className="absolute top-1.5 bottom-1.5 rounded-full bg-gradient-to-b from-orange-400 to-red-500 shadow-md shadow-orange-500/30"
+          style={{
+            left: `calc(${pillLeftPct}% + 2px)`,
+            width: `calc(${pillWidthPct}% - 4px)`,
+          }}
+          aria-hidden
+        />
+      )}
+      {frozenOnly && (
+        <div
+          className="absolute top-1.5 bottom-1.5 rounded-full bg-sky-500/80 shadow-md shadow-sky-500/30"
+          style={{ left: '2px', width: 'calc(100% - 4px)' }}
+          aria-hidden
+        />
+      )}
+
+      {row.cells.map((c, ci) => {
+        const isToday = c.ds === todayIso;
+        const insidePill = hasPill && ci >= row.pillStart && ci <= row.pillEnd;
+        // Text color rules:
+        //   - future: nearly invisible
+        //   - inside active pill or frozen pill: white (contrast on orange/sky)
+        //   - rest day (outside pill): purple
+        //   - today (no workout yet this week, so no pill): teardrop below
+        //   - regular number: default muted / stronger depending on theme
+        let textClass = '';
+        if (c.kind === 'future' || c.kind === 'pad') textClass = isDark ? 'text-zinc-700' : 'text-gray-300';
+        else if (insidePill || frozenOnly) textClass = 'text-white';
+        else if (c.kind === 'rest') textClass = isDark ? 'text-purple-400' : 'text-purple-600';
+        else textClass = isDark ? 'text-zinc-400' : 'text-gray-600';
+
+        return (
+          <div key={ci} className="relative h-9 flex items-center justify-center">
+            {/* Today's teardrop pin — only when there's no pill, so it
+                doesn't visually compete with the orange row highlight. */}
+            {isToday && !insidePill && !frozenOnly && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-7 h-8 rounded-full bg-sky-400/90 flex items-center justify-center rounded-b-none
+                                [clip-path:polygon(50%_100%,0%_50%,0%_0%,100%_0%,100%_50%)]" />
+              </div>
+            )}
+            <span className={`relative z-[1] text-sm font-bold ${isToday && !insidePill && !frozenOnly ? 'text-white' : textClass}`}>
+              {c.day}
+            </span>
+            {/* Small dot under the number for rest days inside or outside
+                an active pill — so rest still has a visual cue. */}
+            {c.kind === 'rest' && !insidePill && !frozenOnly && (
+              <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-purple-500" />
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
