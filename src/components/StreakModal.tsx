@@ -207,6 +207,13 @@ export function StreakModal({ onClose, isDark }: Props) {
     weekStart: string;
     cells: Array<{ day: number | null; ds: string; kind: DayKind; inMonth: boolean }>;
     status: 'active' | 'frozen' | 'missed' | 'current' | 'future';
+    // Column-range (0..6) of the cells that belong to the month this
+    // panel is rendering. The pill is drawn across this range only, so
+    // a boundary week like "Mar 29–Apr 4" gets one pill on the March
+    // panel spanning Sun–Tue and another on the April panel spanning
+    // Wed–Sat, never spilling into cells that shouldn't be visible.
+    inMonthStart: number;
+    inMonthEnd: number;
   };
 
   const buildRows = (year: number, month: number): Row[] => {
@@ -254,16 +261,22 @@ export function StreakModal({ onClose, isDark }: Props) {
     for (let i = 0; i < all.length; i += 7) {
       const cells = all.slice(i, i + 7);
       const weekStart = cells[0].ds;
+      // Active-state calc still looks at the FULL Sun–Sat range across
+      // the month boundary — that way a workout on Apr 2 still lights
+      // up the March 29–31 row (same calendar week).
       const hasWorkout = cells.some((c) => c.kind === 'workout');
-      const allFuture = cells.every((c) => c.kind === 'future' || c.kind === 'pad');
+      const inMonthIndices = cells.map((c, idx) => (c.inMonth ? idx : -1)).filter((n) => n >= 0);
+      const allInMonthFuture = inMonthIndices.every((idx) => cells[idx].kind === 'future');
       const isThisWeek = weekStart === thisWeekISO;
       let status: Row['status'];
       if (hasWorkout) status = 'active';
       else if (frozenWeeks.has(weekStart)) status = 'frozen';
-      else if (allFuture) status = 'future';
+      else if (inMonthIndices.length === 0 || allInMonthFuture) status = 'future';
       else if (isThisWeek) status = 'current';
       else status = 'missed';
-      out.push({ weekStart, cells, status });
+      const inMonthStart = inMonthIndices.length ? inMonthIndices[0] : 0;
+      const inMonthEnd = inMonthIndices.length ? inMonthIndices[inMonthIndices.length - 1] : -1;
+      out.push({ weekStart, cells, status, inMonthStart, inMonthEnd });
     }
     return out;
   };
@@ -535,9 +548,12 @@ export function StreakModal({ onClose, isDark }: Props) {
  * A single week row in the calendar.
  *
  * Visual rules:
- *   - If the week has ≥1 workout → entire row (Sun–Sat) is a single
- *     orange pill. Inside the pill, each day still renders with a
- *     differentiation so rest/workout/missed days are distinguishable:
+ *   - If the week has ≥1 workout → an orange pill spans only the cells
+ *     that belong to the month THIS panel is rendering. A week crossing
+ *     the month boundary (e.g. Mar 29–Apr 4) still gets highlighted on
+ *     both panels, but each panel's pill covers only its own slice of
+ *     the week, never its neighbour.
+ *   - Inside the pill:
  *       · Workout day  → day number sits on a solid white chip
  *       · Rest day     → day number inside a dashed white ring
  *       · Missed / today / future → just the number on orange
@@ -546,6 +562,8 @@ export function StreakModal({ onClose, isDark }: Props) {
  *   - Otherwise → no pill, day numbers on the plain background; rest
  *     days carry their purple dot for consistency with the rest of the
  *     app.
+ *   - Cells that belong to the previous or next month render empty —
+ *     we never spill foreign-month numbers into the current view.
  */
 function WeekRow({
   row, todayIso, isDark,
@@ -554,6 +572,8 @@ function WeekRow({
     weekStart: string;
     cells: Array<{ day: number | null; ds: string; kind: 'workout' | 'rest' | 'today' | 'missed' | 'future' | 'pad'; inMonth: boolean }>;
     status: 'active' | 'frozen' | 'missed' | 'current' | 'future';
+    inMonthStart: number;
+    inMonthEnd: number;
   };
   todayIso: string;
   isDark: boolean;
@@ -561,35 +581,50 @@ function WeekRow({
   const isActive = row.status === 'active';
   const isFrozen = row.status === 'frozen';
   const onPill = isActive || isFrozen;
+  const hasInMonth = row.inMonthEnd >= row.inMonthStart;
+  // Pill metrics — each column is 1/7 of the row. Small inset so the
+  // rounded ends don't kiss adjacent rows / cells.
+  const pillLeftPct = (row.inMonthStart / 7) * 100;
+  const pillWidthPct = ((row.inMonthEnd - row.inMonthStart + 1) / 7) * 100;
 
   return (
     <div className="grid grid-cols-7 relative py-1.5">
-      {/* Full-week pill — spans Sun→Sat so the whole row feels "counted"
-          the moment you've worked out even one day that week. */}
-      {isActive && (
+      {/* In-month pill — only over the cells that belong to THIS month. */}
+      {isActive && hasInMonth && (
         <div
           className="absolute top-1.5 bottom-1.5 rounded-full bg-gradient-to-b from-orange-400 to-red-500 shadow-md shadow-orange-500/30"
-          style={{ left: '2px', width: 'calc(100% - 4px)' }}
+          style={{
+            left: `calc(${pillLeftPct}% + 2px)`,
+            width: `calc(${pillWidthPct}% - 4px)`,
+          }}
           aria-hidden
         />
       )}
-      {isFrozen && (
+      {isFrozen && hasInMonth && (
         <div
           className="absolute top-1.5 bottom-1.5 rounded-full bg-sky-500/85 shadow-md shadow-sky-500/30"
-          style={{ left: '2px', width: 'calc(100% - 4px)' }}
+          style={{
+            left: `calc(${pillLeftPct}% + 2px)`,
+            width: `calc(${pillWidthPct}% - 4px)`,
+          }}
           aria-hidden
         />
       )}
 
       {row.cells.map((c, ci) => {
+        // Cells outside the current month render as blank spacers. We
+        // keep them in the grid so the Sun–Sat columns stay aligned.
+        if (!c.inMonth) {
+          return <div key={ci} className="relative h-9" />;
+        }
+
         const isToday = c.ds === todayIso;
-        const dimOutOfMonth = !c.inMonth;
         const isWorkout = c.kind === 'workout';
         const isRest = c.kind === 'rest';
 
-        // Number color — white when on the pill, dim when future / out of month.
+        // Number color — white when on the pill; dim for future days.
         let textClass = '';
-        if (c.kind === 'future' || (c.kind === 'pad' && !onPill)) {
+        if (c.kind === 'future') {
           textClass = isDark ? 'text-zinc-700' : 'text-gray-300';
         } else if (onPill) {
           textClass = 'text-white';
@@ -600,7 +635,6 @@ function WeekRow({
         } else {
           textClass = isDark ? 'text-zinc-300' : 'text-gray-700';
         }
-        if (dimOutOfMonth) textClass += ' opacity-60';
 
         return (
           <div key={ci} className="relative h-9 flex items-center justify-center">
@@ -614,8 +648,7 @@ function WeekRow({
             {onPill && isRest && (
               <div className="absolute w-7 h-7 rounded-full border-2 border-dashed border-white/80" aria-hidden />
             )}
-            {/* Today pin when the current week has NO workouts yet (no
-                pill). Gives the user a clear "you are here" marker. */}
+            {/* Today pin when the current week has NO pill yet. */}
             {!onPill && isToday && (
               <div className="absolute w-7 h-7 rounded-full bg-sky-400 shadow-md shadow-sky-500/30" aria-hidden />
             )}
