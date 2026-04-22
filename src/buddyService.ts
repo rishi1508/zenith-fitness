@@ -83,7 +83,11 @@ export async function touchHeartbeat(): Promise<void> {
   try {
     const ref = doc(db, 'userProfiles', user.uid);
     await setDoc(ref, { lastActive: new Date().toISOString() }, { merge: true });
-  } catch { /* ignore — best-effort */ }
+  } catch (err) {
+    // Don't throw — heartbeat is best-effort — but surface so
+    // rule-denials / long-term network issues show up in diagnostics.
+    console.warn('[Presence] heartbeat failed:', err);
+  }
 }
 
 /** Compute the online/offline/busy state for a profile given its
@@ -360,10 +364,14 @@ export function listenToIncomingRequests(
     where('status', '==', 'pending'),
   );
 
-  return onSnapshot(q, (snap) => {
-    const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BuddyRequest));
-    callback(requests);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const requests = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BuddyRequest));
+      callback(requests);
+    },
+    (err) => console.warn('[Buddy] requests listener error:', err),
+  );
 }
 
 // ============ BUDDY RELATIONSHIPS ============
@@ -393,10 +401,14 @@ export function listenToBuddies(
     where('users', 'array-contains', user.uid),
   );
 
-  return onSnapshot(q, (snap) => {
-    const buddies = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BuddyRelationship));
-    callback(buddies);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const buddies = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BuddyRelationship));
+      callback(buddies);
+    },
+    (err) => console.warn('[Buddy] buddies listener error:', err),
+  );
 }
 
 /** Remove a buddy relationship. */
@@ -539,10 +551,14 @@ export function listenToMessages(
     limit(200),
   );
 
-  return onSnapshot(q, (snap) => {
-    const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
-    callback(messages);
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      const messages = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage));
+      callback(messages);
+    },
+    (err) => console.warn('[Chat] messages listener error:', err),
+  );
 }
 
 /** Delete a chat message (only sender can delete). */

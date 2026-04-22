@@ -37,54 +37,79 @@ const DEBOUNCE_MS = 300; // Was 1000ms — long enough to lose writes if the
 // user closed the app within a second of editing. 300ms still batches rapid
 // typing without risking data loss.
 
-async function writeToFirestore(localStorageKey: string, value: unknown): Promise<void> {
-  if (!currentUserId) return;
+/** Returns true on successful write; false on any failure so the caller
+ *  can decide whether to keep the entry in the pending queue for retry. */
+async function writeToFirestore(localStorageKey: string, value: unknown): Promise<boolean> {
+  if (!currentUserId) return false;
   const firestoreDoc = STORAGE_TO_FIRESTORE[localStorageKey];
-  if (!firestoreDoc) return;
+  if (!firestoreDoc) return false;
   try {
     const docRef = doc(db, 'users', currentUserId, 'data', firestoreDoc);
-    await setDoc(docRef, { value, updatedAt: Date.now() });
+    await setDoc(docRef, { value, updatedAt: new Date().toISOString() });
+    return true;
   } catch (err) {
     console.error(`[FirestoreSync] Failed to sync ${localStorageKey}:`, err);
+    return false;
   }
 }
 
 /**
- * Queue a Firestore write (debounced, fire-and-forget).
+ * Queue a Firestore write (debounced, retried on failure).
  * Called from storage.ts after every localStorage write.
+ * The pending value is KEPT on failure so the next debounce firing, a
+ * flush, or the exponential-backoff retry all re-attempt the write
+ * instead of silently dropping data.
  */
 export function queueFirestoreSync(localStorageKey: string, value: unknown): void {
   if (!currentUserId || isSyncing) return;
   if (!STORAGE_TO_FIRESTORE[localStorageKey]) return;
 
   pendingWrites.set(localStorageKey, value);
+  scheduleWrite(localStorageKey, DEBOUNCE_MS);
+}
 
+/** Internal: schedule (or reschedule) a write after `delayMs` ms. */
+function scheduleWrite(localStorageKey: string, delayMs: number): void {
   const existing = debounceTimers.get(localStorageKey);
   if (existing) clearTimeout(existing);
-
   debounceTimers.set(
     localStorageKey,
-    setTimeout(() => {
+    setTimeout(async () => {
       debounceTimers.delete(localStorageKey);
       const v = pendingWrites.get(localStorageKey);
-      pendingWrites.delete(localStorageKey);
-      writeToFirestore(localStorageKey, v);
-    }, DEBOUNCE_MS),
+      if (v === undefined) return;
+      const ok = await writeToFirestore(localStorageKey, v);
+      if (ok) {
+        pendingWrites.delete(localStorageKey);
+      } else {
+        // Leave value in pendingWrites and schedule a retry with
+        // increasing backoff capped at 30 s. Any newer edit will
+        // overwrite it in-place via queueFirestoreSync (short-circuits
+        // stale retries with fresh data).
+        const nextDelay = Math.min(30_000, Math.max(delayMs * 2, 1_000));
+        scheduleWrite(localStorageKey, nextDelay);
+      }
+    }, delayMs),
   );
 }
 
 /**
  * Immediately write every pending change to Firestore. Call this from
  * visibilitychange (hidden) and beforeunload handlers so the user never
- * loses a save by closing the app during the debounce window.
+ * loses a save by closing the app during the debounce window. Failed
+ * writes stay in the pending queue so the next app session retries them.
  */
 export async function flushPendingWrites(): Promise<void> {
   if (pendingWrites.size === 0) return;
   for (const timer of debounceTimers.values()) clearTimeout(timer);
   debounceTimers.clear();
   const entries = Array.from(pendingWrites.entries());
-  pendingWrites.clear();
-  await Promise.all(entries.map(([k, v]) => writeToFirestore(k, v)));
+  await Promise.all(
+    entries.map(async ([k, v]) => {
+      const ok = await writeToFirestore(k, v);
+      if (ok) pendingWrites.delete(k);
+    }),
+  );
 }
 
 /**

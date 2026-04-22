@@ -121,6 +121,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       await buddyService.sendBuddyRequest(profile.uid, profile.displayName, profile.photoURL);
       setSentRequests((prev) => new Set(prev).add(profile.uid));
     } catch (err: unknown) {
+      console.error('[Buddy] sendBuddyRequest failed:', err);
       const msg = err instanceof Error ? err.message : 'Failed to send request';
       // If request already exists, just mark as sent instead of showing error
       if (msg.includes('already sent') || msg.includes('Already')) {
@@ -139,6 +140,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       await buddyService.acceptBuddyRequest(request.id);
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
     } catch (err: any) {
+      console.error('[Buddy] acceptBuddyRequest failed:', err);
       alert(err.message || 'Failed to accept request');
     } finally {
       setActionLoading(null);
@@ -151,6 +153,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       await buddyService.declineBuddyRequest(request.id);
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
     } catch (err: any) {
+      console.error('[Buddy] declineBuddyRequest failed:', err);
       alert(err.message || 'Failed to decline request');
     } finally {
       setActionLoading(null);

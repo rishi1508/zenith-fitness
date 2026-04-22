@@ -47,6 +47,7 @@ export function Avatar({ name, photoURL, size = 'md', presence }: {
   return (
     <div className="relative inline-block">
       {body}
+      {/* ring color flips with theme via index.css override on ring-[#0f0f0f] */}
       <span
         className={`absolute -bottom-0 -right-0 ${dotSize[size]} rounded-full ${dotColor} ring-2 ring-[#0f0f0f]`}
         aria-label={presence}

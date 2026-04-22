@@ -113,7 +113,7 @@ export function ComparisonView({ workouts, isDark, onBack }: ComparisonViewProps
         </div>
 
         <div className={`rounded-xl overflow-hidden ${isDark ? 'bg-[#1a1a1a] border border-[#2e2e2e]' : 'bg-white border border-gray-200'}`}>
-          <div className={`divide-y ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`} style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+          <div className={`divide-y ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`}>
             {completedWorkouts.length === 0 ? (
               <div className={`px-4 py-8 text-center ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
                 <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />

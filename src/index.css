@@ -55,6 +55,10 @@
 [data-theme="light"] .placeholder-zinc-500::placeholder { color: #9ca3af !important; }
 [data-theme="light"] .placeholder-zinc-600::placeholder { color: #d1d5db !important; }
 
+/* Presence-dot ring on Avatar — flip from the dark app bg to white
+   so the dot reads on light surfaces. */
+[data-theme="light"] .ring-\[\#0f0f0f\] { --tw-ring-color: #ffffff !important; }
+
 /* Nav bottom bar uses the same dark tokens — already covered above. */
 
 body {

@@ -254,9 +254,13 @@ export function listenToReactions(
     orderBy('timestamp', 'desc'),
     limit(10),
   );
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionReaction)));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionReaction)));
+    },
+    (err) => console.warn('[Session] reactions listener error:', err),
+  );
 }
 
 // ============ LISTENERS ============
@@ -266,9 +270,13 @@ export function listenToSession(
   sessionId: string,
   callback: (session: WorkoutSession | null) => void,
 ): () => void {
-  return onSnapshot(doc(db, 'workoutSessions', sessionId), (snap) => {
-    callback(snap.exists() ? ({ id: snap.id, ...snap.data() } as WorkoutSession) : null);
-  });
+  return onSnapshot(
+    doc(db, 'workoutSessions', sessionId),
+    (snap) => {
+      callback(snap.exists() ? ({ id: snap.id, ...snap.data() } as WorkoutSession) : null);
+    },
+    (err) => console.warn('[Session] session listener error:', err),
+  );
 }
 
 /** Listen to a participant's detailed progress. */
@@ -277,9 +285,13 @@ export function listenToProgress(
   uid: string,
   callback: (progress: SessionProgress | null) => void,
 ): () => void {
-  return onSnapshot(doc(db, 'workoutSessions', sessionId, 'progress', uid), (snap) => {
-    callback(snap.exists() ? (snap.data() as SessionProgress) : null);
-  });
+  return onSnapshot(
+    doc(db, 'workoutSessions', sessionId, 'progress', uid),
+    (snap) => {
+      callback(snap.exists() ? (snap.data() as SessionProgress) : null);
+    },
+    (err) => console.warn('[Session] progress listener error:', err),
+  );
 }
 
 /** Get all pending session invites for the current user. */

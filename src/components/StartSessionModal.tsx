@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Dumbbell, AlertCircle, Loader2, ChevronRight, Calendar } from 'lucide-react';
 import type { WeeklyPlan, DayPlan } from '../types';
 import * as storage from '../storage';
@@ -54,24 +54,39 @@ export function StartSessionModal({
     if (!plan) return;
     setStarting(true);
     setError(null);
+    let sid: string | null = null;
     try {
-      const sid = await sessionService.createSession(
+      sid = await sessionService.createSession(
         `${plan.name} - ${day.name}`,
         'custom',
         day.exercises,
       );
-      try {
-        await sessionService.inviteToSession(sid, buddyUid, buddyName, buddyPhotoURL || null);
-      } catch (inviteErr) {
-        console.error('[StartSession] invite failed', inviteErr);
-      }
-      onStarted(sid);
     } catch (err) {
       console.error('[StartSession] createSession failed', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       setStarting(false);
+      return;
+    }
+    // Session created — now try to invite. If the invite fails, we
+    // show the error inline and let the host decide whether to
+    // proceed anyway (Continue without invite) or back out. Previously
+    // we swallowed the error and landed the host in a lobby with no
+    // buddy invited and no indication why.
+    try {
+      await sessionService.inviteToSession(sid, buddyUid, buddyName, buddyPhotoURL || null);
+      onStarted(sid);
+    } catch (inviteErr) {
+      console.error('[StartSession] invite failed', inviteErr);
+      setError(
+        (inviteErr instanceof Error ? inviteErr.message : 'Invite failed') +
+        ' — session was created. Tap Continue anyway to invite from the lobby.',
+      );
+      // Expose a one-tap Continue action via a flag
+      pendingSidRef.current = sid;
+      setStarting(false);
     }
   };
+  const pendingSidRef = useRef<string | null>(null);
 
   return (
     <div
@@ -179,6 +194,17 @@ export function StartSessionModal({
             <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs whitespace-pre-wrap">
               {error}
             </div>
+          )}
+          {pendingSidRef.current && (
+            <button
+              onClick={() => {
+                const sid = pendingSidRef.current;
+                if (sid) onStarted(sid);
+              }}
+              className="w-full py-2 rounded-lg text-xs font-medium bg-orange-500/15 text-orange-300 hover:bg-orange-500/25 transition-colors"
+            >
+              Continue to lobby anyway
+            </button>
           )}
         </div>
 

@@ -111,16 +111,24 @@ service cloud.firestore {
       );
       allow delete: if signedIn() && request.auth.uid == resource.data.hostUid;
 
-      // Per-participant live progress snapshot.
+      // Per-participant live progress snapshot. Only session participants
+      // (host included) can read — previously any signed-in user could
+      // spy on another session's live workout data.
       match /progress/{uid} {
-        allow read:   if signedIn();
+        allow read:   if signedIn() && (
+          request.auth.uid == uid ||
+          request.auth.uid in get(/databases/$(database)/documents/workoutSessions/$(sessionId)).data.participants
+        );
         allow write:  if signedIn() && request.auth.uid == uid;
       }
 
-      // Ephemeral reaction stream.
+      // Ephemeral reaction stream — participants only.
       match /reactions/{reactionId} {
-        allow read:   if signedIn();
-        allow create: if signedIn() && request.auth.uid == request.resource.data.fromUid;
+        allow read:   if signedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/workoutSessions/$(sessionId)).data.participants;
+        allow create: if signedIn() &&
+          request.auth.uid == request.resource.data.fromUid &&
+          request.auth.uid in get(/databases/$(database)/documents/workoutSessions/$(sessionId)).data.participants;
       }
     }
 

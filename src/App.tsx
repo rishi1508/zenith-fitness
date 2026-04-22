@@ -243,14 +243,24 @@ function App() {
           !activeWorkout.completed) {
         finishWorkoutRef.current?.({ skipValidation: true });
       }
+      // Drive the post-workout comparison modal from here too, so we
+      // don't need a second short-lived listener inside finishWorkout.
+      if (s.status === 'completed' && !completedSession) {
+        setCompletedSession(s);
+      }
       if (s.status === 'cancelled' &&
           activeWorkout?.sessionId === activeSessionId) {
         // Host cancelled the session → drop our local workout (don't
-        // save to history) and bounce back to home.
+        // save to history) and bounce back to home. Await the status
+        // write so a quick app-close doesn't leave the public profile
+        // stuck on "isWorkingOut: true".
         localStorage.removeItem('zenith_active_workout');
         setActiveWorkout(null);
         setActiveSessionId(null);
-        if (user) buddyService.setWorkingOutStatus(false);
+        if (user) {
+          buddyService.setWorkingOutStatus(false)
+            .catch((e) => console.warn('[Session] clear isWorkingOut failed:', e));
+        }
         navigationHistory.current = ['home'];
         setView('home');
         alert('The host cancelled this workout session.');
@@ -517,8 +527,22 @@ function App() {
     setActiveWorkout(workout);
   };
 
+  // One-shot guard: prevents finishing the same workout twice. Matters
+  // in the session flow where the host's manual finishWorkout AND the
+  // status='completed' listener can both fire back-to-back and
+  // double-save the workout to history. Reset whenever a new activeWorkout
+  // is started.
+  const finishedOnceRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeWorkout && finishedOnceRef.current !== activeWorkout.id) {
+      finishedOnceRef.current = null;
+    }
+  }, [activeWorkout]);
+
   const finishWorkout: (opts?: { skipValidation?: boolean; endSession?: boolean }) => void = (opts) => {
     if (activeWorkout) {
+      if (finishedOnceRef.current === activeWorkout.id) return; // already saved
+      finishedOnceRef.current = activeWorkout.id;
       // Validate: every exercise must have at least one set with reps > 0 (unless auto-saved)
       if (!opts?.skipValidation) {
         const exercisesWithNoReps = activeWorkout.exercises.filter(ex =>
@@ -564,28 +588,25 @@ function App() {
         upsertMyProfileStats();
       }
 
-      // Complete group session if in one
+      // Complete group session if in one. We DON'T spin up a new listener
+      // here — the top-level session-status effect (further up in App.tsx)
+      // already watches status='completed' / 'cancelled' for auto-save &
+      // auto-cancel. It sets `completedSession` for the post-workout
+      // comparison, which avoids the 30-min setTimeout leak we had
+      // before.
       if (activeSessionId && duration) {
         sessionService.syncProgress(activeSessionId, finished.exercises);
-        sessionService.completeSession(activeSessionId, duration).then(async () => {
-          // If the host is finishing, end the session for everyone.
-          if (opts?.endSession) {
-            try {
-              await sessionService.finishSessionForAll(activeSessionId);
-            } catch (e) {
-              console.error('[Session] finishSessionForAll failed:', e);
-            }
-          }
-          // Listen for session completion to show comparison
-          const unsub = sessionService.listenToSession(activeSessionId, (s) => {
-            if (s && s.status === 'completed') {
-              setCompletedSession(s);
-              unsub();
+        sessionService.completeSession(activeSessionId, duration)
+          .catch((err) => console.error('[Session] completeSession failed:', err))
+          .then(async () => {
+            if (opts?.endSession) {
+              try {
+                await sessionService.finishSessionForAll(activeSessionId);
+              } catch (e) {
+                console.error('[Session] finishSessionForAll failed:', e);
+              }
             }
           });
-          // Auto-cleanup listener after 30 min
-          setTimeout(() => unsub(), 30 * 60 * 1000);
-        });
       }
 
       // Show celebration

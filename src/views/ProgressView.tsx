@@ -296,7 +296,10 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
             {searchQuery ? `${exerciseList.filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase())).length} matching` : `${exerciseList.length} total exercises`} - Tap to see details
           </div>
         </div>
-        <div className={`divide-y overflow-y-auto ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`} style={{ maxHeight: 'calc(100vh - 400px)' }}>
+        {/* Let <main>'s overflow-y-auto handle scrolling instead of a
+            fixed-height inner container — the old calc(100vh - 400px)
+            no longer matches the dvh-based layout. */}
+        <div className={`divide-y ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-200'}`}>
           {exerciseList.length === 0 ? (
             <div className={`px-4 py-8 text-center ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
               <Dumbbell className="w-8 h-8 mx-auto mb-2 opacity-50" />
