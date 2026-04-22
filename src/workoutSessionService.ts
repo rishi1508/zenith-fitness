@@ -4,6 +4,7 @@ import {
   addDoc, orderBy, limit,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { deliverPush } from './pushService';
 import type {
   WorkoutSession, SessionParticipant, SessionProgress,
   SessionReaction, TemplateExercise, WorkoutType, WorkoutExercise,
@@ -84,16 +85,24 @@ export async function inviteToSession(
     [`participants.${buddyUid}`]: participant,
   });
 
-  // Send notification
+  // Send in-app notification (drives the toast) + system push so the
+  // invitee sees it even when the app is closed.
+  const inviteMessage = `${user.displayName || 'Someone'} invited you to work out together: "${session.workoutName}"`;
   await addDoc(collection(db, 'notifications', buddyUid, 'items'), {
     type: 'session_invite',
     fromUid: user.uid,
     fromName: user.displayName || 'Anonymous',
-    message: `${user.displayName || 'Someone'} invited you to work out together: "${session.workoutName}"`,
+    message: inviteMessage,
     createdAt: new Date().toISOString(),
     read: false,
     data: { sessionId },
   });
+  deliverPush({
+    recipientUid: buddyUid,
+    title: user.displayName || 'Zenith Fitness',
+    body: inviteMessage,
+    data: { sessionId, type: 'session_invite' },
+  }).catch(() => { /* logged inside */ });
 }
 
 /** Accept a session invite (join the lobby). */

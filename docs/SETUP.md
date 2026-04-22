@@ -1,111 +1,158 @@
 # Manual setup — push notifications & health sync
 
-Two features ship "off by default" because they need keys / native plugins
-that can't be committed to git. Run these once and they're live forever.
+## A. Push notifications
 
-## A. Push notifications (Android APK + web)
+Goal: buddy messages + session invites show up in the Android notification
+tray even when the app is closed. 100 % free using Vercel's hobby tier.
 
-The goal: when a buddy messages you, the notification shows up in the
-Android notification tray (the shade you swipe down from the top), even
-if the app isn't open.
+There are **4 steps**. Each is 3–5 min.
 
-There are three parts:
-1. **FCM key setup** (one-time, Firebase console + env var).
-2. **Capacitor push plugin** (one-time, needed for the APK build).
-3. **Server-side fan-out** (one-time, Cloud Function that actually sends
-   the push).
+---
 
-### A1. Get your Web Push VAPID key
+### Step 1 — Get your Firebase Web Push VAPID key
 
-1. Open https://console.firebase.google.com/project/zenith-fitness-18e2a/settings/cloudmessaging
-2. Scroll to **Web configuration → Web Push certificates**.
-3. Click **Generate key pair** if there isn't one. Copy the long string
-   shown under "Key pair".
-4. Paste it into GitHub: https://github.com/rishi1508/zenith-fitness/settings/secrets/actions
-   → **New repository secret** → name `VITE_FCM_VAPID_KEY`, paste the key.
-5. Edit `.github/workflows/build-apk.yml` and add the env var to the
-   `Build web app` step (I'll do this if you let me know; easy one-liner).
-   Or, for quick local testing, create `.env.local` in the repo root:
+(Needed for the web / PWA path. APK uses a different mechanism; step 3.)
+
+1. Open [Firebase Console → Cloud Messaging](https://console.firebase.google.com/project/zenith-fitness-18e2a/settings/cloudmessaging).
+2. **Web configuration → Web Push certificates → Generate key pair**.
+3. Copy the long string shown under "Key pair".
+
+Save it — you'll paste it in step 4.
+
+---
+
+### Step 2 — Get your Firebase service-account JSON
+
+(Used by the Vercel function to send pushes on behalf of your project.)
+
+1. Firebase Console → **Project settings → Service accounts → Generate
+   new private key**. Confirm, a JSON file downloads.
+2. Open it — you'll need three fields from it in step 3:
+   - `project_id`
+   - `client_email`
+   - `private_key` (the long multi-line `-----BEGIN PRIVATE KEY-----…`)
+
+Keep the file safe; treat it like a password.
+
+---
+
+### Step 3 — Deploy the Vercel push function
+
+The app already ships `api/push.ts` and `vercel.json`. You just need to
+deploy them to your Vercel account.
+
+From the repo root on your machine:
+
+```bash
+npm install -g vercel          # if you don't have the CLI
+vercel login
+vercel                         # first run asks: link to existing project? → No, create new
+vercel env add FIREBASE_PROJECT_ID            # paste the project_id value
+vercel env add FIREBASE_CLIENT_EMAIL          # paste the client_email value
+vercel env add FIREBASE_PRIVATE_KEY           # paste the WHOLE private_key value including BEGIN/END lines
+vercel --prod                  # deploy to production
+```
+
+When asked **"Which scope"**, pick your personal account.
+For each `env add`, choose **Production** (and optionally Preview). The
+CLI accepts multi-line input for the private key — paste it as-is.
+
+After `vercel --prod` finishes, note the production URL it prints, e.g.:
+```
+https://zenith-fitness-abc123.vercel.app
+```
+
+Your push endpoint is **that URL + `/api/push`** — that's what the web
+app calls. Save it for step 4.
+
+**Verify it works:** run
+```bash
+curl -X POST https://your-project.vercel.app/api/push -H 'Content-Type: application/json' -d '{}'
+```
+You should get a 400 with `{"error":"recipientUid, title, idToken required"}` —
+that's good, it means the function is reachable and auth-checking.
+
+---
+
+### Step 4 — Wire the keys into your app build
+
+Two env vars need to land in the Firebase-hosted web app build:
+
+- `VITE_FCM_VAPID_KEY` — the VAPID key from step 1
+- `VITE_PUSH_ENDPOINT` — the Vercel URL from step 3 (include `/api/push`)
+
+**For CI builds** (what github.com/rishi1508/zenith-fitness deploys):
+
+1. GitHub → repo → **Settings → Secrets and variables → Actions → New repository secret**.
+   Add both secrets with those exact names.
+2. Tell me to update `.github/workflows/build-apk.yml` to inject them —
+   that's a one-line change per secret. Or do it yourself by adding
+   inside the "Build web app" step:
+   ```yaml
+   env:
+     VITE_FCM_VAPID_KEY: ${{ secrets.VITE_FCM_VAPID_KEY }}
+     VITE_PUSH_ENDPOINT: ${{ secrets.VITE_PUSH_ENDPOINT }}
    ```
-   VITE_FCM_VAPID_KEY=<paste your key>
-   ```
-   and rebuild.
 
-After this, Settings → Push notifications shows an **Enable notifications**
-button in the PWA. Tapping it triggers the browser's permission dialog.
+**For local testing:** create `.env.local` in the repo root with both
+values, then `npm run dev`.
 
-### A2. Install the Capacitor push plugin (for the Android APK)
+---
 
-Web Push works in Chrome. For the APK you need the native plugin.
+### Step 5 (optional but recommended) — Install the native Capacitor push plugin
 
-From the repo root:
+For the Android APK specifically, add native push:
 
 ```bash
 npm install @capacitor/push-notifications
 npx cap sync android
 ```
 
-Android side — `android/app/src/main/AndroidManifest.xml` should already
-have `<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>`
-thanks to the plugin's manifest merge. If not, add it inside `<manifest>`.
+The plugin auto-adds `POST_NOTIFICATIONS` to the Android manifest.
+Rebuild the APK.
 
-Rebuild the APK:
-```bash
-cd android && ./gradlew assembleRelease
-```
+Once the plugin is in the APK, `pushService.ts` automatically takes the
+native branch — no code change required.
 
-Once the APK has the plugin, `pushService.ts` automatically takes the
-native branch on that device. No code change required.
+---
 
-### A3. Server-side fan-out (sends the actual push)
+### Step 6 — Test the whole flow
 
-Right now the app writes to `notifications/{uid}/items` when a buddy
-messages you. The in-app toast sees it, but the OS doesn't. You need a
-Cloud Function that listens for those writes and forwards them to FCM.
+1. Install the APK on your phone (or open the PWA in Chrome).
+2. Sign in. The bottom-sheet prompt appears ~1.5 s after login asking to
+   enable notifications. Tap **Enable**, accept the OS dialog.
+3. On a second phone / browser, sign in as a different user and send a
+   chat message to you.
+4. Within a few seconds the notification appears in your Android
+   notification tray. Tap it → the app opens to the chat.
 
-1. In the Firebase console, enable **Cloud Functions** (if you haven't).
-2. Create `functions/src/index.ts` (or let me do it — ask and I'll write
-   the whole Function) with something like:
-   ```ts
-   exports.onNotification = functions.firestore
-     .document('notifications/{uid}/items/{notifId}')
-     .onCreate(async (snap, ctx) => {
-       const n = snap.data();
-       const tokensSnap = await db.collection(`userProfiles/${ctx.params.uid}/fcmTokens`).get();
-       const tokens = tokensSnap.docs.map(d => d.id);
-       if (!tokens.length) return;
-       await admin.messaging().sendEachForMulticast({
-         tokens,
-         notification: { title: n.fromName, body: n.message },
-         data: { chatId: n.data?.chatId ?? '', sessionId: n.data?.sessionId ?? '' },
-       });
-     });
-   ```
-3. Deploy: `firebase deploy --only functions`
+**If nothing shows up:** open browser devtools / `adb logcat` and look
+for `[Push]` log lines. The Vercel function logs also help — `vercel logs`
+from the CLI, or the Deployments tab in the Vercel dashboard.
 
-After this, any chat message / session invite / buddy request
-automatically lights up the notification tray on every device where the
-user has granted permission.
+---
 
-### A4. When does the permission prompt appear?
+### How the permission UX works
 
-There are three paths:
-- **Soft prompt**: 1.5 s after first login on a device, a friendly card
-  appears at the bottom of the screen explaining what notifications are
-  for. Tapping "Enable notifications" triggers the OS permission dialog.
-  Tapping "Not now" hides it (per-device, per-user).
-- **Settings → Push notifications**: always available to enable /
-  diagnose.
-- **OS-level re-enable**: if the user denied once, browsers / Android
-  block further in-app prompts. They have to go to:
-  - **Chrome**: lock icon in address bar → Site settings → Notifications → Allow.
-  - **Android APK**: Settings app → Apps → Zenith Fitness → Notifications → On.
+- **Soft in-app prompt** — slides up from the bottom 1.5 s after login,
+  once per device per user. Offers **Enable notifications** / **Not now**.
+- **Settings → Push notifications** — always available. Shows:
+  - "Enable notifications" button when permission is `prompt`
+  - "✓ Enabled on this device" when `granted`
+  - A note explaining how to re-enable via OS settings when `denied`
+- **If the user taps "Deny" on the OS prompt**, browsers / Android block
+  in-app re-prompts. They must go to:
+  - **Chrome PWA**: the lock icon in the URL bar → Site settings → Notifications → Allow.
+  - **Android APK**: system Settings → Apps → Zenith Fitness → Notifications → On.
+
+---
 
 ## B. Health sync (Apple Health / Google Health Connect)
 
-Each finished workout gets pushed into the phone's Health store.
+Still optional, same as before — each finished workout is pushed to the
+phone's Health store.
 
-### B1. Install the plugins (native only)
+### B1. Install the plugins
 
 ```bash
 npm install @capacitor-community/health-connect @perfood/capacitor-healthkit
@@ -114,7 +161,7 @@ npx cap sync
 
 ### B2. Android permissions
 
-Edit `android/app/src/main/AndroidManifest.xml` and add inside `<manifest>`:
+Add inside `<manifest>` in `android/app/src/main/AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.health.WRITE_EXERCISE" />
@@ -124,12 +171,12 @@ Edit `android/app/src/main/AndroidManifest.xml` and add inside `<manifest>`:
 </queries>
 ```
 
-Also make sure the device has the Health Connect app installed (newer
-Android versions bundle it).
+Health Connect must be installed on the device (bundled on newer Android,
+downloadable from Play Store otherwise).
 
 ### B3. iOS permissions
 
-Edit `ios/App/App/Info.plist` and add:
+Edit `ios/App/App/Info.plist`:
 
 ```xml
 <key>NSHealthShareUsageDescription</key>
@@ -140,15 +187,5 @@ Edit `ios/App/App/Info.plist` and add:
 
 ### B4. Enable in app
 
-Once the APK / iOS build with these plugins runs on the device, the
-**Settings → Health sync** toggle becomes active. Flip it on and every
-finished workout is pushed automatically.
-
-## Why these can't be auto-configured
-
-- The VAPID key is a secret — committing it would let anyone send pushes
-  to your users.
-- Capacitor plugins touch native Android / iOS config; `npm install`
-  modifies Gradle and cocoapods files that need a full `npx cap sync`.
-- Cloud Functions run on Firebase's paid tier (Blaze) — requires a
-  billing account decision.
+Once built and installed, **Settings → Health sync** becomes active.
+Toggle on — every finished workout is pushed automatically.

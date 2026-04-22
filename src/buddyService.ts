@@ -5,6 +5,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { deliverPush } from './pushService';
 import type {
   UserProfile, BuddyRequest, BuddyRelationship,
   ChatMessage, BuddyNotification, Workout, UserStats, BuddyCompareStats,
@@ -537,6 +538,14 @@ export async function sendMessage(
     } catch (err) {
       console.error('[Chat] Failed to deliver message notification:', err);
     }
+    // Fire a system push regardless of whether the Firestore write
+    // succeeded — system push is the more urgent delivery path.
+    deliverPush({
+      recipientUid,
+      title: user.displayName || 'Zenith Fitness',
+      body: notifMessage,
+      data: { chatId, type: type === 'workout_invite' ? 'workout_invite' : 'chat_message' },
+    }).catch(() => { /* logged inside */ });
   }
 }
 
@@ -668,12 +677,21 @@ export async function sendWorkoutInvite(
 
 // ============ NOTIFICATIONS ============
 
-/** Add a notification for a user. */
+/** Add a notification for a user — both the in-app Firestore doc (drives
+ *  the in-session toast) and a best-effort system push via the Vercel
+ *  endpoint. */
 async function addNotification(
   targetUid: string,
   notification: Omit<BuddyNotification, 'id'>,
 ): Promise<void> {
   await addDoc(collection(db, 'notifications', targetUid, 'items'), notification);
+  // Fire-and-forget; failure here doesn't block the in-app path.
+  deliverPush({
+    recipientUid: targetUid,
+    title: notification.fromName || 'Zenith Fitness',
+    body: notification.message,
+    data: notification.data,
+  }).catch(() => { /* already logged inside deliverPush */ });
 }
 
 /** Get unread notifications. */

@@ -154,6 +154,38 @@ export async function enablePushNotifications(): Promise<string | null> {
   }
 }
 
+/**
+ * Call the Vercel push endpoint to fan out a notification to the
+ * recipient's registered devices. Fire-and-forget — a failure here never
+ * blocks the in-app toast, which is already driven by the Firestore
+ * write the caller made separately.
+ *
+ * No-op if VITE_PUSH_ENDPOINT isn't configured (treats push as disabled).
+ */
+export async function deliverPush(params: {
+  recipientUid: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}): Promise<void> {
+  const endpoint = import.meta.env.VITE_PUSH_ENDPOINT as string | undefined;
+  if (!endpoint) return;
+  const user = auth.currentUser;
+  if (!user) return;
+  if (params.recipientUid === user.uid) return; // don't push to self
+  try {
+    const idToken = await user.getIdToken();
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...params, idToken }),
+    });
+  } catch (err) {
+    // Swallow — the in-app notification is already queued via Firestore.
+    console.warn('[Push] deliverPush failed:', err);
+  }
+}
+
 /** Revoke the current device's token. */
 export async function disablePushNotifications(token: string | null): Promise<void> {
   if (!token) return;

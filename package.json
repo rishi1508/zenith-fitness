@@ -1,7 +1,7 @@
 {
   "name": "zenith-fitness",
   "private": true,
-  "version": "3.13.1",
+  "version": "3.14.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,8 +17,10 @@
     "@capacitor/core": "^8.0.2",
     "@capacitor/haptics": "^8.0.1",
     "@capacitor/status-bar": "^8.0.0",
+    "@vercel/node": "^3.2.29",
     "express": "^5.2.1",
     "firebase": "^12.10.0",
+    "firebase-admin": "^12.7.0",
     "html2canvas": "^1.4.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
