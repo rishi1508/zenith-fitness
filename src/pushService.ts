@@ -1,6 +1,28 @@
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { db, auth } from './firebase';
+
+// -------- Capacitor native-push bridge (Android APK / iOS) --------
+// The @capacitor/push-notifications plugin isn't in package.json yet — we
+// lazily ask Capacitor whether it's registered. If not, we fall through
+// to the web-push path. Once the user runs:
+//
+//   npm install @capacitor/push-notifications
+//   npx cap sync
+//
+// ...the plugin becomes available and the native branch takes over on
+// APK / iOS builds.
+interface NativePushPlugin {
+  requestPermissions(): Promise<{ receive: 'granted' | 'denied' | 'prompt' | 'prompt-with-rationale' }>;
+  register(): Promise<void>;
+  addListener(eventName: 'registration', cb: (token: { value: string }) => void): Promise<{ remove: () => Promise<void> }>;
+  addListener(eventName: 'registrationError', cb: (err: unknown) => void): Promise<{ remove: () => Promise<void> }>;
+  addListener(eventName: 'pushNotificationReceived' | 'pushNotificationActionPerformed', cb: (n: unknown) => void): Promise<{ remove: () => Promise<void> }>;
+}
+const NativePush: NativePushPlugin | null = Capacitor.isPluginAvailable('PushNotifications')
+  ? registerPlugin<NativePushPlugin>('PushNotifications')
+  : null;
 
 /**
  * Web Push wiring for Firebase Cloud Messaging.
@@ -21,12 +43,27 @@ const VAPID_KEY = import.meta.env.VITE_FCM_VAPID_KEY as string | undefined;
 
 // Firebase Messaging reuses the default app initialized in firebase.ts.
 
-/** True if this runtime can receive web push (service worker + notifications API). */
+/** True if this runtime can receive push — either the native Capacitor
+ *  plugin is available (APK / iOS build) or the browser supports web push. */
 export async function pushSupported(): Promise<boolean> {
+  if (NativePush && Capacitor.isNativePlatform()) return true;
   if (typeof window === 'undefined') return false;
   if (!('serviceWorker' in navigator)) return false;
   if (!('Notification' in window)) return false;
   try { return await isSupported(); } catch { return false; }
+}
+
+/** Current permission state ('granted' | 'denied' | 'prompt' | 'unsupported'). */
+export async function pushPermissionState(): Promise<'granted' | 'denied' | 'prompt' | 'unsupported'> {
+  if (!(await pushSupported())) return 'unsupported';
+  if (NativePush && Capacitor.isNativePlatform()) {
+    try {
+      const result = await NativePush.requestPermissions();
+      return result.receive === 'granted' ? 'granted' : result.receive === 'denied' ? 'denied' : 'prompt';
+    } catch { return 'prompt'; }
+  }
+  const p = Notification.permission;
+  return p === 'granted' ? 'granted' : p === 'denied' ? 'denied' : 'prompt';
 }
 
 /**
@@ -38,13 +75,46 @@ export async function pushSupported(): Promise<boolean> {
  * Returns the token on success, null otherwise.
  */
 export async function enablePushNotifications(): Promise<string | null> {
-  if (!VAPID_KEY) {
-    console.info('[Push] VAPID key missing — push is disabled. Set VITE_FCM_VAPID_KEY.');
-    return null;
-  }
   if (!(await pushSupported())) return null;
   const user = auth.currentUser;
   if (!user) return null;
+
+  // ---- Native (Capacitor APK / iOS) ----
+  if (NativePush && Capacitor.isNativePlatform()) {
+    try {
+      const perm = await NativePush.requestPermissions();
+      if (perm.receive !== 'granted') return null;
+      return await new Promise<string | null>((resolve) => {
+        let resolved = false;
+        const settle = (v: string | null) => { if (!resolved) { resolved = true; resolve(v); } };
+        NativePush.addListener('registration', async (t) => {
+          try {
+            await setDoc(
+              doc(db, 'userProfiles', user.uid, 'fcmTokens', t.value),
+              { token: t.value, createdAt: new Date().toISOString(), platform: Capacitor.getPlatform() },
+            );
+          } catch (err) { console.warn('[Push] token save failed:', err); }
+          settle(t.value);
+        });
+        NativePush.addListener('registrationError', (err) => {
+          console.warn('[Push] native registration error:', err);
+          settle(null);
+        });
+        NativePush.register().catch((err) => { console.warn('[Push] native register failed:', err); settle(null); });
+        // Safety timeout — Firebase usually emits within a couple of seconds.
+        setTimeout(() => settle(null), 15_000);
+      });
+    } catch (err) {
+      console.warn('[Push] native enable failed:', err);
+      return null;
+    }
+  }
+
+  // ---- Web Push fallback ----
+  if (!VAPID_KEY) {
+    console.info('[Push] VAPID key missing — web push is disabled. Set VITE_FCM_VAPID_KEY.');
+    return null;
+  }
 
   try {
     // Firebase expects the messaging sw at /firebase-messaging-sw.js by default.

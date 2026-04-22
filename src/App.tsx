@@ -9,7 +9,7 @@ import { UpdateChecker } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton } from './components';
+import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt } from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { settleStreak, isStreakActiveToday } from './streakService';
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView } from './views';
@@ -728,6 +728,7 @@ function App() {
           }}
         />
       )}
+      {user && <PushPermissionPrompt userUid={user.uid} isDark={isDark} />}
       
       {/* Missing Days Prompt */}
       {missingDays.length > 0 && (
