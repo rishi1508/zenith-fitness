@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Flame, Snowflake, Dumbbell, Moon, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as storage from '../storage';
 import { getStreakState, daysUntilNextFreeze, MAX_FREEZES } from '../streakService';
@@ -84,7 +85,12 @@ export function StreakModal({ onClose, isDark }: Props) {
     return { year, month: month + 1 };
   });
 
-  return (
+  // Portal the modal to document.body so it escapes any ancestor that
+  // establishes a containing block for fixed positioning (header has
+  // `backdrop-blur-sm` which introduces `backdrop-filter` — in CSS, that
+  // traps `position: fixed` children to the ancestor's box, so the modal
+  // used to render 60px tall inside the header instead of viewport-wide).
+  return createPortal(
     <>
       {/* Backdrop — separate element so the fade-in animation can't
           fight with the sheet's transform-based centering (which broke
@@ -302,6 +308,7 @@ export function StreakModal({ onClose, isDark }: Props) {
         </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
