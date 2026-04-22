@@ -17,6 +17,7 @@ import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
 import { flushPendingWrites } from './firestoreSync';
+import { autoRegisterPushIfNeeded } from './pushService';
 import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 
@@ -368,6 +369,10 @@ function App() {
       if (document.visibilityState === 'visible') buddyService.touchHeartbeat();
     };
     document.addEventListener('visibilitychange', onVis);
+    // Self-heal push registration: if the user previously granted
+    // permission but no token is saved (rule denial, cache clear, FCM
+    // rotation, etc.), silently re-register now.
+    autoRegisterPushIfNeeded().catch((err) => console.warn('[Push] auto-register error:', err));
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', onVis);

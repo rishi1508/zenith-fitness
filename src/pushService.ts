@@ -1,5 +1,5 @@
 import { getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
-import { doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { db, auth } from './firebase';
@@ -183,6 +183,42 @@ export async function deliverPush(params: {
     // Swallow — the in-app notification is already queued via Firestore.
     console.warn('[Push] deliverPush failed:', err);
   }
+}
+
+/**
+ * Auto-register a push token on app launch when:
+ *   - user is signed in
+ *   - permission is already 'granted'
+ *   - we don't already have a token for this device in Firestore
+ *
+ * Self-heals past failures (rule denials, cleared caches, FCM rotations)
+ * without requiring the user to tap Enable again.
+ */
+export async function autoRegisterPushIfNeeded(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  if (!(await pushSupported())) return;
+  const state = await pushPermissionState();
+  if (state !== 'granted') return; // don't auto-trigger a prompt
+
+  try {
+    // Query tokens for this user. If any exist with a length > 50
+    // (real FCM tokens are 150+ chars), skip.
+    const tokensRef = collection(db, 'userProfiles', user.uid, 'fcmTokens');
+    const snap = await getDocs(tokensRef);
+    const hasRealToken = snap.docs.some((d) => (d.data() as { token?: string }).token && (d.data() as { token: string }).token.length > 50);
+    if (hasRealToken) {
+      console.info('[Push] auto-register skipped — token already on file');
+      return;
+    }
+  } catch (err) {
+    console.warn('[Push] auto-register list check failed:', err);
+  }
+
+  console.info('[Push] auto-register: permission granted but no token — registering');
+  const token = await enablePushNotifications();
+  if (token) console.info('[Push] auto-register: token saved');
+  else console.warn('[Push] auto-register: failed to acquire token');
 }
 
 /** Revoke the current device's token. */

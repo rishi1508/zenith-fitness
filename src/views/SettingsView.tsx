@@ -848,10 +848,15 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
           you, invite you to a session, or send a workout invite.
         </p>
       ) : perm === 'denied' ? (
-        <p className="text-xs text-red-400">
-          You previously denied notifications in this browser. Re-enable
-          from the browser's site settings to opt back in.
-        </p>
+        <div className="text-xs text-red-400 space-y-1.5">
+          <p>Notifications are blocked for this app.</p>
+          <p className="text-zinc-500">
+            <strong>Chrome (web):</strong> tap the lock icon 🔒 in the URL bar → Site settings → Notifications → Allow. Then reload.
+          </p>
+          <p className="text-zinc-500">
+            <strong>Android app:</strong> system Settings → Apps → Zenith Fitness → Notifications → On.
+          </p>
+        </div>
       ) : (
         <>
           <p className="text-xs text-zinc-500">
