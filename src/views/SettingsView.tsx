@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ChevronLeft, FileSpreadsheet, Download, Upload,
   CheckCircle2, Copy, Volume2, Palette, Sun, Moon, Clock, User, LogOut, LogIn,
@@ -10,7 +10,7 @@ import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as buddyService from '../buddyService';
 import { manualCheckForUpdates } from '../UpdateChecker';
-import { enablePushNotifications, pushSupported } from '../pushService';
+import { enablePushNotifications, pushSupported, pushPermissionState } from '../pushService';
 import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '../healthSync';
 
 declare const __APP_VERSION__: string;
@@ -789,25 +789,36 @@ function HealthSyncSection({ isDark }: { isDark: boolean }) {
 }
 
 function PushNotificationsSection({ isDark }: { isDark: boolean }) {
-  const [perm, setPerm] = useState<'default' | 'granted' | 'denied' | 'unsupported'>(() => {
-    if (typeof Notification === 'undefined') return 'unsupported';
-    return Notification.permission as 'default' | 'granted' | 'denied';
-  });
-  const [supported, setSupported] = useState<boolean | null>(null);
+  // `perm` drives the three render branches. We kick off an async probe
+  // on mount rather than reading Notification.permission synchronously —
+  // the Capacitor Android WebView does NOT expose the Notification API,
+  // which caused this section to always say "browser doesn't support"
+  // on the APK even though the native plugin is available.
+  const [perm, setPerm] = useState<'prompt' | 'granted' | 'denied' | 'unsupported' | 'loading'>('loading');
   const [busy, setBusy] = useState(false);
 
-  useState(() => {
-    pushSupported().then(setSupported);
-    return undefined;
-  });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const supported = await pushSupported();
+      if (cancelled) return;
+      if (!supported) { setPerm('unsupported'); return; }
+      const state = await pushPermissionState();
+      if (!cancelled) setPerm(state);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const handleEnable = async () => {
     setBusy(true);
     try {
       const token = await enablePushNotifications();
-      if (typeof Notification !== 'undefined') setPerm(Notification.permission as 'default' | 'granted' | 'denied');
+      // Re-probe — on native the user could have flipped the system-level
+      // permission mid-flow. Stay in sync with whatever the OS says.
+      const state = await pushPermissionState();
+      setPerm(state);
       if (!token) {
-        alert('Push notifications could not be enabled. Check that the Firebase VAPID key is configured.');
+        alert('Push notifications could not be enabled. Check browser/device settings, or re-try from Settings.');
       }
     } finally {
       setBusy(false);
@@ -823,9 +834,13 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
         <Bell className="w-5 h-5 text-orange-400" />
         <span className="font-medium">Push notifications</span>
       </div>
-      {perm === 'unsupported' || supported === false ? (
+      {perm === 'loading' ? (
+        <p className="text-xs text-zinc-500">Checking notification support…</p>
+      ) : perm === 'unsupported' ? (
         <p className="text-xs text-zinc-500">
-          Your browser doesn't support push notifications.
+          Your device doesn't support push notifications. For the web app,
+          enable notifications in your browser. For the installed app,
+          make sure you're on the latest APK.
         </p>
       ) : perm === 'granted' ? (
         <p className="text-xs text-emerald-400">

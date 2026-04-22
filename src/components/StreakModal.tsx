@@ -85,16 +85,18 @@ export function StreakModal({ onClose, isDark }: Props) {
   });
 
   return (
-    <div className="fixed inset-0 z-[100] animate-fadeIn" onClick={onClose}>
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" aria-hidden />
-
-      {/* Sheet. Absolute positioning with explicit insets guarantees
-          the same result on Android WebView and desktop — no h-full /
-          flex-end ambiguity. */}
+    <>
+      {/* Two siblings at the app's portal root — no h-full inheritance
+          through a fixed parent (which Android WebView has historically
+          been flaky about). Backdrop has its own z-index below the sheet. */}
+      <div
+        className="fixed inset-0 bg-black/60 z-[99] animate-fadeIn"
+        onClick={onClose}
+        aria-hidden
+      />
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`absolute inset-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[480px] sm:max-w-[92vw] sm:max-h-[92vh] sm:rounded-2xl overflow-hidden flex flex-col ${
+        className={`fixed inset-0 z-[100] overflow-hidden flex flex-col sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[480px] sm:max-w-[92vw] sm:max-h-[92vh] sm:rounded-2xl animate-fadeIn ${
           isDark ? 'bg-[#0f0f0f] text-white' : 'bg-white text-gray-900'
         }`}
       >
@@ -293,6 +295,6 @@ export function StreakModal({ onClose, isDark }: Props) {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
