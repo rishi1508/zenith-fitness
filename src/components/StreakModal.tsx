@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { X, Flame, Snowflake } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { X, Flame, Snowflake, Dumbbell, Moon, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as storage from '../storage';
 import { getStreakState, daysUntilNextFreeze, MAX_FREEZES } from '../streakService';
 
@@ -9,249 +9,290 @@ interface Props {
 }
 
 /**
- * Duolingo-style streak screen. Full-height sheet with:
- *   - Big flame with the streak number inside it
- *   - "N day streak" hero
- *   - This week's activity as 7 day-dots (Sun → Sat)
- *   - Personal best stat
- *   - Freeze slots with fire-shield visual + progress to next freeze
+ * Streak modal — Duolingo-inspired.
  *
- * Uses env(safe-area-inset-top) padding + z-[100] so the close button
- * is never hidden under the Android status bar / iOS notch. Also sets
- * items-stretch so the sheet covers the full screen on mobile instead
- * of animating up from the bottom (which clipped under the status bar
- * on some Android devices).
+ * Layout: the outer fixed container uses absolute positioning (not flex)
+ * for the sheet so Android WebView can't disagree with the browser about
+ * `h-full` resolution. On mobile the sheet is pinned to all four edges;
+ * on desktop it's centered with an explicit width and translate.
+ *
+ * Content includes a flame hero, a monthly calendar the user can page
+ * through via prev/next buttons, stat tiles, and freeze slots.
  */
 export function StreakModal({ onClose, isDark }: Props) {
   const state = getStreakState();
   const stats = useMemo(() => storage.calculateStats(), []);
   const workouts = useMemo(() => storage.getWorkouts(), []);
 
-  // Classify each day into one of four states.
-  const workedOut = new Set<string>();
-  const restDays = new Set<string>();
-  for (const w of workouts) {
-    if (!w.completed) continue;
-    const d = w.date.slice(0, 10);
-    if (w.type === 'rest') restDays.add(d);
-    else workedOut.add(d);
-  }
-  const frozen = new Set(state.freezeConsumedDates);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // Day-type sets keyed by YYYY-MM-DD.
+  const { workedOut, restDays } = useMemo(() => {
+    const w = new Set<string>(); const r = new Set<string>();
+    for (const wk of workouts) {
+      if (!wk.completed) continue;
+      const d = wk.date.slice(0, 10);
+      if (wk.type === 'rest') r.add(d); else w.add(d);
+    }
+    return { workedOut: w, restDays: r };
+  }, [workouts]);
+  const frozen = useMemo(() => new Set(state.freezeConsumedDates), [state.freezeConsumedDates]);
 
-  // This week, Sunday through Saturday, anchored on today.
+  const todayIso = new Date().toISOString().slice(0, 10);
   const now = new Date();
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay()); // back to Sunday
-  weekStart.setHours(0, 0, 0, 0);
-  const weekDots = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart);
-    d.setDate(weekStart.getDate() + i);
-    const ds = d.toISOString().slice(0, 10);
-    const label = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][i];
-    let kind: 'workout' | 'rest' | 'frozen' | 'today' | 'missed' | 'future';
-    if (ds > todayIso) kind = 'future';
-    else if (workedOut.has(ds)) kind = 'workout';
-    else if (restDays.has(ds)) kind = 'rest';
-    else if (frozen.has(ds)) kind = 'frozen';
-    else if (ds === todayIso) kind = 'today';
-    else kind = 'missed';
-    return { ds, label, kind };
-  });
+
+  // Viewed month — prev/next paginates.
+  const [viewedMonth, setViewedMonth] = useState(() => ({ year: now.getFullYear(), month: now.getMonth() }));
+  const isCurrentMonth = viewedMonth.year === now.getFullYear() && viewedMonth.month === now.getMonth();
+
+  const monthCells = useMemo(() => {
+    const first = new Date(viewedMonth.year, viewedMonth.month, 1);
+    const daysInMonth = new Date(viewedMonth.year, viewedMonth.month + 1, 0).getDate();
+    const startWeekday = first.getDay(); // 0 = Sun
+    type Cell =
+      | { kind: 'pad' }
+      | { kind: 'day'; day: number; ds: string; type: 'workout' | 'rest' | 'frozen' | 'today' | 'missed' | 'future' };
+    const cells: Cell[] = [];
+    for (let i = 0; i < startWeekday; i++) cells.push({ kind: 'pad' });
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(viewedMonth.year, viewedMonth.month, day);
+      const ds = d.toISOString().slice(0, 10);
+      let type: Extract<Cell, { kind: 'day' }>['type'];
+      if (ds > todayIso) type = 'future';
+      else if (workedOut.has(ds)) type = 'workout';
+      else if (restDays.has(ds)) type = 'rest';
+      else if (frozen.has(ds)) type = 'frozen';
+      else if (ds === todayIso) type = 'today';
+      else type = 'missed';
+      cells.push({ kind: 'day', day, ds, type });
+    }
+    return cells;
+  }, [viewedMonth, workedOut, restDays, frozen, todayIso]);
 
   const nextFreezeIn = daysUntilNextFreeze(state);
   const longestStreak = stats.longestStreak || stats.currentStreak || 0;
-
-  const bg = isDark ? 'bg-[#0f0f0f]' : 'bg-white';
   const subtle = isDark ? 'text-zinc-400' : 'text-gray-500';
 
+  const monthLabel = new Date(viewedMonth.year, viewedMonth.month, 1).toLocaleDateString('en-IN', {
+    month: 'long', year: 'numeric',
+  });
+
+  const goPrev = () => setViewedMonth(({ year, month }) => {
+    if (month === 0) return { year: year - 1, month: 11 };
+    return { year, month: month - 1 };
+  });
+  const goNext = () => setViewedMonth(({ year, month }) => {
+    if (month === 11) return { year: year + 1, month: 0 };
+    return { year, month: month + 1 };
+  });
+
   return (
-    <div
-      className="fixed inset-0 z-[100] animate-fadeIn"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-[100] animate-fadeIn" onClick={onClose}>
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" />
-      {/* Sheet — full width on mobile, card on desktop */}
+      <div className="absolute inset-0 bg-black/60" aria-hidden />
+
+      {/* Sheet. Absolute positioning with explicit insets guarantees
+          the same result on Android WebView and desktop — no h-full /
+          flex-end ambiguity. */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`relative ${bg} mx-auto sm:max-w-md sm:rounded-2xl sm:mt-10 h-full sm:h-auto sm:max-h-[90dvh] overflow-y-auto flex flex-col`}
-        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        className={`absolute inset-0 sm:inset-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[480px] sm:max-w-[92vw] sm:max-h-[92vh] sm:rounded-2xl overflow-hidden flex flex-col ${
+          isDark ? 'bg-[#0f0f0f] text-white' : 'bg-white text-gray-900'
+        }`}
       >
-        {/* Close — sits on top of the hero, above the status-bar inset */}
-        <button
-          onClick={onClose}
-          className="absolute top-0 right-0 p-3 z-10 text-white/70 hover:text-white"
-          style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}
-          aria-label="Close"
+        {/* Sticky close bar, respecting the Android status bar inset */}
+        <div
+          className="flex items-center justify-end flex-none"
+          style={{
+            paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)',
+            paddingRight: '10px',
+            paddingBottom: '6px',
+          }}
         >
-          <X className="w-6 h-6" />
-        </button>
-
-        {/* Hero: flame with the streak count inside */}
-        <div className="relative flex flex-col items-center pt-10 pb-6 px-6 bg-gradient-to-b from-orange-500/20 via-orange-500/5 to-transparent">
-          <FlameHero count={stats.currentStreak} />
-          <div className="mt-4 text-2xl font-extrabold">
-            {stats.currentStreak} day streak!
-          </div>
-          <div className={`text-sm mt-1 ${subtle}`}>
-            {stats.currentStreak === 0
-              ? 'Work out today to light it up.'
-              : 'Keep it going — one more day to lock it in.'}
-          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className={`p-2 rounded-full transition-colors ${
+              isDark ? 'hover:bg-white/10 text-zinc-300' : 'hover:bg-black/5 text-gray-600'
+            }`}
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* This week dots */}
-        <div className="px-6 py-4">
-          <div className={`text-xs font-semibold uppercase tracking-wider mb-3 ${subtle}`}>
-            This week
+        {/* Scrollable body */}
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}
+        >
+          {/* Hero */}
+          <div className="flex flex-col items-center text-center px-6 pt-2 pb-6 bg-gradient-to-b from-orange-500/20 via-orange-500/5 to-transparent">
+            <div className="relative inline-flex items-center justify-center">
+              <Flame
+                className="w-28 h-28 text-orange-500 drop-shadow-[0_4px_12px_rgba(249,115,22,0.45)]"
+                fill="currentColor"
+                strokeWidth={1.25}
+              />
+              <span
+                className="absolute inset-0 flex items-center justify-center text-5xl font-black text-white"
+                style={{ textShadow: '0 2px 6px rgba(0,0,0,0.45)' }}
+              >
+                {stats.currentStreak}
+              </span>
+            </div>
+            <div className="mt-4 text-2xl font-extrabold">
+              {stats.currentStreak === 0 ? 'Light up your streak' : `${stats.currentStreak} day streak!`}
+            </div>
+            <p className={`text-sm mt-1 ${subtle}`}>
+              {stats.currentStreak === 0
+                ? 'Log a workout today to get started.'
+                : 'Keep going — come back tomorrow to keep it alive.'}
+            </p>
           </div>
-          <div className="flex justify-between">
-            {weekDots.map((dot, i) => {
-              const isToday = dot.ds === todayIso;
-              const filled = dot.kind === 'workout' || dot.kind === 'rest' || dot.kind === 'frozen';
-              const colorClass =
-                dot.kind === 'workout'
-                  ? 'bg-gradient-to-br from-orange-400 to-red-600 text-white border-orange-400'
-                  : dot.kind === 'rest'
-                    ? 'bg-purple-500 text-white border-purple-400'
-                    : dot.kind === 'frozen'
-                      ? 'bg-sky-500 text-white border-sky-400'
-                      : isDark
-                        ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-500'
-                        : 'bg-gray-50 border-gray-200 text-gray-400';
-              return (
-                <div key={i} className="flex flex-col items-center gap-1.5">
-                  <div className={`text-[10px] font-semibold ${subtle}`}>{dot.label}</div>
-                  <div
-                    className={`w-9 h-9 rounded-full border-2 flex items-center justify-center ${colorClass} ${
-                      isToday && !filled ? 'ring-2 ring-orange-400 ring-offset-2 ring-offset-transparent' : ''
-                    }`}
-                  >
-                    {dot.kind === 'workout' && <Flame className="w-4 h-4" fill="currentColor" />}
-                    {dot.kind === 'rest' && <span className="text-[10px]">Rest</span>}
-                    {dot.kind === 'frozen' && <Snowflake className="w-4 h-4" />}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* Stats pair: longest streak + freezes */}
-        <div className="px-6 pb-4 grid grid-cols-2 gap-3">
-          <StatTile
-            label="Personal best"
-            value={`${longestStreak} d`}
-            accent="text-orange-400"
-            isDark={isDark}
-          />
-          <StatTile
-            label="Streak freezes"
-            value={`${state.freezes} / ${MAX_FREEZES}`}
-            accent="text-sky-400"
-            isDark={isDark}
-          />
-        </div>
-
-        {/* Freeze slots — tactile fire shields */}
-        <div className="px-6 pb-4">
-          <div className={`rounded-xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="flex gap-1.5">
-                {Array.from({ length: MAX_FREEZES }).map((_, i) => {
-                  const filled = i < state.freezes;
-                  return (
-                    <div
-                      key={i}
-                      className={`w-10 h-10 rounded-lg flex items-center justify-center transition-transform ${
-                        filled
-                          ? 'bg-gradient-to-br from-sky-400 to-sky-600 text-white shadow-md'
-                          : isDark
-                            ? 'bg-[#0f0f0f] border border-dashed border-zinc-700 text-zinc-600'
-                            : 'bg-white border border-dashed border-gray-300 text-gray-400'
-                      }`}
-                    >
-                      <Snowflake className="w-5 h-5" />
-                    </div>
-                  );
-                })}
+          {/* Stats grid */}
+          <div className="px-6 pb-4 grid grid-cols-2 gap-3">
+            <div className={`rounded-xl border p-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
+              <div className={`text-[10px] font-semibold uppercase tracking-wider ${subtle}`}>
+                Personal best
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold">
-                  {state.freezes === MAX_FREEZES
-                    ? 'All freezes stocked'
-                    : state.freezes > 0
-                      ? `${state.freezes} freeze ready`
-                      : 'No freezes right now'}
-                </div>
-                <div className={`text-xs ${subtle}`}>
-                  {state.freezes >= MAX_FREEZES
-                    ? "You're maxed out!"
-                    : `${nextFreezeIn} day${nextFreezeIn === 1 ? '' : 's'} to next freeze.`}
-                </div>
+              <div className="text-lg font-bold text-orange-400 mt-0.5">{longestStreak}d</div>
+            </div>
+            <div className={`rounded-xl border p-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
+              <div className={`text-[10px] font-semibold uppercase tracking-wider ${subtle}`}>
+                Freezes
+              </div>
+              <div className="text-lg font-bold text-sky-400 mt-0.5">
+                {state.freezes} / {MAX_FREEZES}
               </div>
             </div>
-            {state.freezes < MAX_FREEZES && (
-              <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-[#0f0f0f]' : 'bg-white'}`}>
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-600 transition-all"
-                  style={{ width: `${Math.min(100, (state.streakDaysSinceFreezeGain / 30) * 100)}%` }}
-                />
+          </div>
+
+          {/* Freeze slots */}
+          <div className="px-6 pb-4">
+            <div className={`rounded-xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'}`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex gap-1.5 flex-shrink-0">
+                  {Array.from({ length: MAX_FREEZES }).map((_, i) => {
+                    const filled = i < state.freezes;
+                    return (
+                      <div
+                        key={i}
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          filled
+                            ? 'bg-gradient-to-br from-sky-400 to-sky-600 text-white shadow-md'
+                            : isDark
+                              ? 'bg-[#0f0f0f] border border-dashed border-zinc-700 text-zinc-600'
+                              : 'bg-white border border-dashed border-gray-300 text-gray-400'
+                        }`}
+                      >
+                        <Snowflake className="w-5 h-5" />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold">
+                    {state.freezes === MAX_FREEZES ? 'All freezes stocked'
+                      : state.freezes > 0 ? `${state.freezes} freeze ready`
+                      : 'No freezes right now'}
+                  </div>
+                  <div className={`text-xs mt-0.5 ${subtle}`}>
+                    {state.freezes >= MAX_FREEZES
+                      ? "You're maxed out!"
+                      : `${nextFreezeIn} day${nextFreezeIn === 1 ? '' : 's'} to your next freeze.`}
+                  </div>
+                </div>
               </div>
-            )}
+              {state.freezes < MAX_FREEZES && (
+                <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-[#0f0f0f]' : 'bg-white'}`}>
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-600 transition-all"
+                    style={{ width: `${Math.min(100, (state.streakDaysSinceFreezeGain / 30) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Monthly calendar */}
+          <div className="px-6 pb-4">
+            <div className="flex items-center justify-between mb-3">
+              <button
+                onClick={goPrev}
+                aria-label="Previous month"
+                className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-[#1a1a1a] text-zinc-400' : 'hover:bg-gray-100 text-gray-500'}`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="text-sm font-semibold">{monthLabel}</div>
+              <button
+                onClick={goNext}
+                disabled={isCurrentMonth}
+                aria-label="Next month"
+                className={`p-1.5 rounded-lg transition-colors ${
+                  isCurrentMonth
+                    ? isDark ? 'text-zinc-700' : 'text-gray-300'
+                    : isDark ? 'hover:bg-[#1a1a1a] text-zinc-400' : 'hover:bg-gray-100 text-gray-500'
+                }`}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Weekday header */}
+            <div className="grid grid-cols-7 text-center mb-1">
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                <div key={i} className={`text-[10px] font-semibold ${subtle}`}>{d}</div>
+              ))}
+            </div>
+
+            {/* Day grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {monthCells.map((c, i) => {
+                if (c.kind === 'pad') return <div key={i} className="aspect-square" />;
+                const isToday = c.ds === todayIso;
+                let bg = isDark ? 'bg-[#1a1a1a] text-zinc-500' : 'bg-gray-50 text-gray-400';
+                let icon: React.ReactNode = null;
+                if (c.type === 'workout') { bg = 'bg-gradient-to-br from-orange-400 to-red-600 text-white'; icon = <Dumbbell className="w-3 h-3" />; }
+                else if (c.type === 'rest') { bg = 'bg-purple-500 text-white'; icon = <Moon className="w-3 h-3" />; }
+                else if (c.type === 'frozen') { bg = 'bg-sky-500 text-white'; icon = <Snowflake className="w-3 h-3" />; }
+                else if (c.type === 'future') { bg = isDark ? 'bg-transparent text-zinc-700' : 'bg-transparent text-gray-300'; }
+                return (
+                  <div
+                    key={i}
+                    className={`aspect-square rounded-md flex flex-col items-center justify-center text-[11px] font-medium ${bg} ${
+                      isToday ? 'ring-2 ring-orange-400 ring-offset-1 ring-offset-transparent' : ''
+                    }`}
+                  >
+                    <span>{c.day}</span>
+                    {icon && <span className="opacity-85 -mt-0.5">{icon}</span>}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-[10px]">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gradient-to-br from-orange-400 to-red-600" /> Worked out</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500" /> Rest</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-500" /> Frozen</span>
+              <span className={`flex items-center gap-1 ${subtle}`}><span className={`w-2 h-2 rounded-full ${isDark ? 'bg-zinc-700' : 'bg-gray-200'}`} /> Missed</span>
+            </div>
+          </div>
+
+          {/* FAQ */}
+          <div className="px-6 pb-8">
+            <details className={`rounded-xl border p-3 text-xs ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-400' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+              <summary className="cursor-pointer font-semibold select-none">How the streak works</summary>
+              <ul className="mt-2 space-y-1.5 pl-4 list-disc marker:text-orange-400">
+                <li>Any completed workout — or a logged rest day — counts.</li>
+                <li>Miss a day? A freeze (if you have one) covers it.</li>
+                <li>Stay consistent for 30 days to earn a new freeze (max 2).</li>
+                <li>No freeze + a missed day = streak resets to zero.</li>
+              </ul>
+            </details>
           </div>
         </div>
-
-        {/* How it works */}
-        <div className="px-6 pb-10">
-          <details className={`rounded-xl border p-3 text-xs ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-zinc-400' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-            <summary className="cursor-pointer font-semibold select-none">How the streak works</summary>
-            <ul className="mt-2 space-y-1.5 pl-4 list-disc marker:text-orange-400">
-              <li>Every day you work out or log a rest day counts.</li>
-              <li>Missed a day? A freeze (if you have one) covers it automatically.</li>
-              <li>Stay consistent for 30 days to earn a new freeze (max 2).</li>
-              <li>Skipping a day with no freeze resets the streak to zero.</li>
-            </ul>
-          </details>
-        </div>
-
-        <div style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
       </div>
-    </div>
-  );
-}
-
-function FlameHero({ count }: { count: number }) {
-  // Big layered flame glyph with the count perched in the middle.
-  return (
-    <div className="relative">
-      <Flame
-        className="w-32 h-32 text-orange-500"
-        fill="currentColor"
-        strokeWidth={1.5}
-      />
-      <div
-        className="absolute inset-0 flex items-end justify-center pb-4 text-white font-extrabold text-5xl"
-        style={{ textShadow: '0 2px 10px rgba(0,0,0,0.35)' }}
-      >
-        {count}
-      </div>
-    </div>
-  );
-}
-
-function StatTile({ label, value, accent, isDark }: { label: string; value: string; accent: string; isDark: boolean }) {
-  return (
-    <div
-      className={`rounded-xl border p-3 ${
-        isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'
-      }`}
-    >
-      <div className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
-        {label}
-      </div>
-      <div className={`text-lg font-bold ${accent}`}>{value}</div>
     </div>
   );
 }

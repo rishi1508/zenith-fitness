@@ -684,7 +684,13 @@ async function addNotification(
   targetUid: string,
   notification: Omit<BuddyNotification, 'id'>,
 ): Promise<void> {
-  await addDoc(collection(db, 'notifications', targetUid, 'items'), notification);
+  try {
+    await addDoc(collection(db, 'notifications', targetUid, 'items'), notification);
+    console.info('[Notif] wrote Firestore notification to', targetUid, notification.type);
+  } catch (err) {
+    console.error('[Notif] Firestore write FAILED:', err);
+    throw err;
+  }
   // Fire-and-forget; failure here doesn't block the in-app path.
   deliverPush({
     recipientUid: targetUid,
