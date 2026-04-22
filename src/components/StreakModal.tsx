@@ -1,8 +1,20 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Flame, Snowflake, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as storage from '../storage';
 import { getStreakState, daysUntilNextFreeze, MAX_FREEZES, weekStartISO } from '../streakService';
+import { registerBackHandler } from '../backHandlerRegistry';
+
+/** LOCAL YYYY-MM-DD — `Date.toISOString()` is UTC, which for a user in
+ *  IST (UTC+5:30) shifts the date backwards every time we format a
+ *  local-midnight `Date`. That produced the "29 30 31 31 31 31 31" row
+ *  bug because the trailing-pad loop kept re-reading the same day. */
+function localIso(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
 
 /** Did the user work out at least once during the week whose Sunday
  *  start matches `weekStart`? */
@@ -11,7 +23,7 @@ function rowsForThisWeek(workedOutDays: Set<string>, weekStart: string): boolean
   for (let i = 0; i < 7; i++) {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    if (workedOutDays.has(d.toISOString().slice(0, 10))) return true;
+    if (workedOutDays.has(localIso(d))) return true;
   }
   return false;
 }
@@ -46,76 +58,167 @@ export function StreakModal({ onClose, isDark }: Props) {
   }, [workouts]);
   const frozenWeeks = useMemo(() => new Set(state.freezeConsumedDates), [state.freezeConsumedDates]);
 
-  const todayIso = new Date().toISOString().slice(0, 10);
   const now = new Date();
+  const todayIso = localIso(now);
   const thisWeekISO = weekStartISO(now);
 
-  // Viewed month — prev/next paginates with a linear slide animation.
+  // Viewed month (the one showing at the center of the three-panel track).
   const [viewedMonth, setViewedMonth] = useState(() => ({ year: now.getFullYear(), month: now.getMonth() }));
-  const [slide, setSlide] = useState<'idle' | 'left' | 'right'>('idle');
-  const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCurrentMonth = viewedMonth.year === now.getFullYear() && viewedMonth.month === now.getMonth();
 
-  const animateTo = (direction: 'left' | 'right', apply: () => void) => {
-    if (animTimer.current) clearTimeout(animTimer.current);
-    setSlide(direction);
-    animTimer.current = setTimeout(() => {
-      apply();
-      setSlide(direction === 'left' ? 'right' : 'left');
-      animTimer.current = setTimeout(() => setSlide('idle'), 20);
-    }, 180);
+  // ---- Drag-to-page swipe ----
+  // The calendar is rendered as a 3-panel track (prev | current | next),
+  // translated to show the center panel. `dragPx` follows the finger in
+  // real time so the pane physically slides under the touch. On release
+  // we either commit to the adjacent month (if dragged past threshold)
+  // or spring back to center. Prev/Next buttons share the same commit
+  // path so behaviour is consistent across input methods.
+  const trackRef = useRef<HTMLDivElement>(null);
+  const swipeAreaRef = useRef<HTMLDivElement>(null);
+
+  // Hardware / browser back press closes the modal instead of popping a
+  // view. Registering returns an unregister function, which React's
+  // cleanup runs on unmount — so X-button closes work the same way.
+  useEffect(() => {
+    return registerBackHandler(() => { onClose(); return true; });
+  }, [onClose]);
+  const [dragPx, setDragPx] = useState(0);
+  const [animating, setAnimating] = useState(false);
+  const touchRef = useRef<{ x: number; y: number; axis: 'h' | 'v' | null } | null>(null);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const panelWidth = (): number => {
+    const el = trackRef.current;
+    if (!el) return typeof window !== 'undefined' ? window.innerWidth : 320;
+    // Track contains 3 equal panels, so one panel is 1/3 of the track.
+    return el.clientWidth / 3;
   };
-  const goPrev = () => animateTo('right', () => setViewedMonth(({ year, month }) => {
-    if (month === 0) return { year: year - 1, month: 11 };
-    return { year, month: month - 1 };
-  }));
+
+  const nextMonthFrom = ({ year, month }: { year: number; month: number }) =>
+    month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 };
+  const prevMonthFrom = ({ year, month }: { year: number; month: number }) =>
+    month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 };
+
+  /** Animate the track to `targetPx`, then optionally swap `viewedMonth`
+   *  and snap drag back to 0 without animation. */
+  const settle = (targetPx: number, commitShift: -1 | 0 | 1) => {
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    setAnimating(true);
+    setDragPx(targetPx);
+    commitTimer.current = setTimeout(() => {
+      if (commitShift !== 0) {
+        setViewedMonth((m) => commitShift === 1 ? nextMonthFrom(m) : prevMonthFrom(m));
+      }
+      // Kill animation before re-centering so the reset jump is invisible.
+      setAnimating(false);
+      setDragPx(0);
+    }, 200);
+  };
+
   const goNext = () => {
-    if (isCurrentMonth) return;
-    animateTo('left', () => setViewedMonth(({ year, month }) => {
-      if (month === 11) return { year: year + 1, month: 0 };
-      return { year, month: month + 1 };
-    }));
+    if (isCurrentMonth || animating) return;
+    settle(-panelWidth(), 1);
+  };
+  const goPrev = () => {
+    if (animating) return;
+    settle(panelWidth(), -1);
   };
 
-  // Touch swipe support — horizontal >50px changes month.
-  const swipeStart = useRef<{ x: number; y: number } | null>(null);
-  const onTouchStart = (e: React.TouchEvent) => {
-    const t = e.touches[0];
-    swipeStart.current = { x: t.clientX, y: t.clientY };
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    const start = swipeStart.current; swipeStart.current = null;
-    if (!start) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    if (Math.abs(dx) < 50) return;
-    if (Math.abs(dx) < Math.abs(dy) * 1.2) return;
-    if (dx < 0) goNext(); else goPrev();
-  };
+  // React's touch handlers are registered passive, which means we can't
+  // call preventDefault() on them to stop the parent `overflow-y-auto`
+  // from stealing a horizontal drag as a vertical scroll. Attach a
+  // non-passive listener via ref + effect instead.
+  useEffect(() => {
+    const el = swipeAreaRef.current;
+    if (!el) return;
 
-  // Build calendar rows. Each row represents one week (Sun–Sat).
+    const onStart = (e: TouchEvent) => {
+      if (animating) return;
+      const t = e.touches[0];
+      touchRef.current = { x: t.clientX, y: t.clientY, axis: null };
+    };
+    const onMove = (e: TouchEvent) => {
+      const start = touchRef.current;
+      if (!start) return;
+      const t = e.touches[0];
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+
+      // Axis lock — decide once we have a meaningful drag (~6px). A
+      // vertical-dominant move hands off to the outer scroller.
+      if (!start.axis) {
+        const moved = Math.abs(dx) + Math.abs(dy);
+        if (moved < 6) return;
+        start.axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+      if (start.axis === 'v') return;
+
+      // Horizontal axis locked → consume the event so the body scroller
+      // doesn't interpret it as a vertical scroll on angled drags.
+      e.preventDefault();
+
+      const w = panelWidth();
+      let d = dx;
+      // Rubber-band when dragging left at the current month (no future).
+      if (isCurrentMonth && d < 0) d = d * 0.3;
+      d = Math.max(-w, Math.min(w, d));
+      setDragPx(d);
+    };
+    const onEnd = () => {
+      const start = touchRef.current;
+      if (!start) return;
+      touchRef.current = null;
+      const w = panelWidth();
+      const threshold = w * 0.22;
+      // Read current dragPx from the ref since state updates inside a
+      // native listener don't see the closed-over value immediately.
+      setDragPx((currentDrag) => {
+        if (currentDrag < -threshold && !isCurrentMonth) {
+          settle(-w, 1);
+          return -w;
+        } else if (currentDrag > threshold) {
+          settle(w, -1);
+          return w;
+        } else {
+          settle(0, 0);
+          return 0;
+        }
+      });
+    };
+
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: false });
+    el.addEventListener('touchend', onEnd, { passive: true });
+    el.addEventListener('touchcancel', onEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animating, isCurrentMonth]);
+
+  /** Build a rows[] for any {year, month} — used for the three visible panels. */
+  // Types live outside the builder so the WeekRow sub-component can
+  // reference the same shape.
   type DayKind = 'workout' | 'rest' | 'today' | 'missed' | 'future' | 'pad';
   type Row = {
     weekStart: string;
     cells: Array<{ day: number | null; ds: string; kind: DayKind; inMonth: boolean }>;
-    // A week is "active" if ANY day in it had a non-rest workout. The
-    // whole-row pill is drawn for active + frozen weeks.
     status: 'active' | 'frozen' | 'missed' | 'current' | 'future';
   };
 
-  const rows = useMemo<Row[]>(() => {
-    const first = new Date(viewedMonth.year, viewedMonth.month, 1);
-    const daysInMonth = new Date(viewedMonth.year, viewedMonth.month + 1, 0).getDate();
+  const buildRows = (year: number, month: number): Row[] => {
+    const first = new Date(year, month, 1);
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
     const startWeekday = first.getDay();
 
     type Cell = { day: number | null; ds: string; kind: DayKind; inMonth: boolean };
     const all: Cell[] = [];
-    // Leading pads are previous-month trailing days; keep their real
-    // dates so the row's active-state calc still works across boundaries.
     for (let i = startWeekday - 1; i >= 0; i--) {
-      const d = new Date(viewedMonth.year, viewedMonth.month, -i);
-      const ds = d.toISOString().slice(0, 10);
+      const d = new Date(year, month, -i);
+      const ds = localIso(d);
       let kind: DayKind = 'pad';
       if (ds <= todayIso) {
         if (workedOutDays.has(ds)) kind = 'workout';
@@ -124,8 +227,8 @@ export function StreakModal({ onClose, isDark }: Props) {
       all.push({ day: d.getDate(), ds, kind, inMonth: false });
     }
     for (let day = 1; day <= daysInMonth; day++) {
-      const d = new Date(viewedMonth.year, viewedMonth.month, day);
-      const ds = d.toISOString().slice(0, 10);
+      const d = new Date(year, month, day);
+      const ds = localIso(d);
       let kind: DayKind;
       if (ds > todayIso) kind = 'future';
       else if (workedOutDays.has(ds)) kind = 'workout';
@@ -138,7 +241,7 @@ export function StreakModal({ onClose, isDark }: Props) {
       const lastDs = all[all.length - 1].ds;
       const d = new Date(lastDs + 'T00:00:00');
       d.setDate(d.getDate() + 1);
-      const ds = d.toISOString().slice(0, 10);
+      const ds = localIso(d);
       let kind: DayKind = 'pad';
       if (ds <= todayIso) {
         if (workedOutDays.has(ds)) kind = 'workout';
@@ -163,6 +266,19 @@ export function StreakModal({ onClose, isDark }: Props) {
       out.push({ weekStart, cells, status });
     }
     return out;
+  };
+
+  const panels = useMemo(() => {
+    const prev = prevMonthFrom(viewedMonth);
+    const next = nextMonthFrom(viewedMonth);
+    return [
+      { key: `${prev.year}-${prev.month}`, year: prev.year, month: prev.month, rows: buildRows(prev.year, prev.month) },
+      { key: `${viewedMonth.year}-${viewedMonth.month}`, year: viewedMonth.year, month: viewedMonth.month, rows: buildRows(viewedMonth.year, viewedMonth.month) },
+      { key: `${next.year}-${next.month}`, year: next.year, month: next.month, rows: buildRows(next.year, next.month) },
+    ];
+    // buildRows depends on workedOutDays/restDays/frozenWeeks/today/thisWeek —
+    // those change on data refresh, so re-memoize when any of them do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewedMonth, workedOutDays, restDays, frozenWeeks, todayIso, thisWeekISO]);
 
   const nextFreezeIn = daysUntilNextFreeze(state);
@@ -301,22 +417,35 @@ export function StreakModal({ onClose, isDark }: Props) {
                   ))}
                 </div>
 
-                {/* Animated swipe wrapper */}
-                <div className="overflow-hidden" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+                {/* Drag-to-page swipe. Three month panels render side by
+                    side (prev | current | next) inside an overflow
+                    container; the track translates with the finger so
+                    the calendar physically follows your swipe, instead
+                    of snapping after release. */}
+                <div
+                  ref={swipeAreaRef}
+                  className="overflow-hidden touch-pan-y select-none"
+                >
                   <div
-                    className="transition-transform duration-200 ease-linear px-3 pb-3"
+                    ref={trackRef}
+                    className="flex w-[300%]"
                     style={{
-                      transform: slide === 'left' ? 'translateX(-24px)' : slide === 'right' ? 'translateX(24px)' : 'translateX(0)',
-                      opacity: slide === 'idle' ? 1 : 0.35,
+                      transform: `translateX(calc(-33.3333% + ${dragPx}px))`,
+                      transition: animating ? 'transform 200ms linear' : 'none',
+                      willChange: 'transform',
                     }}
                   >
-                    {rows.map((row, rowIdx) => (
-                      <WeekRow
-                        key={rowIdx}
-                        row={row}
-                        todayIso={todayIso}
-                        isDark={isDark}
-                      />
+                    {panels.map((p) => (
+                      <div key={p.key} className="w-1/3 flex-shrink-0 px-3 pb-3">
+                        {p.rows.map((row, rowIdx) => (
+                          <WeekRow
+                            key={rowIdx}
+                            row={row}
+                            todayIso={todayIso}
+                            isDark={isDark}
+                          />
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </div>

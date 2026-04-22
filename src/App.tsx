@@ -18,6 +18,7 @@ import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
 import { flushPendingWrites } from './firestoreSync';
 import { autoRegisterPushIfNeeded, attachPushTapHandler } from './pushService';
+import { consumeBack } from './backHandlerRegistry';
 import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 
@@ -135,6 +136,13 @@ function App() {
     // Seed a buffer state so the very first back press can be captured.
     try { window.history.pushState({ zenith: 'seed' }, ''); } catch { /* ignore */ }
     const onPop = () => {
+      // Give any open modal (e.g. StreakModal) first dibs. If one
+      // absorbs the back press, don't also pop the view stack — just
+      // refill the history buffer so the next back still fires popstate.
+      if (consumeBack()) {
+        try { window.history.pushState({ zenith: 'seed' }, ''); } catch { /* ignore */ }
+        return;
+      }
       const handled = goBack();
       if (!handled) {
         // At the root view — keep the user in the app by refilling the
@@ -460,6 +468,9 @@ function App() {
 
       try {
         const handler = await CapApp.addListener('backButton', () => {
+          // Any open modal (StreakModal, etc.) gets first dibs on the
+          // Android hardware back press.
+          if (consumeBack()) return;
           const handled = goBackRef.current?.();
           if (!handled) {
             // At root — keep the user in the app rather than minimize,
