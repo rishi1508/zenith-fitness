@@ -1,8 +1,20 @@
 import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Flame, Snowflake, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
+import { X, Flame, Snowflake, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as storage from '../storage';
 import { getStreakState, daysUntilNextFreeze, MAX_FREEZES, weekStartISO } from '../streakService';
+
+/** Did the user work out at least once during the week whose Sunday
+ *  start matches `weekStart`? */
+function rowsForThisWeek(workedOutDays: Set<string>, weekStart: string): boolean {
+  const start = new Date(weekStart + 'T00:00:00');
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    if (workedOutDays.has(d.toISOString().slice(0, 10))) return true;
+  }
+  return false;
+}
 
 interface Props {
   onClose: () => void;
@@ -86,12 +98,10 @@ export function StreakModal({ onClose, isDark }: Props) {
   type DayKind = 'workout' | 'rest' | 'today' | 'missed' | 'future' | 'pad';
   type Row = {
     weekStart: string;
-    cells: Array<{ day: number | null; ds: string; kind: DayKind }>;
+    cells: Array<{ day: number | null; ds: string; kind: DayKind; inMonth: boolean }>;
+    // A week is "active" if ANY day in it had a non-rest workout. The
+    // whole-row pill is drawn for active + frozen weeks.
     status: 'active' | 'frozen' | 'missed' | 'current' | 'future';
-    // Column-range of the active span in this row — used to draw the
-    // pill as a single rounded rect, which is the signature Duolingo look.
-    pillStart: number;
-    pillEnd: number;
   };
 
   const rows = useMemo<Row[]>(() => {
@@ -99,13 +109,19 @@ export function StreakModal({ onClose, isDark }: Props) {
     const daysInMonth = new Date(viewedMonth.year, viewedMonth.month + 1, 0).getDate();
     const startWeekday = first.getDay();
 
-    type Cell = { day: number | null; ds: string; kind: DayKind };
+    type Cell = { day: number | null; ds: string; kind: DayKind; inMonth: boolean };
     const all: Cell[] = [];
-    // Leading pads with their ACTUAL dates (previous month tail) so the
-    // pill can visually flow across the month boundary if needed.
+    // Leading pads are previous-month trailing days; keep their real
+    // dates so the row's active-state calc still works across boundaries.
     for (let i = startWeekday - 1; i >= 0; i--) {
       const d = new Date(viewedMonth.year, viewedMonth.month, -i);
-      all.push({ day: d.getDate(), ds: d.toISOString().slice(0, 10), kind: 'pad' });
+      const ds = d.toISOString().slice(0, 10);
+      let kind: DayKind = 'pad';
+      if (ds <= todayIso) {
+        if (workedOutDays.has(ds)) kind = 'workout';
+        else if (restDays.has(ds)) kind = 'rest';
+      }
+      all.push({ day: d.getDate(), ds, kind, inMonth: false });
     }
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(viewedMonth.year, viewedMonth.month, day);
@@ -116,40 +132,35 @@ export function StreakModal({ onClose, isDark }: Props) {
       else if (restDays.has(ds)) kind = 'rest';
       else if (ds === todayIso) kind = 'today';
       else kind = 'missed';
-      all.push({ day, ds, kind });
+      all.push({ day, ds, kind, inMonth: true });
     }
-    // Trailing pads to complete the last week.
     while (all.length % 7 !== 0) {
       const lastDs = all[all.length - 1].ds;
       const d = new Date(lastDs + 'T00:00:00');
       d.setDate(d.getDate() + 1);
-      all.push({ day: d.getDate(), ds: d.toISOString().slice(0, 10), kind: 'pad' });
+      const ds = d.toISOString().slice(0, 10);
+      let kind: DayKind = 'pad';
+      if (ds <= todayIso) {
+        if (workedOutDays.has(ds)) kind = 'workout';
+        else if (restDays.has(ds)) kind = 'rest';
+      }
+      all.push({ day: d.getDate(), ds, kind, inMonth: false });
     }
 
     const out: Row[] = [];
     for (let i = 0; i < all.length; i += 7) {
       const cells = all.slice(i, i + 7);
       const weekStart = cells[0].ds;
-      // Figure out the pill span: first and last WORKOUT cell in the row.
-      // If there's no workout cell, the pill is absent (start > end).
-      let pillStart = 7;
-      let pillEnd = -1;
-      for (let j = 0; j < 7; j++) {
-        if (cells[j].kind === 'workout') {
-          if (j < pillStart) pillStart = j;
-          if (j > pillEnd) pillEnd = j;
-        }
-      }
-      let status: Row['status'] = 'missed';
-      const hasWorkout = pillEnd >= 0;
-      const allFuture = cells.every((c) => c.kind === 'future' || (c.kind === 'pad'));
+      const hasWorkout = cells.some((c) => c.kind === 'workout');
+      const allFuture = cells.every((c) => c.kind === 'future' || c.kind === 'pad');
       const isThisWeek = weekStart === thisWeekISO;
+      let status: Row['status'];
       if (hasWorkout) status = 'active';
       else if (frozenWeeks.has(weekStart)) status = 'frozen';
       else if (allFuture) status = 'future';
       else if (isThisWeek) status = 'current';
       else status = 'missed';
-      out.push({ weekStart, cells, status, pillStart, pillEnd });
+      out.push({ weekStart, cells, status });
     }
     return out;
   }, [viewedMonth, workedOutDays, restDays, frozenWeeks, todayIso, thisWeekISO]);
@@ -165,9 +176,14 @@ export function StreakModal({ onClose, isDark }: Props) {
   const weekStreakLabel = stats.currentStreak === 0
     ? 'Start your streak'
     : `${stats.currentStreak} week streak!`;
+  // Hint text — neutral / descriptive, NOT marketing copy. Explains the
+  // weekly rule on empty-state and nudges on the current week otherwise.
+  const activeThisWeek = rowsForThisWeek(workedOutDays, thisWeekISO);
   const heroHint = stats.currentStreak === 0
-    ? 'One workout anywhere this week lights it up.'
-    : 'You earned more this week — keep it alive!';
+    ? 'One workout a week is all it takes to keep your streak going.'
+    : activeThisWeek
+      ? 'This week is already counted — nice work.'
+      : 'Work out any day this week to lock it in.';
 
   return createPortal(
     <>
@@ -231,13 +247,13 @@ export function StreakModal({ onClose, isDark }: Props) {
               </div>
             </div>
 
-            {/* Motivational card */}
+            {/* Descriptive card — explains the weekly rule, not marketing copy. */}
             <div className="px-6 pb-4">
               <div className={`rounded-2xl border flex items-center gap-3 p-3.5 ${
                 isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200'
               }`}>
-                <div className="w-10 h-10 rounded-xl bg-yellow-400/20 flex items-center justify-center flex-shrink-0">
-                  <Zap className="w-5 h-5 text-yellow-400" fill="currentColor" />
+                <div className="w-10 h-10 rounded-xl bg-orange-500/15 flex items-center justify-center flex-shrink-0">
+                  <Flame className="w-5 h-5 text-orange-500" fill="currentColor" />
                 </div>
                 <div className="text-sm leading-tight">
                   {heroHint}
@@ -387,51 +403,50 @@ export function StreakModal({ onClose, isDark }: Props) {
 }
 
 /**
- * A single week row in the calendar. The active-week pill is drawn
- * behind the day numbers as an absolutely-positioned element, spanning
- * from the first worked-out day to the last — so the whole row feels
- * "complete" the moment you've worked out any day in the week. This
- * is the signature Duolingo look.
+ * A single week row in the calendar.
+ *
+ * Visual rules:
+ *   - If the week has ≥1 workout → entire row (Sun–Sat) is a single
+ *     orange pill. Inside the pill, each day still renders with a
+ *     differentiation so rest/workout/missed days are distinguishable:
+ *       · Workout day  → day number sits on a solid white chip
+ *       · Rest day     → day number inside a dashed white ring
+ *       · Missed / today / future → just the number on orange
+ *   - If the week has no workout but a freeze was spent on it → sky pill
+ *     with the same inside-day rules.
+ *   - Otherwise → no pill, day numbers on the plain background; rest
+ *     days carry their purple dot for consistency with the rest of the
+ *     app.
  */
 function WeekRow({
   row, todayIso, isDark,
 }: {
   row: {
     weekStart: string;
-    cells: Array<{ day: number | null; ds: string; kind: 'workout' | 'rest' | 'today' | 'missed' | 'future' | 'pad' }>;
+    cells: Array<{ day: number | null; ds: string; kind: 'workout' | 'rest' | 'today' | 'missed' | 'future' | 'pad'; inMonth: boolean }>;
     status: 'active' | 'frozen' | 'missed' | 'current' | 'future';
-    pillStart: number;
-    pillEnd: number;
   };
   todayIso: string;
   isDark: boolean;
 }) {
-  const hasPill = row.pillEnd >= 0;
-  // Pill metrics: each column is 1/7 of the row width. We size it with
-  // a small inset so the rounded ends don't touch adjacent cells.
-  const pillLeftPct = (row.pillStart / 7) * 100;
-  const pillWidthPct = ((row.pillEnd - row.pillStart + 1) / 7) * 100;
-
-  // Frozen-week pill (no workouts but rescued by a freeze) gets a sky
-  // tint so the user can still tell the week counted.
-  const frozenOnly = !hasPill && row.status === 'frozen';
+  const isActive = row.status === 'active';
+  const isFrozen = row.status === 'frozen';
+  const onPill = isActive || isFrozen;
 
   return (
     <div className="grid grid-cols-7 relative py-1.5">
-      {/* Active-week pill behind day numbers */}
-      {hasPill && (
+      {/* Full-week pill — spans Sun→Sat so the whole row feels "counted"
+          the moment you've worked out even one day that week. */}
+      {isActive && (
         <div
           className="absolute top-1.5 bottom-1.5 rounded-full bg-gradient-to-b from-orange-400 to-red-500 shadow-md shadow-orange-500/30"
-          style={{
-            left: `calc(${pillLeftPct}% + 2px)`,
-            width: `calc(${pillWidthPct}% - 4px)`,
-          }}
+          style={{ left: '2px', width: 'calc(100% - 4px)' }}
           aria-hidden
         />
       )}
-      {frozenOnly && (
+      {isFrozen && (
         <div
-          className="absolute top-1.5 bottom-1.5 rounded-full bg-sky-500/80 shadow-md shadow-sky-500/30"
+          className="absolute top-1.5 bottom-1.5 rounded-full bg-sky-500/85 shadow-md shadow-sky-500/30"
           style={{ left: '2px', width: 'calc(100% - 4px)' }}
           aria-hidden
         />
@@ -439,35 +454,54 @@ function WeekRow({
 
       {row.cells.map((c, ci) => {
         const isToday = c.ds === todayIso;
-        const insidePill = hasPill && ci >= row.pillStart && ci <= row.pillEnd;
-        // Text color rules:
-        //   - future: nearly invisible
-        //   - inside active pill or frozen pill: white (contrast on orange/sky)
-        //   - rest day (outside pill): purple
-        //   - today (no workout yet this week, so no pill): teardrop below
-        //   - regular number: default muted / stronger depending on theme
+        const dimOutOfMonth = !c.inMonth;
+        const isWorkout = c.kind === 'workout';
+        const isRest = c.kind === 'rest';
+
+        // Number color — white when on the pill, dim when future / out of month.
         let textClass = '';
-        if (c.kind === 'future' || c.kind === 'pad') textClass = isDark ? 'text-zinc-700' : 'text-gray-300';
-        else if (insidePill || frozenOnly) textClass = 'text-white';
-        else if (c.kind === 'rest') textClass = isDark ? 'text-purple-400' : 'text-purple-600';
-        else textClass = isDark ? 'text-zinc-400' : 'text-gray-600';
+        if (c.kind === 'future' || (c.kind === 'pad' && !onPill)) {
+          textClass = isDark ? 'text-zinc-700' : 'text-gray-300';
+        } else if (onPill) {
+          textClass = 'text-white';
+        } else if (isRest) {
+          textClass = isDark ? 'text-purple-300' : 'text-purple-600';
+        } else if (isToday) {
+          textClass = 'text-white';
+        } else {
+          textClass = isDark ? 'text-zinc-300' : 'text-gray-700';
+        }
+        if (dimOutOfMonth) textClass += ' opacity-60';
 
         return (
           <div key={ci} className="relative h-9 flex items-center justify-center">
-            {/* Today's teardrop pin — only when there's no pill, so it
-                doesn't visually compete with the orange row highlight. */}
-            {isToday && !insidePill && !frozenOnly && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-7 h-8 rounded-full bg-sky-400/90 flex items-center justify-center rounded-b-none
-                                [clip-path:polygon(50%_100%,0%_50%,0%_0%,100%_0%,100%_50%)]" />
-              </div>
+            {/* Inside-pill workout chip — solid white bubble behind the
+                number so workout days pop against the orange. */}
+            {onPill && isWorkout && (
+              <div className="absolute w-7 h-7 rounded-full bg-white/95 shadow-sm" aria-hidden />
             )}
-            <span className={`relative z-[1] text-sm font-bold ${isToday && !insidePill && !frozenOnly ? 'text-white' : textClass}`}>
+            {/* Inside-pill rest-day dashed ring — visually different from
+                the workout chip but still obviously "counted". */}
+            {onPill && isRest && (
+              <div className="absolute w-7 h-7 rounded-full border-2 border-dashed border-white/80" aria-hidden />
+            )}
+            {/* Today pin when the current week has NO workouts yet (no
+                pill). Gives the user a clear "you are here" marker. */}
+            {!onPill && isToday && (
+              <div className="absolute w-7 h-7 rounded-full bg-sky-400 shadow-md shadow-sky-500/30" aria-hidden />
+            )}
+
+            <span
+              className={`relative z-[1] text-sm font-bold ${
+                (onPill && isWorkout) ? 'text-orange-600' : textClass
+              }`}
+            >
               {c.day}
             </span>
-            {/* Small dot under the number for rest days inside or outside
-                an active pill — so rest still has a visual cue. */}
-            {c.kind === 'rest' && !insidePill && !frozenOnly && (
+
+            {/* Rest-day dot outside an active week — keeps the "rest is
+                still logged activity" signal when the pill is absent. */}
+            {!onPill && isRest && (
               <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-purple-500" />
             )}
           </div>
