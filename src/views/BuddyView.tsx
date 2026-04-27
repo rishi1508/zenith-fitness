@@ -602,6 +602,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
           buddyUid={sessionModalBuddy.uid}
           buddyName={sessionModalBuddy.name}
           buddyPhotoURL={sessionModalBuddy.photoURL}
+          isDark={isDark}
           onClose={() => setSessionModalBuddy(null)}
           onStarted={(sid) => {
             setSessionModalBuddy(null);

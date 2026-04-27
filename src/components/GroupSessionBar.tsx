@@ -11,10 +11,14 @@ interface GroupSessionBarProps {
   sessionId: string;
   /** Show a "Continue" button that returns the user to the session lobby / active workout. */
   showContinue?: boolean;
+  /** Honor app theme. The floating reactions card and the per-buddy
+   *  progress-bar track were hardcoded dark which looked wrong in light
+   *  mode. */
+  isDark?: boolean;
   onContinue?: () => void;
 }
 
-export function GroupSessionBar({ sessionId, showContinue, onContinue }: GroupSessionBarProps) {
+export function GroupSessionBar({ sessionId, showContinue, isDark = true, onContinue }: GroupSessionBarProps) {
   const { user } = useAuth();
   const [session, setSession] = useState<WorkoutSession | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -74,10 +78,14 @@ export function GroupSessionBar({ sessionId, showContinue, onContinue }: GroupSe
           {floatingReactions.map((r) => (
             <div
               key={r.id}
-              className="animate-fadeIn bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl px-3 py-1.5 shadow-lg text-sm flex items-center gap-2"
+              className={`animate-fadeIn rounded-xl px-3 py-1.5 shadow-lg text-sm flex items-center gap-2 border ${
+                isDark
+                  ? 'bg-[#1a1a1a] border-[#2e2e2e]'
+                  : 'bg-white border-gray-200'
+              }`}
             >
               <span className="text-lg">{r.emoji}</span>
-              <span className="text-zinc-300 text-xs">{r.fromName}</span>
+              <span className={`text-xs ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>{r.fromName}</span>
             </div>
           ))}
         </div>
@@ -192,7 +200,7 @@ export function GroupSessionBar({ sessionId, showContinue, onContinue }: GroupSe
                     </div>
                   </div>
                   {/* Progress bar */}
-                  <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                  <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-zinc-800' : 'bg-gray-200'}`}>
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
                         p.status === 'completed'

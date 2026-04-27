@@ -12,6 +12,7 @@ import * as buddyService from '../buddyService';
 import { manualCheckForUpdates } from '../UpdateChecker';
 import { enablePushNotifications, pushSupported, pushPermissionState } from '../pushService';
 import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '../healthSync';
+import { Capacitor } from '@capacitor/core';
 
 declare const __APP_VERSION__: string;
 
@@ -740,11 +741,18 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
 function HealthSyncSection({ isDark }: { isDark: boolean }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [enabled, setEnabled] = useState(() => isHealthSyncEnabled());
+  // Distinguish "running in a browser" (user can fix by installing the
+  // APK) from "running in the APK but the native plugin isn't bundled
+  // yet" (user can't fix; we just promise it's coming). Earlier the
+  // section showed the same "install the APK" copy in BOTH cases, which
+  // the user reported as confusing because they HAD installed the APK.
+  const isNative = Capacitor.isNativePlatform();
 
-  useState(() => {
-    canWriteHealthData().then(setAvailable);
-    return undefined;
-  });
+  useEffect(() => {
+    let cancelled = false;
+    canWriteHealthData().then((v) => { if (!cancelled) setAvailable(v); });
+    return () => { cancelled = true; };
+  }, []);
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -757,8 +765,9 @@ function HealthSyncSection({ isDark }: { isDark: boolean }) {
       </div>
       {available === false ? (
         <p className="text-xs text-zinc-500">
-          Install the Android / iOS build to sync workouts to Apple Health
-          or Google Health Connect. Not available in the browser.
+          {isNative
+            ? 'Health Connect / Apple Health integration is coming in a future update — the native plugin is not bundled in this build yet.'
+            : 'Install the Android / iOS build to sync workouts to Apple Health or Google Health Connect. Not available in the browser.'}
         </p>
       ) : (
         <>

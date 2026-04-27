@@ -68,7 +68,7 @@ function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<WorkoutSession | null>(null);
   const [sessionMode, setSessionMode] = useState<'host' | 'participant' | null>(null);
-  const [buddyProgress, setBuddyProgress] = useState<Map<string, { buddyName: string; weight: number; reps: number }>>(new Map());
+  const [buddyProgress, setBuddyProgress] = useState<Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>>(new Map());
   const sessionSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Online/offline probe + "Proceed offline" acknowledgement. Once the
@@ -290,9 +290,17 @@ function App() {
     return unsub;
   }, [activeSessionId, activeWorkout, user]);
 
-  // Listen to per-participant progress and compute each buddy's best set per
-  // exercise (keyed by exercise name, case-insensitive). Used by ActiveWorkoutView
-  // to show "Alice did 60kg × 10 reps" under the Last set line.
+  // Listen to per-participant progress and capture each buddy's full
+  // ordered list of completed sets per exercise (keyed by exercise name,
+  // case-insensitive). Used by ActiveWorkoutView to show "Alice did
+  // 60kg × 10 reps" beside each of YOUR set rows — set N maps to buddy's
+  // set N. Earlier we tracked only the buddy's best set and gated the
+  // render on setIndex === 0, which is why later sets never showed an
+  // update.
+  //
+  // If multiple buddies are in the session and worked on the same
+  // exercise, we keep the first buddy that has data for that exercise
+  // (sufficient for the current 1-on-1 buddy-session UX).
   useEffect(() => {
     if (!activeSessionId || !user) {
       setBuddyProgress(new Map());
@@ -300,18 +308,13 @@ function App() {
     }
     let cancelled = false;
     const unsubs: Array<() => void> = [];
-    const perBuddy = new Map<string, Map<string, { buddyName: string; weight: number; reps: number }>>();
+    const perBuddy = new Map<string, Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>>();
     const recompute = () => {
       if (cancelled) return;
-      const merged = new Map<string, { buddyName: string; weight: number; reps: number }>();
+      const merged = new Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>();
       for (const byName of perBuddy.values()) {
         for (const [k, v] of byName) {
-          const existing = merged.get(k);
-          if (!existing ||
-              v.weight > existing.weight ||
-              (v.weight === existing.weight && v.reps > existing.reps)) {
-            merged.set(k, v);
-          }
+          if (!merged.has(k)) merged.set(k, v);
         }
       }
       setBuddyProgress(merged);
@@ -322,26 +325,26 @@ function App() {
         for (const [uid, p] of Object.entries(session.participants)) {
           if (uid === user.uid) continue;
           if (perBuddy.has(uid)) continue;
-          const localMap = new Map<string, { buddyName: string; weight: number; reps: number }>();
+          const localMap = new Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>();
           perBuddy.set(uid, localMap);
           const unsub = sessionService.listenToProgress(activeSessionId, uid, (progress) => {
             localMap.clear();
             if (progress) {
               for (const ex of progress.exercises) {
-                let best: { weight: number; reps: number } | null = null;
+                const sets: Array<{ weight: number; reps: number }> = [];
                 for (const s of ex.sets) {
-                  if (!s.completed || s.weight <= 0 || s.reps <= 0) continue;
-                  if (!best ||
-                      s.weight > best.weight ||
-                      (s.weight === best.weight && s.reps > best.reps)) {
-                    best = { weight: s.weight, reps: s.reps };
+                  // Only include sets the buddy has actually logged. We
+                  // accept (completed) OR (reps > 0 & weight > 0) so the
+                  // buddy's reps appear the moment they enter a value,
+                  // even before they tap the checkmark.
+                  if ((s.completed || s.reps > 0) && s.weight > 0) {
+                    sets.push({ weight: s.weight, reps: s.reps });
                   }
                 }
-                if (best) {
+                if (sets.length > 0) {
                   localMap.set(ex.exerciseName.trim().toLowerCase(), {
                     buddyName: p.name,
-                    weight: best.weight,
-                    reps: best.reps,
+                    sets,
                   });
                 }
               }
@@ -904,6 +907,7 @@ function App() {
         <div className="px-4 pt-3">
           <GroupSessionBar
             sessionId={activeSessionId}
+            isDark={isDark}
             showContinue
             onContinue={() => {
               if (activeWorkout?.sessionId === activeSessionId) {
@@ -942,7 +946,7 @@ function App() {
         {view === 'active' && activeWorkout && (
           <>
             {activeSessionId && activeWorkout.sessionId === activeSessionId && (
-              <GroupSessionBar sessionId={activeSessionId} />
+              <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
             )}
             <ActiveWorkoutView
               workout={activeWorkout}
@@ -1159,6 +1163,7 @@ function App() {
       {completedSession && (
         <PostWorkoutComparison
           session={completedSession}
+          isDark={isDark}
           onClose={() => {
             setCompletedSession(null);
             setActiveSessionId(null);

@@ -219,8 +219,10 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
             touch point is enough for a thumb + fingernail. */}
         {tip && (
           <div
-            className={`pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md text-[11px] font-medium shadow-xl whitespace-nowrap ${
-              isDark ? 'bg-zinc-900 text-white border border-zinc-700' : 'bg-gray-900 text-white'
+            className={`pointer-events-none absolute z-10 px-2.5 py-1.5 rounded-md text-[11px] font-medium shadow-xl whitespace-nowrap border ${
+              isDark
+                ? 'bg-zinc-900 text-white border-zinc-700'
+                : 'bg-white text-gray-900 border-gray-200'
             }`}
             style={{
               left: Math.max(8, Math.min((containerRef.current?.clientWidth || 240) - 140, tip.x - 60)),
@@ -231,7 +233,7 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
             }}
           >
             <div>{formatDate(tip.cell.date)}</div>
-            <div className={`text-[10px] mt-0.5 ${isDark ? 'text-zinc-300' : 'text-zinc-200'}`}>
+            <div className={`text-[10px] mt-0.5 ${isDark ? 'text-zinc-300' : 'text-gray-500'}`}>
               {tip.cell.isRest
                 ? 'Rest day'
                 : tip.cell.volume > 0

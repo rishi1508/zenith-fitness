@@ -303,6 +303,27 @@ export function listenToProgress(
   );
 }
 
+/** One-shot read of every participant's detailed progress for a
+ *  completed session — used by the post-session comparison screen to
+ *  build a per-exercise breakdown. Returns a map keyed by uid; entries
+ *  without progress data (e.g. a participant who never logged a set)
+ *  are simply absent. */
+export async function getAllProgress(
+  sessionId: string,
+  uids: string[],
+): Promise<Map<string, SessionProgress>> {
+  const out = new Map<string, SessionProgress>();
+  await Promise.all(uids.map(async (uid) => {
+    try {
+      const snap = await getDoc(doc(db, 'workoutSessions', sessionId, 'progress', uid));
+      if (snap.exists()) out.set(uid, snap.data() as SessionProgress);
+    } catch (err) {
+      console.warn('[Session] getAllProgress: failed for', uid, err);
+    }
+  }));
+  return out;
+}
+
 /** Get all pending session invites for the current user. */
 export async function getPendingSessionInvites(): Promise<WorkoutSession[]> {
   const user = auth.currentUser;
@@ -334,6 +355,37 @@ export async function getPendingSessionInvites(): Promise<WorkoutSession[]> {
 /** Delete a session (host only, for cleanup). */
 export async function deleteSession(sessionId: string): Promise<void> {
   await deleteDoc(doc(db, 'workoutSessions', sessionId));
+}
+
+/**
+ * Returns sessions the current user is HOSTING that are still open
+ * (status 'waiting' or 'active'). Used by StartSessionModal to block a
+ * second invite while the first is still pending — otherwise the user
+ * could spam invites and the buddy would receive duplicate invites for
+ * the same workout.
+ *
+ * We filter by hostUid in Firestore (single-field index, free) and then
+ * narrow by status client-side. Adding a `where('status', 'in', […])`
+ * here would require a composite index we don't currently maintain, and
+ * the host-set is small enough that fetching all of them and filtering
+ * locally is cheap.
+ */
+export async function getMyOpenHostedSessions(): Promise<WorkoutSession[]> {
+  const user = auth.currentUser;
+  if (!user) return [];
+  try {
+    const q = query(
+      collection(db, 'workoutSessions'),
+      where('hostUid', '==', user.uid),
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+      .map((d) => ({ id: d.id, ...d.data() } as WorkoutSession))
+      .filter((s) => s.status === 'waiting' || s.status === 'active');
+  } catch (err) {
+    console.warn('[Session] getMyOpenHostedSessions failed:', err);
+    return [];
+  }
 }
 
 /**

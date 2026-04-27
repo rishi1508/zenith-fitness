@@ -35,8 +35,14 @@ export function ActiveWorkoutView({
   onDiscard: () => void;
   /** 'host' = finish ends session for all; 'participant' = cannot finish; null = regular personal workout */
   sessionMode?: 'host' | 'participant' | null;
-  /** Per-exercise best set from the other buddy in the session, keyed by exercise NAME (case-insensitive, trimmed) */
-  buddyProgress?: Map<string, { buddyName: string; weight: number; reps: number }>;
+  /** Per-exercise full ordered set list from the other buddy in the
+   *  session, keyed by exercise NAME (case-insensitive, trimmed). Each
+   *  index in `sets` corresponds to that set number (0 = set 1, etc.) so
+   *  the UI can show "buddy did Xkg × Y reps" alongside YOUR matching
+   *  set. Exercises the buddy hasn't done at all are absent from the map
+   *  — no entry shown for divergent exercises (e.g. you do incline DB
+   *  while buddy does incline bench). */
+  buddyProgress?: Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>;
 }) {
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
@@ -615,8 +621,11 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   onDelete: () => void;
   canDelete: boolean;
   onExerciseCreated: () => void;
-  /** Best set from the other buddy on this exercise in the current session. */
-  buddyBest?: { buddyName: string; weight: number; reps: number };
+  /** Buddy's full ordered set list for this exercise, in the current
+   *  session. Index N corresponds to that set number — the UI renders
+   *  "buddy did Xkg × Y" beside YOUR set N if the buddy has logged set
+   *  N. */
+  buddyBest?: { buddyName: string; sets: Array<{ weight: number; reps: number }> };
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -1010,12 +1019,20 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                     )}
                   </div>
                 )}
-                {/* Buddy's best set in the current group session, if any */}
-                {setIndex === 0 && buddyBest && buddyBest.weight > 0 && buddyBest.reps > 0 && (
-                  <div className="px-2 text-xs text-blue-400">
-                    {buddyBest.buddyName} did {buddyBest.weight}kg × {buddyBest.reps} reps
-                  </div>
-                )}
+                {/* Buddy's matching set in the current group session, if
+                    any. We render set-by-set: YOUR set N → buddy's set
+                    N. Earlier we showed only the buddy's best set under
+                    set 1; subsequent sets had nothing under them, which
+                    looked like buddy progress had stalled. */}
+                {(() => {
+                  const buddySet = buddyBest?.sets[setIndex];
+                  if (!buddySet || buddySet.weight <= 0 || buddySet.reps <= 0) return null;
+                  return (
+                    <div className="px-2 text-xs text-blue-400">
+                      {buddyBest!.buddyName} did {buddySet.weight}kg × {buddySet.reps} reps
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

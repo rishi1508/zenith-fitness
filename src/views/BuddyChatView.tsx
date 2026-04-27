@@ -486,6 +486,7 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
           buddyUid={buddyUid}
           buddyName={buddyName}
           buddyPhotoURL={buddyPhotoURL || null}
+          isDark={isDark}
           onClose={() => setShowStartSession(false)}
           onStarted={(sid) => {
             setShowStartSession(false);

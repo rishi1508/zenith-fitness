@@ -258,6 +258,7 @@ export function BuddyProfileView({
           buddyUid={buddyUid}
           buddyName={buddyName}
           buddyPhotoURL={profile?.photoURL || null}
+          isDark={isDark}
           onClose={() => setShowSessionModal(false)}
           onStarted={(sid) => {
             setShowSessionModal(false);
