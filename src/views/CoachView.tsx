@@ -1,16 +1,18 @@
 import { useMemo, useState } from 'react';
 import {
-  ArrowLeft, Sparkles, ChevronDown, ChevronUp, Search, Dumbbell, BookOpen, TrendingUp, TrendingDown, Minus,
+  ArrowLeft, Sparkles, ChevronDown, ChevronUp, Search, Dumbbell, BookOpen, TrendingUp, TrendingDown, Minus, MessageCircle, ChevronRight,
 } from 'lucide-react';
 import type { WeeklySummary } from '../coachService';
 import { buildCoachReport } from '../coachService';
 import { InsightCard } from '../components/InsightCard';
 import { findFormCues, listFormCuesByGroup, type FormCueEntry } from '../coachFormCues';
 import { useAuth } from '../auth/AuthContext';
+import { hasLLMConfig } from '../llm';
 
 interface Props {
   isDark: boolean;
   onBack: () => void;
+  onOpenChat: () => void;
 }
 
 /**
@@ -24,7 +26,7 @@ interface Props {
  * workouts. We don't try to coach a brand-new user — there's no signal
  * yet.
  */
-export function CoachView({ isDark, onBack }: Props) {
+export function CoachView({ isDark, onBack, onOpenChat }: Props) {
   const { user } = useAuth();
   // The analysis is pure + synchronous over localStorage. Lazy-init the
   // state with the report so we never have a "loading" frame, and so we
@@ -45,6 +47,15 @@ export function CoachView({ isDark, onBack }: Props) {
 
       <WeeklySummaryCard
         summary={report.weekly}
+        isDark={isDark}
+        cardBg={cardBg}
+        cardBorder={cardBorder}
+        subtle={subtle}
+        veryDim={veryDim}
+      />
+
+      <AskCoachCard
+        onOpenChat={onOpenChat}
         isDark={isDark}
         cardBg={cardBg}
         cardBorder={cardBorder}
@@ -356,6 +367,49 @@ function Disclaimer({ subtle }: { subtle: string }) {
     <p className={`text-[10px] leading-relaxed text-center px-4 ${subtle}`}>
       These are rule-based guidelines, not medical or coaching advice. If something hurts, consult a professional.
     </p>
+  );
+}
+
+function AskCoachCard({
+  onOpenChat, isDark, cardBg, cardBorder, subtle, veryDim,
+}: {
+  onOpenChat: () => void;
+  isDark: boolean;
+  cardBg: string;
+  cardBorder: string;
+  subtle: string;
+  veryDim: string;
+}) {
+  // Re-read hasKey on every render — cheap, and reflects state changes
+  // after the user finishes BYOK setup elsewhere.
+  const configured = hasLLMConfig();
+  return (
+    <button
+      onClick={onOpenChat}
+      className={`w-full rounded-2xl border p-4 flex items-center justify-between transition-colors ${cardBg} ${cardBorder} ${isDark ? 'hover:border-orange-500/40' : 'hover:border-orange-400'}`}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-gradient-to-br from-orange-500/20 to-red-500/10' : 'bg-gradient-to-br from-orange-100 to-red-100'} text-orange-400`}>
+          <MessageCircle className="w-5 h-5" />
+        </div>
+        <div className="text-left min-w-0">
+          <div className="font-semibold text-sm flex items-center gap-1.5">
+            Ask the Coach
+            {!configured && (
+              <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${isDark ? 'bg-orange-500/15 text-orange-300' : 'bg-orange-100 text-orange-700'}`}>
+                BYOK
+              </span>
+            )}
+          </div>
+          <div className={`text-xs ${subtle} truncate`}>
+            {configured
+              ? 'Open-ended Q&A grounded in your training data'
+              : 'Bring your own API key — free Gemini tier works'}
+          </div>
+        </div>
+      </div>
+      <ChevronRight className={`w-5 h-5 flex-shrink-0 ${veryDim}`} />
+    </button>
   );
 }
 

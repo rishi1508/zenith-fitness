@@ -12,7 +12,7 @@ import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt } from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { settleStreak, isStreakActiveThisWeek } from './streakService';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView } from './views';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView, CoachChatView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
@@ -22,7 +22,7 @@ import { consumeBack } from './backHandlerRegistry';
 import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile' | 'coach';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile' | 'coach' | 'coach-chat';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -1019,7 +1019,7 @@ function App() {
           // scroll + padding. Any main padding would stretch chat past main
           // and re-introduce the "scroll up to find the header" bug, so we
           // drop it when that view is active.
-          view === 'buddy-chat' ? 'p-0' : 'px-4 py-4 pb-24'
+          view === 'buddy-chat' || view === 'coach-chat' ? 'p-0' : 'px-4 py-4 pb-24'
         }`}
         style={{ overscrollBehavior: 'none' }}
       >
@@ -1157,7 +1157,14 @@ function App() {
           />
         )}
         {view === 'coach' && (
-          <CoachView isDark={isDark} onBack={() => goBack()} />
+          <CoachView
+            isDark={isDark}
+            onBack={() => goBack()}
+            onOpenChat={() => navigateTo('coach-chat')}
+          />
+        )}
+        {view === 'coach-chat' && (
+          <CoachChatView isDark={isDark} onBack={() => goBack()} />
         )}
         {view === 'body-weight' && (
           <BodyWeightView isDark={isDark} onBack={() => goBack()} />
@@ -1286,7 +1293,7 @@ function App() {
             <NavButton
               icon={<Layers />}
               label="Services"
-              active={view === 'services' || view === 'body-weight' || view === 'body-measurements' || view === 'common-templates' || view === 'exercises' || view === 'coach'}
+              active={view === 'services' || view === 'body-weight' || view === 'body-measurements' || view === 'common-templates' || view === 'exercises' || view === 'coach' || view === 'coach-chat'}
               onClick={() => navigateTo('services')}
             />
             {!isGuest && (

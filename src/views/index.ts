@@ -21,3 +21,4 @@ export { CommonTemplatesView } from './CommonTemplatesView';
 export { ProfileLanding } from './ProfileView';
 export { BodyMeasurementsView } from './BodyMeasurementsView';
 export { CoachView } from './CoachView';
+export { CoachChatView } from './CoachChatView';
