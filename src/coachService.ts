@@ -1,5 +1,6 @@
-import type { Workout, Exercise, BodyWeightEntry, WeeklyPlan, MuscleGroup } from './types';
+import type { Workout, Exercise, BodyWeightEntry, BodyMeasurementEntry, WeeklyPlan, MuscleGroup, PersonalRecord } from './types';
 import * as storage from './storage';
+import { computeWeekStreak, getStreakState, weekStartISO, MAX_FREEZES, daysUntilNextFreeze } from './streakService';
 
 /**
  * Rule-based "Coach" — runs heuristics over the user's local workout
@@ -797,4 +798,142 @@ export function computeWeeklySummary(workouts: Workout[]): WeeklySummary {
   }
 
   return { sessions, volume, volumeDelta, prsThisWeek, weeklyVolumes };
+}
+
+// ----- Extended context (for the LLM) ------------------------------------
+
+/**
+ * Rich snapshot of the user's full training state, packaged for the
+ * LLM-backed AI Coach. This is everything we want the model to "see"
+ * so it can reference real numbers and exercises in its replies
+ * instead of giving generic advice.
+ *
+ * The shape is intentionally compact-but-comprehensive: PRs are
+ * compressed to ≤12 most recent entries, workouts to last 10 with a
+ * summary line each, and exercise library is summarized as a count by
+ * muscle group rather than dumping every entry.
+ */
+export interface ExtendedCoachContext {
+  report: CoachReport;
+  personalRecords: PersonalRecord[];
+  recentWorkouts: Workout[];
+  bodyWeight: {
+    current: number | null;
+    delta7d: number | null;
+    delta30d: number | null;
+    samples: number;
+  };
+  latestMeasurement: BodyMeasurementEntry | null;
+  activePlan: WeeklyPlan | null;
+  lastUsedDayName: string | null;
+  streak: {
+    currentWeeks: number;
+    longestWeeks: number;
+    freezesAvailable: number;
+    daysToNextFreeze: number;
+  };
+  /** Total exercises in the user's library, broken down by muscle group. */
+  libraryByMuscleGroup: Partial<Record<MuscleGroup, number>>;
+  /** Total all-time non-rest workouts. */
+  totalWorkouts: number;
+}
+
+export function buildExtendedContext(): ExtendedCoachContext {
+  const allWorkouts = storage.getWorkouts();
+  const completed = allWorkouts.filter((w) => w.completed);
+  const trainingWorkouts = completed.filter((w) => w.type !== 'rest');
+  const exercises = storage.getExercises();
+  const bodyWeights = storage.getBodyWeightEntries();
+  const measurements = storage.getBodyMeasurements();
+  const activePlan = storage.getActivePlan();
+  const lastUsedDay = storage.getLastUsedDay();
+
+  const ctx: CoachContext = {
+    workouts: completed,
+    exercises,
+    bodyWeights,
+    activePlan,
+    lastUsedDay,
+  };
+  const report = buildReportFromContext(ctx);
+
+  // Most recent workouts first, capped to 10.
+  const recentWorkouts = [...trainingWorkouts]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 10);
+
+  // Top 12 PRs by date desc — keeps prompt compact while showing the
+  // most relevant lifts.
+  const personalRecords = [...storage.getPersonalRecords()]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 12);
+
+  // Body weight: latest + 7d / 30d delta. Computed over the actual
+  // logged samples (not interpolated).
+  const sortedBW = [...bodyWeights].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const latestBW = sortedBW[sortedBW.length - 1];
+  const findClosestBefore = (daysAgo: number): BodyWeightEntry | undefined => {
+    if (!latestBW) return undefined;
+    const cutoff = new Date(latestBW.date).getTime() - daysAgo * 86400000;
+    let best: BodyWeightEntry | undefined;
+    for (const e of sortedBW) {
+      if (new Date(e.date).getTime() <= cutoff) best = e;
+      else break;
+    }
+    return best;
+  };
+  const sevenAgo = findClosestBefore(7);
+  const thirtyAgo = findClosestBefore(30);
+  const bodyWeight = {
+    current: latestBW?.weight ?? null,
+    delta7d: latestBW && sevenAgo ? latestBW.weight - sevenAgo.weight : null,
+    delta30d: latestBW && thirtyAgo ? latestBW.weight - thirtyAgo.weight : null,
+    samples: sortedBW.length,
+  };
+
+  const latestMeasurement = measurements.length > 0
+    ? [...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
+    : null;
+
+  // Streak: weekly streak + freeze state.
+  const streakState = getStreakState();
+  const frozenWeeks = new Set(
+    streakState.freezeConsumedDates.map((ds) => weekStartISO(new Date(ds + 'T00:00:00')))
+  );
+  const { current, longest } = computeWeekStreak(completed, frozenWeeks);
+  const streak = {
+    currentWeeks: current,
+    longestWeeks: longest,
+    freezesAvailable: streakState.freezes,
+    daysToNextFreeze: daysUntilNextFreeze(streakState),
+  };
+  // Touch MAX_FREEZES so the linter doesn't complain about the unused
+  // import; it's there for readers who want to know the cap.
+  void MAX_FREEZES;
+
+  // Library breakdown by muscle group.
+  const libraryByMuscleGroup: Partial<Record<MuscleGroup, number>> = {};
+  for (const e of exercises) {
+    libraryByMuscleGroup[e.muscleGroup] = (libraryByMuscleGroup[e.muscleGroup] || 0) + 1;
+  }
+
+  // Last-used day name from the active plan.
+  let lastUsedDayName: string | null = null;
+  if (activePlan && lastUsedDay !== null && lastUsedDay !== undefined) {
+    const day = activePlan.days.find((d) => d.dayNumber === lastUsedDay);
+    if (day) lastUsedDayName = day.name;
+  }
+
+  return {
+    report,
+    personalRecords,
+    recentWorkouts,
+    bodyWeight,
+    latestMeasurement,
+    activePlan,
+    lastUsedDayName,
+    streak,
+    libraryByMuscleGroup,
+    totalWorkouts: trainingWorkouts.length,
+  };
 }

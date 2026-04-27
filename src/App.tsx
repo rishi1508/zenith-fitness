@@ -9,7 +9,8 @@ import { UpdateChecker } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
-import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt } from './components';
+import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt, AskCoachBubble } from './components';
+import { hasLLMConfig } from './llm';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { settleStreak, isStreakActiveThisWeek } from './streakService';
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView, CoachChatView } from './views';
@@ -1271,6 +1272,18 @@ function App() {
             setCompletedSession(null);
             setActiveSessionId(null);
           }}
+        />
+      )}
+
+      {/* Floating "Ask Coach" bubble — global FAB once BYOK is set up.
+          Hidden inside the chat view (already there) and on the
+          session lobby (chat would crowd the lobby UI). Sits above the
+          bottom nav; drops to bottom-4 when nav is hidden. */}
+      {hasLLMConfig() && view !== 'coach-chat' && view !== 'session-lobby' && (
+        <AskCoachBubble
+          isDark={isDark}
+          navHidden={view === 'active'}
+          onClick={() => navigateTo('coach-chat')}
         />
       )}
 

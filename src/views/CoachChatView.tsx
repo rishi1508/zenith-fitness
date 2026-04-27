@@ -9,7 +9,7 @@ import {
   toLLMMessages, getLLMConfig, hasLLMConfig, streamCompletion, quickPrompts,
   LLMError, type ChatEntry,
 } from '../llm';
-import { buildCoachReport } from '../coachService';
+import { buildExtendedContext } from '../coachService';
 
 interface Props {
   isDark: boolean;
@@ -38,11 +38,11 @@ export function CoachChatView({ isDark, onBack }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Re-derive the Coach report once at mount AND once per send. Doing
-  // it per-send means stale insights don't drift across a long chat
-  // session.
-  const reportAtMount = useMemo(() => buildCoachReport(), []);
-  const suggestions = useMemo(() => quickPrompts(reportAtMount), [reportAtMount]);
+  // Build extended context once at mount for the suggestion chips.
+  // We rebuild on every send so the LLM always sees the latest stats,
+  // but the chip suggestions don't need to update mid-conversation.
+  const contextAtMount = useMemo(() => buildExtendedContext(), []);
+  const suggestions = useMemo(() => quickPrompts(contextAtMount), [contextAtMount]);
 
   // Auto-scroll to bottom on new content.
   useEffect(() => {
@@ -101,13 +101,13 @@ export function CoachChatView({ isDark, onBack }: Props) {
       return;
     }
 
-    // Refresh report each turn so the system prompt reflects the
-    // latest training context (e.g. user logged a workout between
-    // turns).
-    const report = buildCoachReport();
+    // Refresh full extended context each turn so the system prompt
+    // reflects the latest training data (workouts the user logged
+    // between turns, fresh insights, latest body weight, etc).
+    const extended = buildExtendedContext();
     const systemPrompt = buildSystemPrompt({
       userName: user?.displayName?.split(' ')[0] ?? null,
-      report,
+      context: extended,
       todayISO: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
       latestUserMessage: text,
     });
@@ -177,7 +177,10 @@ export function CoachChatView({ isDark, onBack }: Props) {
   const hoverBg = isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-100';
 
   return (
-    <div className="flex flex-col h-full min-h-[calc(100vh-9rem)]">
+    // h-full fills the flex-1 main area. pb-24 (96px) reserves space at
+    // the bottom for the fixed bottom-nav so the composer is always
+    // visible — same pattern as BuddyChatView.
+    <div className="flex flex-col h-full pb-24">
       {/* Header */}
       <div className={`flex items-center justify-between px-3 py-2 border-b ${cardBorder} ${cardBg}`}>
         <div className="flex items-center gap-2 min-w-0">
