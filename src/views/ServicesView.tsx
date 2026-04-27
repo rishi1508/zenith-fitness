@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import {
-  ArrowLeft, Dumbbell, ChevronRight, Calculator, Trophy, Scale, Layers, Ruler,
+  ArrowLeft, Dumbbell, ChevronRight, Calculator, Trophy, Scale, Layers, Ruler, Sparkles,
 } from 'lucide-react';
 import { PlateCalculator, OneRMCalculator } from '../components';
 
 interface ServicesViewProps {
   isDark: boolean;
   onBack: () => void;
+  onOpenCoach: () => void;
   onOpenExerciseLibrary: () => void;
   onOpenCommonTemplates: () => void;
   onOpenBodyWeight: () => void;
@@ -14,7 +15,7 @@ interface ServicesViewProps {
 }
 
 export function ServicesView({
-  isDark, onBack, onOpenExerciseLibrary, onOpenCommonTemplates, onOpenBodyWeight, onOpenBodyMeasurements,
+  isDark, onBack, onOpenCoach, onOpenExerciseLibrary, onOpenCommonTemplates, onOpenBodyWeight, onOpenBodyMeasurements,
 }: ServicesViewProps) {
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [showOneRM, setShowOneRM] = useState(false);
@@ -33,11 +34,19 @@ export function ServicesView({
   };
   const items: Item[] = [
     {
+      label: 'Coach',
+      hint: 'Personalized insights from your training data',
+      icon: <Sparkles className="w-5 h-5" />,
+      color: 'text-orange-400',
+      bg: isDark ? 'bg-orange-500/15' : 'bg-orange-100',
+      onClick: onOpenCoach,
+    },
+    {
       label: 'Exercise Library',
       hint: 'Browse and edit all exercises',
       icon: <Dumbbell className="w-5 h-5" />,
-      color: 'text-orange-400',
-      bg: isDark ? 'bg-orange-500/15' : 'bg-orange-100',
+      color: 'text-pink-400',
+      bg: isDark ? 'bg-pink-500/15' : 'bg-pink-100',
       onClick: onOpenExerciseLibrary,
     },
     {

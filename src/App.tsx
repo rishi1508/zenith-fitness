@@ -12,7 +12,7 @@ import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt } from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { settleStreak, isStreakActiveThisWeek } from './streakService';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView } from './views';
+import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { computeMyCompareStats } from './buddyComparison';
@@ -22,7 +22,7 @@ import { consumeBack } from './backHandlerRegistry';
 import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile' | 'coach';
 type Theme = 'dark' | 'light';
 
 function App() {
@@ -1057,11 +1057,15 @@ function App() {
           <ServicesView
             isDark={isDark}
             onBack={() => goBack()}
+            onOpenCoach={() => navigateTo('coach')}
             onOpenExerciseLibrary={() => navigateTo('exercises')}
             onOpenCommonTemplates={() => navigateTo('common-templates')}
             onOpenBodyWeight={() => navigateTo('body-weight')}
             onOpenBodyMeasurements={() => navigateTo('body-measurements')}
           />
+        )}
+        {view === 'coach' && (
+          <CoachView isDark={isDark} onBack={() => goBack()} />
         )}
         {view === 'body-weight' && (
           <BodyWeightView isDark={isDark} onBack={() => goBack()} />
@@ -1190,7 +1194,7 @@ function App() {
             <NavButton
               icon={<Layers />}
               label="Services"
-              active={view === 'services' || view === 'body-weight' || view === 'body-measurements' || view === 'common-templates' || view === 'exercises'}
+              active={view === 'services' || view === 'body-weight' || view === 'body-measurements' || view === 'common-templates' || view === 'exercises' || view === 'coach'}
               onClick={() => navigateTo('services')}
             />
             {!isGuest && (

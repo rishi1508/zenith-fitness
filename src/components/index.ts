@@ -21,3 +21,4 @@ export { StreakButton } from './StreakButton';
 export { StreakModal } from './StreakModal';
 export { ActivityHeatmap } from './ActivityHeatmap';
 export { PushPermissionPrompt } from './PushPermissionPrompt';
+export { InsightCard } from './InsightCard';
