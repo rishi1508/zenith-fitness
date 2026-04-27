@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dumbbell, Calendar,
-  Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon,
+  Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon, Trophy,
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
@@ -35,7 +35,17 @@ function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [missingDays, setMissingDays] = useState<string[]>([]);
   const [showCelebration, setShowCelebration] = useState(false);
-  const [celebrationData, setCelebrationData] = useState<{name: string; exercises: number; duration?: number} | null>(null);
+  const [celebrationData, setCelebrationData] = useState<{
+    name: string;
+    exercises: number;
+    duration?: number;
+    /** New all-time PRs achieved in this session. Computed at finish
+     *  time by comparing each exercise's session-best to the snapshot
+     *  of records from BEFORE the workout was saved. Surfaces here so
+     *  even a typo'd-then-corrected set still gets celebrated when its
+     *  final value beats the user's previous best. */
+    prs?: Array<{ exercise: string; weight: number; reps: number; isFirstEver: boolean }>;
+  } | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     try { return storage.getEffectiveTheme(); } 
     catch { return 'dark'; }
@@ -640,7 +650,52 @@ function App() {
         completedAt,
         duration,
       };
+
+      // Snapshot the user's PRs from BEFORE we save the workout. Since
+      // we no longer persist PRs mid-session (see ActiveWorkoutView's
+      // updateSet), this snapshot reflects the user's true historical
+      // best — independent of any in-session typos.
+      const preSessionRecords = storage.getPersonalRecords();
+      const preSessionPRMap = new Map<string, { weight: number; reps: number }>();
+      for (const r of preSessionRecords) {
+        preSessionPRMap.set(r.exerciseId, { weight: r.weight, reps: r.reps });
+        preSessionPRMap.set(r.exerciseName.trim().toLowerCase(), { weight: r.weight, reps: r.reps });
+      }
+      // Compute session-best per exercise from the FINAL (cleaned) set
+      // data and identify which ones beat the snapshot. This is what
+      // gets shown in the celebration screen.
+      const sessionPRs: Array<{ exercise: string; weight: number; reps: number; isFirstEver: boolean }> = [];
+      for (const ex of exercisesClean) {
+        let best: { weight: number; reps: number } | null = null;
+        for (const s of ex.sets) {
+          if (!s.completed || s.weight <= 0 || s.reps <= 0) continue;
+          if (!best || s.weight > best.weight || (s.weight === best.weight && s.reps > best.reps)) {
+            best = { weight: s.weight, reps: s.reps };
+          }
+        }
+        if (!best) continue;
+        const prev = preSessionPRMap.get(ex.exerciseId)
+          ?? preSessionPRMap.get(ex.exerciseName.trim().toLowerCase());
+        const isPR = !prev
+          || best.weight > prev.weight
+          || (best.weight === prev.weight && best.reps > prev.reps);
+        if (isPR) {
+          sessionPRs.push({
+            exercise: ex.exerciseName,
+            weight: best.weight,
+            reps: best.reps,
+            isFirstEver: !prev,
+          });
+        }
+      }
+
       storage.saveWorkout(finished);
+      // Now that the workout is in history, rebuild PR records from
+      // scratch. Idempotent — and crucially this is the ONLY place that
+      // writes records in the active-session flow. Earlier we'd persist
+      // a PR on every set completion, so a typo'd 150kg×10 became the
+      // record and a corrected 15kg×10 silently failed to update it.
+      storage.recomputePersonalRecords();
 
       // Fire-and-forget push to iOS HealthKit / Android Health Connect
       // when the user has enabled sync. No-op on web or when the plugin
@@ -682,6 +737,7 @@ function App() {
         name: activeWorkout.name,
         exercises: activeWorkout.exercises.length,
         duration,
+        prs: sessionPRs,
       });
       setShowCelebration(true);
       
@@ -827,13 +883,13 @@ function App() {
       {/* Workout Completion Celebration */}
       {showCelebration && celebrationData && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className={`max-w-sm w-full rounded-2xl p-6 text-center space-y-4 ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'} animate-fadeIn`}>
+          <div className={`max-w-sm w-full rounded-2xl p-6 text-center space-y-4 ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'} animate-fadeIn max-h-[90vh] overflow-y-auto`}>
             <div className="mb-2"><PartyPopper className="w-16 h-16 text-orange-400 mx-auto" /></div>
             <h2 className="text-2xl font-bold">Workout Complete!</h2>
             <p className={`${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
               Great job finishing <span className="font-semibold text-orange-400">{celebrationData.name}</span>!
             </p>
-            
+
             <div className={`flex justify-center gap-6 py-4 ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>
               <div className="text-center">
                 <div className="text-2xl font-bold text-orange-400">{celebrationData.exercises}</div>
@@ -845,8 +901,44 @@ function App() {
                   <div className="text-xs text-zinc-500">Duration</div>
                 </div>
               )}
+              {celebrationData.prs && celebrationData.prs.length > 0 && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-400">{celebrationData.prs.length}</div>
+                  <div className="text-xs text-zinc-500">{celebrationData.prs.length === 1 ? 'PR' : 'PRs'}</div>
+                </div>
+              )}
             </div>
-            
+
+            {celebrationData.prs && celebrationData.prs.length > 0 && (
+              <div className={`rounded-xl border p-3 text-left ${
+                isDark ? 'bg-yellow-500/5 border-yellow-500/25' : 'bg-yellow-50 border-yellow-300'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Trophy className="w-4 h-4 text-yellow-500" />
+                  <div className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                    New Personal Records
+                  </div>
+                </div>
+                <ul className="space-y-1.5">
+                  {celebrationData.prs.map((pr) => (
+                    <li key={pr.exercise} className="flex items-center justify-between text-sm">
+                      <span className={`truncate ${isDark ? 'text-zinc-200' : 'text-gray-800'}`}>
+                        {pr.exercise}
+                        {pr.isFirstEver && (
+                          <span className={`ml-1.5 text-[10px] uppercase tracking-wider ${isDark ? 'text-yellow-300/80' : 'text-yellow-600'}`}>
+                            first
+                          </span>
+                        )}
+                      </span>
+                      <span className={`font-mono font-semibold ${isDark ? 'text-yellow-300' : 'text-yellow-700'}`}>
+                        {pr.weight}kg × {pr.reps}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <button
               onClick={() => setShowCelebration(false)}
               className="w-full py-3 rounded-xl font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"

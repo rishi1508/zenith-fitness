@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Dumbbell, ChevronRight, ChevronLeft, Check, Clock, Search, X, Edit3, Trash2, Plus,
   TrendingUp, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play, Info
@@ -48,6 +48,29 @@ export function ActiveWorkoutView({
   const [restTimeLeft, setRestTimeLeft] = useState(0);
   const [prAchievement, setPrAchievement] = useState<{exercise: string; weight: number; reps: number; isVolumePR?: boolean} | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Snapshot of personal records taken once at view mount. Used by the
+  // in-session PR toast — we compare against this snapshot, NOT against
+  // a record that gets updated mid-session. Earlier we'd persist a PR
+  // immediately on set completion, so a typo'd 150kg×10 became the new
+  // "previous best" within the same session — and a corrected 15kg×10
+  // never re-fired the celebration. The actual PR record is now
+  // recomputed at session end via storage.recomputePersonalRecords().
+  const [prSnapshot] = useState(() => {
+    const records = storage.getPersonalRecords();
+    const m = new Map<string, { weight: number; reps: number }>();
+    for (const r of records) {
+      m.set(r.exerciseId, { weight: r.weight, reps: r.reps });
+      m.set(r.exerciseName.trim().toLowerCase(), { weight: r.weight, reps: r.reps });
+    }
+    return m;
+  });
+
+  // Best (weight, reps) per exercise observed so far in this session.
+  // Only used to dedupe toasts: we fire a PR toast only when session-best
+  // INCREASES (and beats the historical snapshot). Editing values down
+  // doesn't fire; editing UP to a new high does.
+  const sessionBestRef = useRef<Map<string, { weight: number; reps: number }>>(new Map());
   
   // Workout duration timer
   useEffect(() => {
@@ -243,95 +266,115 @@ export function ActiveWorkoutView({
     newWorkout.exercises = [...workout.exercises];
     newWorkout.exercises[exerciseIndex] = { ...workout.exercises[exerciseIndex] };
     newWorkout.exercises[exerciseIndex].sets = [...workout.exercises[exerciseIndex].sets];
-    const updatedSet = {
-      ...workout.exercises[exerciseIndex].sets[setIndex],
-      ...updates,
-    };
+    const oldSet = workout.exercises[exerciseIndex].sets[setIndex];
+    const updatedSet = { ...oldSet, ...updates };
     newWorkout.exercises[exerciseIndex].sets[setIndex] = updatedSet;
     onUpdate(newWorkout);
 
-    // Start rest timer when completing a set. Pull a smart default
-    // based on the exercise's category (compound → 3 min, isolation → 75s,
-    // etc.) instead of a flat 90 s.
-    if (updates.completed && !workout.exercises[exerciseIndex].sets[setIndex].completed) {
-      const exForRest = newWorkout.exercises[exerciseIndex];
+    const exercise = newWorkout.exercises[exerciseIndex];
+
+    // Decide whether this update should re-evaluate PR / volume / rest:
+    //   (a) The set just transitioned from incomplete → complete (logging).
+    //   (b) The set was already complete and weight/reps changed (correction).
+    // Case (b) is the fix for "user typo'd 150 → toast fires; corrects to
+    // 15 (still a PR vs history) → no toast" — we now re-evaluate on
+    // value changes too.
+    const justCompleted = !!updates.completed && !oldSet.completed;
+    const isStillCompleted = !!updatedSet.completed;
+    const valueChanged =
+      (updates.weight !== undefined && updates.weight !== oldSet.weight) ||
+      (updates.reps !== undefined && updates.reps !== oldSet.reps);
+    const editedCompletedSet = oldSet.completed && isStillCompleted && valueChanged;
+    const shouldEvaluate = justCompleted || editedCompletedSet;
+
+    // Rest timer — only on first completion, not on edits.
+    if (justCompleted) {
       const libraryEntry = storage.getExercises().find(
-        (e) => e.id === exForRest.exerciseId
-          || e.name.trim().toLowerCase() === exForRest.exerciseName.trim().toLowerCase(),
+        (e) => e.id === exercise.exerciseId
+          || e.name.trim().toLowerCase() === exercise.exerciseName.trim().toLowerCase(),
       );
       startRestTimer(defaultRestSecondsFor(libraryEntry));
+    }
 
-      const exercise = newWorkout.exercises[exerciseIndex];
-      
-      if (updatedSet.weight > 0 && updatedSet.reps > 0) {
-        // Check for weight/reps PR
-        const isPR = storage.checkAndUpdatePR(
-          exercise.exerciseId,
-          exercise.exerciseName,
-          updatedSet.weight,
-          updatedSet.reps
-        );
-        
-        // Check for volume PR (total volume this exercise in this session).
-        // Use the UPDATED set's values, and also pull prior session by
-        // exerciseId OR by name so session-mode exercises that use the
-        // host's ids still resolve.
-        const currentVolume = exercise.sets.reduce((sum, s) => {
-          // Current set uses the freshly-updated values; older sets only
-          // count if actually completed.
-          if (s.id === updatedSet.id) return sum + updatedSet.weight * updatedSet.reps;
-          return s.completed ? sum + s.weight * s.reps : sum;
-        }, 0);
+    // Always keep the per-exercise session-best ref accurate, even on
+    // un-completes / value drops. The toast logic below decides whether
+    // to fire based on the prev value vs the freshly-recomputed one.
+    let freshSessionBest: { weight: number; reps: number } | null = null;
+    for (const s of exercise.sets) {
+      if (!s.completed || s.weight <= 0 || s.reps <= 0) continue;
+      if (!freshSessionBest
+          || s.weight > freshSessionBest.weight
+          || (s.weight === freshSessionBest.weight && s.reps > freshSessionBest.reps)) {
+        freshSessionBest = { weight: s.weight, reps: s.reps };
+      }
+    }
+    const prevSessionBest = sessionBestRef.current.get(exercise.exerciseId);
+    if (freshSessionBest) {
+      sessionBestRef.current.set(exercise.exerciseId, freshSessionBest);
+    } else {
+      sessionBestRef.current.delete(exercise.exerciseId);
+    }
 
-        // Resolve lastSession by id first, then by name (matches PR logic).
-        let lastSession = storage.getLastExerciseSession(exercise.exerciseId);
-        if (!lastSession) {
-          const nameKey = exercise.exerciseName.trim().toLowerCase();
-          const prior = storage.getWorkouts()
-            .filter(w => w.completed && w.type !== 'rest')
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          for (const w of prior) {
-            const match = w.exercises.find(ex => ex.exerciseName.trim().toLowerCase() === nameKey);
-            if (match && match.sets.some(s => s.completed)) {
-              lastSession = match.sets.filter(s => s.completed);
-              break;
-            }
+    if (shouldEvaluate && updatedSet.weight > 0 && updatedSet.reps > 0 && freshSessionBest) {
+      // Did session-best go UP this update? (Rules out edits down or sideways.)
+      const sessionBestIncreased =
+        !prevSessionBest
+        || freshSessionBest.weight > prevSessionBest.weight
+        || (freshSessionBest.weight === prevSessionBest.weight && freshSessionBest.reps > prevSessionBest.reps);
+
+      // Does it beat the user's pre-session historical best?
+      const snapshotPR = prSnapshot.get(exercise.exerciseId)
+        ?? prSnapshot.get(exercise.exerciseName.trim().toLowerCase());
+      const beatsHistorical =
+        !snapshotPR
+        || freshSessionBest.weight > snapshotPR.weight
+        || (freshSessionBest.weight === snapshotPR.weight && freshSessionBest.reps > snapshotPR.reps);
+
+      const isWeightRepPR = sessionBestIncreased && beatsHistorical;
+
+      // Volume PR (current session total volume vs prior session). Not
+      // persisted — purely cosmetic.
+      const currentVolume = exercise.sets.reduce((sum, s) =>
+        s.completed ? sum + s.weight * s.reps : sum, 0);
+      let lastSession = storage.getLastExerciseSession(exercise.exerciseId);
+      if (!lastSession) {
+        const nameKey = exercise.exerciseName.trim().toLowerCase();
+        const prior = storage.getWorkouts()
+          .filter(w => w.completed && w.type !== 'rest')
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        for (const w of prior) {
+          const match = w.exercises.find(ex => ex.exerciseName.trim().toLowerCase() === nameKey);
+          if (match && match.sets.some(s => s.completed)) {
+            lastSession = match.sets.filter(s => s.completed);
+            break;
           }
         }
-        const lastVolume = lastSession
-          ? lastSession.reduce((sum, s) => sum + (s.weight * s.reps), 0)
-          : 0;
+      }
+      const lastVolume = lastSession
+        ? lastSession.reduce((sum, s) => sum + (s.weight * s.reps), 0)
+        : 0;
+      const isVolumePR = currentVolume > lastVolume && lastVolume > 0;
+      const allSetsCompleted = exercise.sets.every(s => s.completed);
+      const isLastCompletedSet = setIndex === exercise.sets.length - 1 || allSetsCompleted;
 
-        const isVolumePR = currentVolume > lastVolume && lastVolume > 0;
-        // Fire volume PR on the LAST completed set of the session — which
-        // is "the set at max index whose values are non-zero". This keeps
-        // the toast from spamming, and correctly handles Add Set making
-        // the last index larger than 2.
-        const completedCountNow = exercise.sets.filter(s => s.completed || s.id === updatedSet.id).length;
-        const isLastCompletedSet = setIndex === exercise.sets.length - 1 ||
-          completedCountNow === exercise.sets.length;
-
-        if (isPR) {
-          setPrAchievement({
-            exercise: exercise.exerciseName,
-            weight: updatedSet.weight,
-            reps: updatedSet.reps,
-          });
-          setTimeout(() => setPrAchievement(null), 3500);
-          // Play celebration sound
-          playSound('celebration');
-          hapticNotification('success');
-        } else if (isVolumePR && isLastCompletedSet) {
-          // Volume PR — fires on last set (or when all sets are completed)
-          setPrAchievement({
-            exercise: exercise.exerciseName,
-            weight: Math.round(currentVolume),
-            reps: 0,
-            isVolumePR: true,
-          });
-          setTimeout(() => setPrAchievement(null), 3500);
-          hapticNotification('success');
-        }
+      if (isWeightRepPR) {
+        setPrAchievement({
+          exercise: exercise.exerciseName,
+          weight: freshSessionBest.weight,
+          reps: freshSessionBest.reps,
+        });
+        setTimeout(() => setPrAchievement(null), 3500);
+        playSound('celebration');
+        hapticNotification('success');
+      } else if (isVolumePR && isLastCompletedSet) {
+        setPrAchievement({
+          exercise: exercise.exerciseName,
+          weight: Math.round(currentVolume),
+          reps: 0,
+          isVolumePR: true,
+        });
+        setTimeout(() => setPrAchievement(null), 3500);
+        hapticNotification('success');
       }
     }
   };
