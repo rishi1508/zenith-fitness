@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, X, Plus, Search, Dumbbell, Trash2, Star } from 'lucide-react';
 import * as storage from '../storage';
+import type { Exercise, ExerciseCategory } from '../types';
 import { addToSharedExerciseLibrary } from '../firestoreSync';
 
 export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
@@ -14,9 +15,20 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   const [newMuscleGroup, setNewMuscleGroup] = useState<string>('chest');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
-  const [editingNotes, setEditingNotes] = useState<string | null>(null);
-  const [editingVideoUrl, setEditingVideoUrl] = useState<string | null>(null);
-  const [editingCategory, setEditingCategory] = useState<import('../types').ExerciseCategory | null>(null);
+  // Drafts are SEEDED with the exercise's current values when it's
+  // expanded, so:
+  //   1. Switching between exercises doesn't leak draft text from one
+  //      into another's textarea.
+  //   2. Saving while only one field was edited doesn't null-overwrite
+  //      the others — every field reflects either the user's edit or
+  //      the original value, never a stale draft from a different
+  //      exercise.
+  // Earlier these were nullable and the save path coerced null →
+  // undefined, silently wiping notes / video URLs that the user
+  // didn't intentionally clear.
+  const [editingNotes, setEditingNotes] = useState<string>('');
+  const [editingVideoUrl, setEditingVideoUrl] = useState<string>('');
+  const [editingCategory, setEditingCategory] = useState<ExerciseCategory>('isolation');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   
   const muscleGroups = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other'];
@@ -59,32 +71,55 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
     }
   };
   
+  // Expand / collapse an exercise. On EXPAND we seed the draft fields
+  // from the exercise itself — that way the textarea always shows
+  // THAT exercise's notes (not a leftover draft from a different one),
+  // and Save can read all three drafts as the source of truth without
+  // null-coercing them.
+  const handleToggleExpand = (exercise: Exercise) => {
+    if (expandedExerciseId === exercise.id) {
+      setExpandedExerciseId(null);
+      return;
+    }
+    setExpandedExerciseId(exercise.id);
+    setEditingNotes(exercise.notes ?? '');
+    setEditingVideoUrl(exercise.videoUrl ?? '');
+    setEditingCategory(
+      exercise.category ?? (exercise.isCompound ? 'compound' : 'isolation'),
+    );
+  };
+
   const handleSaveNotes = (exerciseId: string) => {
+    // Read fresh from storage in case a cloud sync landed mid-edit.
     const allExercises = storage.getExercises();
     const exerciseIndex = allExercises.findIndex(e => e.id === exerciseId);
-    if (exerciseIndex >= 0) {
-      const updated = {
-        ...allExercises[exerciseIndex],
-        notes: editingNotes?.trim() || undefined,
-        videoUrl: editingVideoUrl?.trim() || undefined,
-        category: editingCategory ?? allExercises[exerciseIndex].category,
-      };
-      allExercises[exerciseIndex] = updated;
-      storage.saveExercises(allExercises);
-      // Propagate the edit to the shared exercise library so every buddy
-      // who has the same exercise gets the updated notes / video on their
-      // next pull. Fire-and-forget — the local save is the source of truth
-      // for this user; cross-device is best-effort.
-      addToSharedExerciseLibrary(updated).catch((err) =>
-        console.error('[Exercises] Failed to share notes:', err),
-      );
-      setExercises(allExercises);
-      setEditingNotes(null);
-      setEditingVideoUrl(null);
-      setEditingCategory(null);
-      setExpandedExerciseId(null);
-      onExercisesChange();
-    }
+    if (exerciseIndex < 0) return;
+
+    const existing = allExercises[exerciseIndex];
+    const trimmedNotes = editingNotes.trim();
+    const trimmedVideoUrl = editingVideoUrl.trim();
+    const updated: Exercise = {
+      ...existing,
+      // Empty string means user explicitly cleared the field → store
+      // undefined. Non-empty stores the trimmed text. Fields the user
+      // never opened don't reach this code path because the save
+      // button is only inside the expanded panel.
+      notes: trimmedNotes ? trimmedNotes : undefined,
+      videoUrl: trimmedVideoUrl ? trimmedVideoUrl : undefined,
+      category: editingCategory,
+    };
+    allExercises[exerciseIndex] = updated;
+    storage.saveExercises(allExercises);
+    // Propagate the edit to the shared exercise library so every buddy
+    // who has the same exercise gets the updated notes / video on their
+    // next pull. Fire-and-forget — the local save is the source of
+    // truth; cross-device is best-effort.
+    addToSharedExerciseLibrary(updated).catch((err) =>
+      console.error('[Exercises] Failed to share notes:', err),
+    );
+    setExercises(allExercises);
+    setExpandedExerciseId(null);
+    onExercisesChange();
   };
   
   return (
@@ -187,7 +222,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
             >
               <div className="p-4 flex items-center justify-between">
                 <button
-                  onClick={() => setExpandedExerciseId(isExpanded ? null : exercise.id)}
+                  onClick={() => handleToggleExpand(exercise)}
                   className="flex items-center gap-3 flex-1 text-left"
                 >
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -253,7 +288,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
                         Personal Notes
                       </label>
                       <textarea
-                        value={editingNotes ?? exercise.notes ?? ''}
+                        value={editingNotes}
                         onChange={(e) => setEditingNotes(e.target.value)}
                         placeholder="Add form cues, pain points, RPE targets..."
                         rows={3}
@@ -269,7 +304,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
                       </label>
                       <input
                         type="url"
-                        value={editingVideoUrl ?? exercise.videoUrl ?? ''}
+                        value={editingVideoUrl}
                         onChange={(e) => setEditingVideoUrl(e.target.value)}
                         placeholder="https://youtube.com/..."
                         className={`w-full p-3 rounded-lg border ${
@@ -285,8 +320,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
                       </label>
                       <div className="flex flex-wrap gap-1.5">
                         {(['compound','isolation','cardio','core','other'] as const).map((cat) => {
-                          const current = editingCategory ?? exercise.category ?? (exercise.isCompound ? 'compound' : 'isolation');
-                          const active = current === cat;
+                          const active = editingCategory === cat;
                           return (
                             <button
                               key={cat}
