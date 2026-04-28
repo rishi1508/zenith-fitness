@@ -76,7 +76,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
         try { localStorage.removeItem(GUEST_MODE_KEY); } catch { /* ignore */ }
 
-        // Background sync
+        // Background sync — and CRUCIALLY, set up the realtime listener
+        // only AFTER the protective pull completes. Earlier we set up
+        // the listener in parallel with the pull, which introduced a
+        // race: the listener's first onSnapshot fires within
+        // milliseconds of subscribe, unconditionally overwriting
+        // localStorage with whatever Firestore has. If the user closed
+        // the app before flushPendingWrites finished on the previous
+        // session, Firestore was still holding STALE data — the
+        // listener would then overwrite the user's local-only edits
+        // (e.g. exercise notes they just saved) before the protective
+        // pullFirestoreToLocalStorage (which has a length-heuristic
+        // guard) could intervene. Deferring to after-pull means the
+        // listener only handles legitimate future remote changes.
         (async () => {
           try {
             const didMigrate = await migrateLocalStorageToFirestore(firebaseUser.uid);
@@ -85,14 +97,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             await pullSharedExercises();
             onDataRefresh?.();
+            setupFirestoreListeners(firebaseUser.uid, () => {
+              onDataRefresh?.();
+            });
           } catch (err) {
             console.error('[Auth] Migration/sync error:', err);
+            // Best-effort: still attach the listener so future syncs work.
+            setupFirestoreListeners(firebaseUser.uid, () => {
+              onDataRefresh?.();
+            });
           }
         })();
-
-        setupFirestoreListeners(firebaseUser.uid, () => {
-          onDataRefresh?.();
-        });
       } else {
         setUser(null);
         setLoading(false);
