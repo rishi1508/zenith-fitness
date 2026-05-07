@@ -51,24 +51,12 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
-      # ---- Cloud Functions Deploy ----
-      # Builds and deploys the Cloud Functions (sendOTP / verifyOTP /
-      # saveWorkoutOnSessionComplete). Re-runs on every tag — Firebase
-      # is fast about no-op redeploys when the source hasn't changed.
-      - name: Install Cloud Functions deps
-        working-directory: functions
-        run: npm ci
-
-      - name: Build Cloud Functions
-        working-directory: functions
-        run: npm run build
-
-      - name: Deploy Cloud Functions
-        run: npx firebase-tools deploy --only functions --token "$FIREBASE_TOKEN" --force --non-interactive
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-
       # ---- Android APK Build ----
+      # The APK build is the user-visible deliverable, so it MUST run
+      # before the Cloud Functions deploy below. Earlier we ran the
+      # function deploy here and a config-level failure (no functions
+      # target in firebase.json) blocked the entire pipeline — no APK
+      # got produced for that tag.
       - name: Sync Capacitor
         run: npx cap sync android
 
@@ -111,3 +99,23 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- Cloud Functions Deploy ----
+      # Runs LAST, so a function-side failure (auth / rules / wrong
+      # secret) can never block the APK release above. Uses the
+      # predeploy hook in firebase.json to build the function source.
+      # `continue-on-error: true` means the GitHub Actions run is
+      # marked successful even if this step fails — the APK is still
+      # delivered. Inspect the step log if a deploy goes red.
+      - name: Install Cloud Functions deps
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: functions
+        run: npm ci
+        continue-on-error: true
+
+      - name: Deploy Cloud Functions
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npx firebase-tools deploy --only functions --token "$FIREBASE_TOKEN" --force --non-interactive
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        continue-on-error: true
