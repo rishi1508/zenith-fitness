@@ -329,6 +329,16 @@ export interface WorkoutSession {
    *  same exercise id is shared instead of everyone creating duplicates
    *  with the same name. */
   customExercises?: Exercise[];
+  /** Live exercise template, mutated by the HOST as they
+   *  add/remove/swap exercises or change set counts during the
+   *  session. Initialised to a copy of templateExercises at create
+   *  time. Non-host participants listen for changes here and
+   *  reconcile their own workout: new exercises are added, removed
+   *  exercises are dropped (only if the participant hasn't logged
+   *  any sets on them), and set-count changes are propagated. The
+   *  participant's own ad-hoc additions / their own set logs are
+   *  never overwritten. */
+  currentTemplateExercises?: TemplateExercise[];
 }
 
 /** Live exercise progress for a participant (separate doc for performance). */

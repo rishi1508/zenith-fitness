@@ -43,6 +43,10 @@ export async function createSession(
     workoutName,
     workoutType,
     templateExercises,
+    // Seed the live template with the same data so participants who
+    // attach before the host makes any change still get a coherent
+    // snapshot to reconcile against.
+    currentTemplateExercises: templateExercises,
     createdAt: new Date().toISOString(),
     participants: { [user.uid]: hostParticipant },
   };
@@ -355,6 +359,37 @@ export async function getPendingSessionInvites(): Promise<WorkoutSession[]> {
 /** Delete a session (host only, for cleanup). */
 export async function deleteSession(sessionId: string): Promise<void> {
   await deleteDoc(doc(db, 'workoutSessions', sessionId));
+}
+
+/**
+ * Push the host's current exercise list to the session as the live
+ * template. Non-host participants listen on currentTemplateExercises
+ * and reconcile their own workouts when this changes. Caller is
+ * responsible for debouncing — we don't want to hit Firestore on every
+ * keystroke; a 500ms idle is plenty.
+ *
+ * No-op if the user isn't the session host (defensive — rules also
+ * permit non-hosts to write but the participant-side reconcile only
+ * triggers on host writes anyway, so writing as a non-host is wasted
+ * work).
+ */
+export async function syncHostTemplate(
+  sessionId: string,
+  exercises: TemplateExercise[],
+): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  const ref = doc(db, 'workoutSessions', sessionId);
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const session = snap.data() as WorkoutSession;
+    if (session.hostUid !== user.uid) return;
+    if (session.status !== 'active' && session.status !== 'waiting') return;
+    await updateDoc(ref, { currentTemplateExercises: exercises });
+  } catch (err) {
+    console.warn('[Session] syncHostTemplate failed:', err);
+  }
 }
 
 /**

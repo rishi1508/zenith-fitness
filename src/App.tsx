@@ -16,6 +16,7 @@ import { settleStreak, isStreakActiveThisWeek } from './streakService';
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView, CoachChatView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
+import { templateFromWorkout, templatesEqual, reconcileWorkoutWithTemplate } from './sessionTemplateReconcile';
 import { computeMyCompareStats } from './buddyComparison';
 import { flushPendingWrites } from './firestoreSync';
 import { autoRegisterPushIfNeeded, attachPushTapHandler } from './pushService';
@@ -86,6 +87,15 @@ function App() {
   // of dropping the second buddy on merge.
   const [buddyProgress, setBuddyProgress] = useState<Map<string, Array<{ buddyName: string; sets: Array<{ weight: number; reps: number }> }>>>(new Map());
   const sessionSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce handle for the host-only template broadcast — fast
+  // (500ms) so participants see structural changes promptly without
+  // hammering Firestore on every keystroke.
+  const templateSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Last seen `currentTemplateExercises` for the active session, used
+  // by the participant-side reconcile to compute diffs against the
+  // previous broadcast instead of re-applying the full template each
+  // time a snapshot fires.
+  const lastSeenTemplateRef = useRef<import('./types').TemplateExercise[] | null>(null);
 
   // Online/offline probe + "Proceed offline" acknowledgement. Once the
   // user dismisses the gate we don't show it again this session — they
@@ -257,6 +267,9 @@ function App() {
   
   // CRITICAL: Persist active workout to localStorage on every change (screen timeout fix)
   // Also sync progress to Firestore when in a group session (debounced 2s)
+  // AND, if we're the host of an active session, broadcast our current
+  // exercise list as the live template so non-host participants
+  // reconcile their workouts with our changes (debounced 500ms).
   useEffect(() => {
     if (activeWorkout) {
       try {
@@ -270,6 +283,19 @@ function App() {
         sessionSyncTimer.current = setTimeout(() => {
           sessionService.syncProgress(activeSessionId, activeWorkout.exercises);
         }, 2000);
+        // Host-only template broadcast — fast (500ms) so participants
+        // see structural changes promptly. We don't sync set values
+        // (that's per-user via syncProgress); only the EXERCISE LIST
+        // and per-exercise SET COUNT, derived via templateFromWorkout.
+        if (sessionMode === 'host') {
+          if (templateSyncTimer.current) clearTimeout(templateSyncTimer.current);
+          templateSyncTimer.current = setTimeout(() => {
+            sessionService.syncHostTemplate(
+              activeSessionId,
+              templateFromWorkout(activeWorkout),
+            );
+          }, 500);
+        }
       }
     }
   }, [activeWorkout, activeSessionId]);
@@ -277,16 +303,49 @@ function App() {
   // When the host ends the session, every participant's app auto-saves their
   // in-progress workout so they don't lose what they logged.
   const finishWorkoutRef = useRef<((opts?: { skipValidation?: boolean; endSession?: boolean }) => void) | null>(null);
+  // Same ref pattern for saveActiveWorkout so the session-listener's
+  // closure (which fires from inside the host-template effect) always
+  // calls the latest function instead of an early-mount snapshot.
+  const saveActiveWorkoutRef = useRef<((workout: import('./types').Workout) => void) | null>(null);
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (!activeSessionId) {
+      // Reset template snapshot when leaving a session so next attach
+      // starts fresh (and a stale snapshot doesn't trigger phantom
+      // diffs on the next session).
+      lastSeenTemplateRef.current = null;
+      return;
+    }
     const unsub = sessionService.listenToSession(activeSessionId, (s) => {
       if (!s) {
         setSessionMode(null);
         return;
       }
       // Determine host vs. participant for the current user
+      const iAmHost = !!user && s.hostUid === user.uid;
       if (user) {
-        setSessionMode(s.hostUid === user.uid ? 'host' : 'participant');
+        setSessionMode(iAmHost ? 'host' : 'participant');
+      }
+      // PARTICIPANT-SIDE: reconcile our workout when the host's live
+      // template changes (they added/removed/swapped an exercise or
+      // added/removed sets). Skip when WE are the host (our workout
+      // IS the source of truth) and when the session is no longer
+      // active (post-completion changes shouldn't mutate our workout).
+      if (
+        !iAmHost &&
+        activeWorkout?.sessionId === activeSessionId &&
+        s.status === 'active' &&
+        s.currentTemplateExercises
+      ) {
+        const prev = lastSeenTemplateRef.current ?? s.templateExercises ?? [];
+        const next = s.currentTemplateExercises;
+        if (!templatesEqual(prev, next)) {
+          const reconciled = reconcileWorkoutWithTemplate(activeWorkout, next, prev);
+          if (reconciled) {
+            // Use saveActiveWorkout to also persist + sync our progress.
+            saveActiveWorkoutRef.current?.(reconciled);
+          }
+          lastSeenTemplateRef.current = next;
+        }
       }
       // Pick up any custom exercises broadcast by other participants
       // during this session. We add them to the local library if
@@ -648,6 +707,7 @@ function App() {
     storage.saveWorkout(workout);
     setActiveWorkout(workout);
   };
+  saveActiveWorkoutRef.current = saveActiveWorkout;
 
   // One-shot guard: prevents finishing the same workout twice. Matters
   // in the session flow where the host's manual finishWorkout AND the
