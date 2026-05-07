@@ -1,13 +1,13 @@
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc,
   collection, query, where, getDocs, onSnapshot,
-  addDoc, orderBy, limit,
+  addDoc, orderBy, limit, arrayUnion,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { deliverPush } from './pushService';
 import type {
   WorkoutSession, SessionParticipant, SessionProgress,
-  SessionReaction, TemplateExercise, WorkoutType, WorkoutExercise,
+  SessionReaction, TemplateExercise, WorkoutType, WorkoutExercise, Exercise,
 } from './types';
 
 
@@ -355,6 +355,30 @@ export async function getPendingSessionInvites(): Promise<WorkoutSession[]> {
 /** Delete a session (host only, for cleanup). */
 export async function deleteSession(sessionId: string): Promise<void> {
   await deleteDoc(doc(db, 'workoutSessions', sessionId));
+}
+
+/**
+ * Broadcast a newly-created custom exercise to all participants of the
+ * current session. Used when a user creates a new exercise mid-workout
+ * via the "search → can't find it → create" flow — so every other
+ * participant gets the same exercise definition (with the same id) in
+ * their local library, instead of having to recreate it themselves and
+ * end up with duplicates of the same name.
+ *
+ * Idempotent via Firestore arrayUnion (deep equality).
+ */
+export async function addCustomExerciseToSession(
+  sessionId: string,
+  exercise: Exercise,
+): Promise<void> {
+  const ref = doc(db, 'workoutSessions', sessionId);
+  try {
+    await updateDoc(ref, {
+      customExercises: arrayUnion(exercise),
+    });
+  } catch (err) {
+    console.warn('[Session] failed to broadcast custom exercise:', err);
+  }
 }
 
 /**

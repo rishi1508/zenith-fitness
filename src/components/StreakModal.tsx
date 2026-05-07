@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Flame, Snowflake, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as storage from '../storage';
-import { getStreakState, daysUntilNextFreeze, MAX_FREEZES, weekStartISO } from '../streakService';
+import { getStreakState, workoutsUntilNextFreeze, MAX_FREEZES, WORKOUTS_TO_EARN_FREEZE, weekStartISO } from '../streakService';
 import { registerBackHandler } from '../backHandlerRegistry';
 
 /** LOCAL YYYY-MM-DD — `Date.toISOString()` is UTC, which for a user in
@@ -294,7 +294,7 @@ export function StreakModal({ onClose, isDark }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewedMonth, workedOutDays, restDays, frozenWeeks, todayIso, thisWeekISO]);
 
-  const nextFreezeIn = daysUntilNextFreeze(state);
+  const nextFreezeIn = workoutsUntilNextFreeze(state);
   const longestStreak = stats.longestStreak || stats.currentStreak || 0;
   const subtle = isDark ? 'text-zinc-400' : 'text-gray-500';
 
@@ -509,7 +509,7 @@ export function StreakModal({ onClose, isDark }: Props) {
                     <div className={`text-xs mt-0.5 ${subtle}`}>
                       {state.freezes >= MAX_FREEZES
                         ? "You're maxed out!"
-                        : `${nextFreezeIn} day${nextFreezeIn === 1 ? '' : 's'} to your next freeze. Rescues one missed week.`}
+                        : `${nextFreezeIn} workout${nextFreezeIn === 1 ? '' : 's'} to your next freeze. Rescues one missed week.`}
                     </div>
                   </div>
                 </div>
@@ -517,7 +517,7 @@ export function StreakModal({ onClose, isDark }: Props) {
                   <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-[#0f0f0f]' : 'bg-white'}`}>
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-600 transition-all"
-                      style={{ width: `${Math.min(100, (state.streakDaysSinceFreezeGain / 30) * 100)}%` }}
+                      style={{ width: `${Math.min(100, (state.streakDaysSinceFreezeGain / WORKOUTS_TO_EARN_FREEZE) * 100)}%` }}
                     />
                   </div>
                 )}

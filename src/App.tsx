@@ -79,7 +79,12 @@ function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [completedSession, setCompletedSession] = useState<WorkoutSession | null>(null);
   const [sessionMode, setSessionMode] = useState<'host' | 'participant' | null>(null);
-  const [buddyProgress, setBuddyProgress] = useState<Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>>(new Map());
+  // Per-exercise (lowercased) → array of buddies who've worked on
+  // that exercise in the current session. We keep an ARRAY (not a
+  // single buddy) so 3-person sessions correctly show "Rohit did
+  // 15×10" AND "Sahil did 12×10" stacked under each set row, instead
+  // of dropping the second buddy on merge.
+  const [buddyProgress, setBuddyProgress] = useState<Map<string, Array<{ buddyName: string; sets: Array<{ weight: number; reps: number }> }>>>(new Map());
   const sessionSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Online/offline probe + "Proceed offline" acknowledgement. Once the
@@ -190,6 +195,19 @@ function App() {
       if (savedActiveWorkout) {
         const workout = JSON.parse(savedActiveWorkout);
         setActiveWorkout(workout);
+        // If the saved workout was part of a buddy session, restore the
+        // session id too. The existing session-status watcher will then
+        // reattach: if the host ended / cancelled the session while we
+        // were closed, the watcher's status='completed' branch saves
+        // our workout to history (skipValidation), and the
+        // status='cancelled' branch discards it. This is the recovery
+        // path for "host ended the session but I had the app closed /
+        // backgrounded — the workout never got saved." Without this,
+        // the orphaned workout would sit in zenith_active_workout
+        // indefinitely.
+        if (workout?.sessionId) {
+          setActiveSessionId(workout.sessionId);
+        }
         console.log('[Recovery] Restored active workout session (paused on home)');
       }
     } catch (e) {
@@ -270,6 +288,29 @@ function App() {
       if (user) {
         setSessionMode(s.hostUid === user.uid ? 'host' : 'participant');
       }
+      // Pick up any custom exercises broadcast by other participants
+      // during this session. We add them to the local library if
+      // they're not already present (by id OR by case-insensitive
+      // name). Without this, when a buddy creates a new exercise
+      // mid-session we'd never see it locally — leading to either a
+      // missing exercise referenced in their progress or, worse, the
+      // user re-creating it with a different id and ending up with
+      // duplicates.
+      if (s.customExercises && s.customExercises.length > 0) {
+        try {
+          const local = storage.getExercises();
+          const localIds = new Set(local.map((e) => e.id));
+          const localNames = new Set(local.map((e) => e.name.trim().toLowerCase()));
+          const toAdd = s.customExercises.filter(
+            (e) => !localIds.has(e.id) && !localNames.has(e.name.trim().toLowerCase())
+          );
+          if (toAdd.length > 0) {
+            storage.saveExercises([...local, ...toAdd]);
+          }
+        } catch (err) {
+          console.warn('[Session] failed to merge custom exercises:', err);
+        }
+      }
       if (s.status === 'completed' &&
           activeWorkout?.sessionId === activeSessionId &&
           !activeWorkout.completed) {
@@ -305,13 +346,12 @@ function App() {
   // ordered list of completed sets per exercise (keyed by exercise name,
   // case-insensitive). Used by ActiveWorkoutView to show "Alice did
   // 60kg × 10 reps" beside each of YOUR set rows — set N maps to buddy's
-  // set N. Earlier we tracked only the buddy's best set and gated the
-  // render on setIndex === 0, which is why later sets never showed an
-  // update.
+  // set N.
   //
-  // If multiple buddies are in the session and worked on the same
-  // exercise, we keep the first buddy that has data for that exercise
-  // (sufficient for the current 1-on-1 buddy-session UX).
+  // For 3-person sessions we keep ALL buddies who logged data for an
+  // exercise — the consumer renders one line per buddy below each set.
+  // Earlier we kept only the first-seen buddy per exercise on merge,
+  // which made the second buddy disappear from the per-set hint line.
   useEffect(() => {
     if (!activeSessionId || !user) {
       setBuddyProgress(new Map());
@@ -322,10 +362,18 @@ function App() {
     const perBuddy = new Map<string, Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>>();
     const recompute = () => {
       if (cancelled) return;
-      const merged = new Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>();
+      const merged = new Map<string, Array<{ buddyName: string; sets: Array<{ weight: number; reps: number }> }>>();
       for (const byName of perBuddy.values()) {
         for (const [k, v] of byName) {
-          if (!merged.has(k)) merged.set(k, v);
+          let bucket = merged.get(k);
+          if (!bucket) {
+            bucket = [];
+            merged.set(k, bucket);
+          }
+          // Avoid duplicates if the same buddy somehow appears twice.
+          if (!bucket.some((b) => b.buddyName === v.buddyName)) {
+            bucket.push(v);
+          }
         }
       }
       setBuddyProgress(merged);

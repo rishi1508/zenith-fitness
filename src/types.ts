@@ -323,6 +323,12 @@ export interface WorkoutSession {
   startedAt?: string;
   completedAt?: string;
   participants: Record<string, SessionParticipant>;
+  /** Custom exercises created by ANY participant during this session.
+   *  Other clients pick these up via the session listener and add them
+   *  to their local library if they don't already have them, so the
+   *  same exercise id is shared instead of everyone creating duplicates
+   *  with the same name. */
+  customExercises?: Exercise[];
 }
 
 /** Live exercise progress for a participant (separate doc for performance). */

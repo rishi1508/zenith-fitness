@@ -26,15 +26,24 @@ export function useOnlineStatus() {
     }
     try {
       // shared/exerciseLibrary is readable by any signed-in user; using
-      // it as a heartbeat avoids creating a dedicated ping doc. If the
-      // user isn't signed in yet, the Promise rejects, which we also
-      // treat as offline-firestore.
+      // it as a heartbeat avoids creating a dedicated ping doc.
       await Promise.race([
         getDoc(doc(db, 'shared', 'exerciseLibrary')),
         new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000)),
       ]);
       return 'online';
-    } catch {
+    } catch (err) {
+      // permission-denied / unauthenticated means the request REACHED
+      // Firestore (so we have connectivity) but our identity wasn't
+      // accepted — typically because auth is still settling on app
+      // launch. Treat that as 'online' so the false "you look offline"
+      // modal stops firing on every login. Real network failures throw
+      // different errors (timeout, fetch abort, no .code property) and
+      // correctly fall through to 'offline-firestore'.
+      const code = (err as { code?: string } | null)?.code;
+      if (code === 'permission-denied' || code === 'unauthenticated') {
+        return 'online';
+      }
       return 'offline-firestore';
     }
   }, []);

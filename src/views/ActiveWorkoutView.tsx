@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
+import * as sessionService from '../workoutSessionService';
 import { hapticImpact, hapticNotification } from '../haptics';
 import { defaultRestSecondsFor } from '../restTimer';
 
@@ -35,14 +36,16 @@ export function ActiveWorkoutView({
   onDiscard: () => void;
   /** 'host' = finish ends session for all; 'participant' = cannot finish; null = regular personal workout */
   sessionMode?: 'host' | 'participant' | null;
-  /** Per-exercise full ordered set list from the other buddy in the
-   *  session, keyed by exercise NAME (case-insensitive, trimmed). Each
-   *  index in `sets` corresponds to that set number (0 = set 1, etc.) so
-   *  the UI can show "buddy did Xkg × Y reps" alongside YOUR matching
-   *  set. Exercises the buddy hasn't done at all are absent from the map
-   *  — no entry shown for divergent exercises (e.g. you do incline DB
-   *  while buddy does incline bench). */
-  buddyProgress?: Map<string, { buddyName: string; sets: Array<{ weight: number; reps: number }> }>;
+  /** Per-exercise full ordered set list from EACH OTHER participant in
+   *  the session, keyed by exercise NAME (case-insensitive, trimmed).
+   *  Each index in a buddy's `sets` corresponds to that set number
+   *  (0 = set 1, etc.) so the UI can show "buddy did Xkg × Y reps"
+   *  alongside YOUR matching set. In a 3-person session every buddy
+   *  who logged data appears as its own line under each of your sets.
+   *  Exercises no buddy has done are absent from the map — no entry
+   *  shown for divergent exercises (e.g. you do incline DB while buddy
+   *  does incline bench). */
+  buddyProgress?: Map<string, Array<{ buddyName: string; sets: Array<{ weight: number; reps: number }> }>>;
 }) {
   const [restTimer, setRestTimer] = useState<number | null>(null);
   const [restTimeLeft, setRestTimeLeft] = useState(0);
@@ -559,6 +562,7 @@ export function ActiveWorkoutView({
                 onDelete={() => deleteExercise(exIndex)}
                 canDelete={workout.exercises.length > 1}
                 onExerciseCreated={refreshExercises}
+                sessionId={workout.sessionId}
                 buddyBest={buddyProgress?.get(exercise.exerciseName.trim().toLowerCase())}
               />
             </div>
@@ -638,6 +642,15 @@ export function ActiveWorkoutView({
                       const created = storage.addCustomExercise(addSearchQuery.trim(), 'other');
                       refreshExercises();
                       addExercise(created);
+                      // If we're inside a buddy session, broadcast the
+                      // new exercise so the other participants pick it
+                      // up with the SAME id and don't end up creating
+                      // their own duplicate when they try to log it.
+                      if (workout.sessionId) {
+                        sessionService
+                          .addCustomExerciseToSession(workout.sessionId, created)
+                          .catch((err) => console.warn('[Session] broadcast new exercise failed', err));
+                      }
                     }}
                     className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center gap-2 text-orange-400"
                   >
@@ -655,7 +668,7 @@ export function ActiveWorkoutView({
 }
 
 // Exercise Card
-function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, buddyBest }: {
+function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, sessionId, buddyBest }: {
   exercise: WorkoutExercise;
   onUpdateSet: (setIndex: number, updates: Partial<WorkoutSet>) => void;
   onAddSet: () => void;
@@ -664,11 +677,15 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   onDelete: () => void;
   canDelete: boolean;
   onExerciseCreated: () => void;
-  /** Buddy's full ordered set list for this exercise, in the current
-   *  session. Index N corresponds to that set number — the UI renders
-   *  "buddy did Xkg × Y" beside YOUR set N if the buddy has logged set
-   *  N. */
-  buddyBest?: { buddyName: string; sets: Array<{ weight: number; reps: number }> };
+  /** When this card is rendered inside a buddy session, the parent
+   *  passes the session id so a custom exercise the user creates from
+   *  the swap-search flow can be broadcast to other participants. */
+  sessionId?: string;
+  /** All other participants' ordered set lists for this exercise in
+   *  the current session. The card renders one "{buddyName} did Xkg × Y"
+   *  line per buddy below YOUR set N, when each buddy has logged set
+   *  N. Empty / absent → no hint is shown. */
+  buddyBest?: Array<{ buddyName: string; sets: Array<{ weight: number; reps: number }> }>;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -822,6 +839,15 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                       setAllExercises(storage.getExercises());
                       onExerciseCreated();
                       onSwapExercise(created);
+                      // Inside a buddy session: broadcast so the
+                      // other participants get the same exercise id
+                      // in their library and don't end up creating
+                      // duplicates with the same name.
+                      if (sessionId) {
+                        sessionService
+                          .addCustomExerciseToSession(sessionId, created)
+                          .catch((err) => console.warn('[Session] broadcast new exercise failed', err));
+                      }
                       setShowExerciseSelector(false);
                       setSearchQuery('');
                     }}
@@ -1062,20 +1088,26 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                     )}
                   </div>
                 )}
-                {/* Buddy's matching set in the current group session, if
-                    any. We render set-by-set: YOUR set N → buddy's set
-                    N. Earlier we showed only the buddy's best set under
-                    set 1; subsequent sets had nothing under them, which
-                    looked like buddy progress had stalled. */}
-                {(() => {
-                  const buddySet = buddyBest?.sets[setIndex];
-                  if (!buddySet || buddySet.weight <= 0 || buddySet.reps <= 0) return null;
-                  return (
-                    <div className="px-2 text-xs text-blue-400">
-                      {buddyBest!.buddyName} did {buddySet.weight}kg × {buddySet.reps} reps
-                    </div>
-                  );
-                })()}
+                {/* One line per OTHER participant who's logged this
+                    set. We render set-by-set: YOUR set N → each buddy's
+                    set N (if they've done it). In a 3-person session
+                    that's potentially two stacked lines under one of
+                    your sets. Earlier this only showed the first
+                    buddy's data even when 3 people were in the
+                    session, dropping the second buddy from the hint. */}
+                {buddyBest && buddyBest.length > 0 && (
+                  <>
+                    {buddyBest.map((b) => {
+                      const buddySet = b.sets[setIndex];
+                      if (!buddySet || buddySet.weight <= 0 || buddySet.reps <= 0) return null;
+                      return (
+                        <div key={b.buddyName} className="px-2 text-xs text-blue-400">
+                          {b.buddyName} did {buddySet.weight}kg × {buddySet.reps} reps
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
               </div>
             );
           })}

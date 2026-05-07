@@ -243,7 +243,9 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
           <button
             onClick={handleDecline}
             className={`flex-1 py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 transition-colors ${
-              isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
+              isDark
+                ? 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+                : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
             }`}
           >
             <X className="w-4 h-4" /> Decline
@@ -259,8 +261,8 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
 
       {/* Waiting message for non-host who joined */}
       {!isHost && myStatus === 'joined' && (
-        <div className={`text-center py-4 ${subtleText}`}>
-          <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <div className={`text-center py-4 ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>
+          <Users className={`w-8 h-8 mx-auto mb-2 opacity-60 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`} />
           <p className="text-sm">Waiting for host to start...</p>
         </div>
       )}
