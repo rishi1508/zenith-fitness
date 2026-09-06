@@ -23,13 +23,28 @@ export function estimateMaintenanceKcal(profile: HealthProfile, weightKg: number
 const KCAL_PER_KG_BODYWEIGHT = 7700;
 const PROTEIN_G_PER_KG: Record<PhaseGoal, number> = { cut: 2.2, maintain: 2.0, bulk: 1.8 };
 
+/** Where the maintenance number came from: measured intake + trend, the
+ *  Mifflin–St Jeor formula, or nothing yet. Display only — it never changes
+ *  the maths (docs/HEALTH_SPEC.md §5). */
+export type MaintenanceBasis = 'adaptive' | 'formula' | 'none';
+
 /** Daily targets from maintenance + goal. Rate is % body weight per week, signed (+ bulk, − cut). */
-export function computeTargets(input: { maintenanceKcal: number; weightKg: number; goal: PhaseGoal; targetRatePctPerWeek: number }): NutritionTargets {
+export function computeTargets(input: {
+  maintenanceKcal: number;
+  weightKg: number;
+  goal: PhaseGoal;
+  targetRatePctPerWeek: number;
+  maintenanceBasis?: MaintenanceBasis;
+}): NutritionTargets & { maintenanceBasis?: MaintenanceBasis } {
   const weeklyKg = (input.targetRatePctPerWeek / 100) * input.weightKg;
   const dailyDelta = (weeklyKg * KCAL_PER_KG_BODYWEIGHT) / 7;
   const kcal = Math.max(1200, Math.round((input.maintenanceKcal + dailyDelta) / 10) * 10);
   const protein = Math.round(PROTEIN_G_PER_KG[input.goal] * input.weightKg);
   const fat = Math.round((kcal * 0.25) / 9);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { kcal, protein, carbs, fat, waterMl: Math.round(input.weightKg * 35 / 50) * 50, mode: 'auto', updatedAt: new Date().toISOString() };
+  return {
+    kcal, protein, carbs, fat, waterMl: Math.round(input.weightKg * 35 / 50) * 50, mode: 'auto',
+    updatedAt: new Date().toISOString(),
+    ...(input.maintenanceBasis ? { maintenanceBasis: input.maintenanceBasis } : {}),
+  };
 }

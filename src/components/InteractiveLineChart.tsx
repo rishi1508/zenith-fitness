@@ -41,6 +41,10 @@ export interface InteractiveLineChartProps {
   emptyMessage: string;
   /** Below this many points the chart shows `emptyMessage` instead. */
   minPoints?: number;
+  /** Caller-computed smoothed series drawn over the raw one (one value per
+   *  point) — e.g. the phase engine's EMA. Independent of the built-in
+   *  moving average, which stays under the user's chart settings. */
+  overlay?: { values: number[]; color: string; label: string };
 }
 
 const MA_COLOR = '#22d3ee';
@@ -93,6 +97,7 @@ function ChartBody({
   unit,
   formatTooltip,
   headerExtra,
+  overlay,
   cardClass,
 }: InteractiveLineChartProps & { cardClass: string }) {
   const { settings, toggleSeries, setWindow } = useChartSettings();
@@ -128,6 +133,10 @@ function ChartBody({
     };
   }, [values, maValues, geom, scale, n, baseY, padLeft]);
   const labelIndices = useMemo(() => pickXLabelIndices(n, pointSpacing), [n, pointSpacing]);
+  const overlayPath = useMemo(
+    () => (overlay ? linePath(overlay.values.map((v, i) => [xAt(geom, i), yAt(geom, scale, v)])) : ''),
+    [overlay, geom, scale],
+  );
 
   // ---- derived display state ----
   const showRaw = settings.showRawPoints;
@@ -144,6 +153,7 @@ function ChartBody({
           point: points[active],
           ma: maValues[active],
         };
+  const overlayValue = active !== null ? overlay?.values[active] : undefined;
   const activeColor = showRaw ? accent : MA_COLOR;
   const isZoomed = xZoom !== 1 || yZoom !== 1;
   const scrollLocked = crosshair || axisDrag !== null;
@@ -261,6 +271,11 @@ function ChartBody({
             {showRaw && areaPath && <path d={areaPath} fill={`url(#${gradientId})`} />}
             {showRaw && <path d={rawPath} fill="none" stroke={accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
 
+            {/* Caller-supplied smoothed series (solid, sits on top of the raw line) */}
+            {overlay && overlayPath && (
+              <path d={overlayPath} fill="none" stroke={overlay.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            )}
+
             {/* Moving average (dashed cyan so it reads as secondary) */}
             {showMA && (
               <path
@@ -320,6 +335,11 @@ function ChartBody({
             <div className="text-sm font-bold leading-tight whitespace-nowrap" style={{ color: accent }}>
               {tooltipValue(activePt.point.value)}
             </div>
+            {overlay && overlayValue !== undefined && (
+              <div className="text-[10px] whitespace-nowrap" style={{ color: overlay.color }}>
+                {overlay.label} {tooltipValue(overlayValue)}
+              </div>
+            )}
             {showMA && (
               <div className="text-[10px] whitespace-nowrap" style={{ color: MA_COLOR }}>
                 {settings.movingAverageWindow}-MA {tooltipValue(activePt.ma)}
