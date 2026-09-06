@@ -19,6 +19,8 @@
     "@capacitor/push-notifications": "^8.0.3",
     "@capacitor/status-bar": "^8.0.0",
     "@vercel/node": "^3.2.29",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "express": "^5.2.1",
     "firebase": "^12.10.0",
     "firebase-admin": "^12.7.0",
