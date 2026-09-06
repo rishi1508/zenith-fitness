@@ -9,6 +9,9 @@
 
 const CACHE_NAME = 'zenith-fitness-v3';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
+// Food search must work offline; the shards under /data/foods/ are picked up by
+// the runtime cache below on first use, but the index is worth pre-caching.
+const optionalUrlsToCache = ['/data/foods/index.json'];
 
 // ---------- Firebase Cloud Messaging ----------
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
@@ -65,9 +68,12 @@ self.addEventListener('notificationclick', (event) => {
 
 // ---------- PWA lifecycle + cache ----------
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache)),
-  );
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(urlsToCache);
+    // Best-effort: one missing optional file must not fail the install.
+    await Promise.allSettled(optionalUrlsToCache.map((url) => cache.add(url)));
+  })());
   self.skipWaiting();
 });
 

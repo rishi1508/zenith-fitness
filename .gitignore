@@ -26,6 +26,9 @@ CLAUDE.md
 *.sw?
 *.keystore
 
+# Food database downloads (IFCT tarballs, USDA CSV exports) — rebuilt on demand
+data/raw
+
 # Firebase
 .firebase
 src/google-services.json
