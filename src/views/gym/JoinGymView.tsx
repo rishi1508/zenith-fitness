@@ -5,7 +5,8 @@ import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { joinGymByCode } from '../../gymService';
-import { QrScanner, MemberCodeInput, MemberToast, useMemberToast } from '../../components';
+import { QrScanner, MemberCodeInput } from '../../components';
+import { useToast } from '../../ui';
 import { parseGymJoinQr } from '../../gymMemberHelpers';
 
 const CODE_LEN = 6;
@@ -21,7 +22,7 @@ export function JoinGymView({ isDark, onBack, onNavigate }: GymViewProps) {
   const [chars, setChars] = useState<string[]>(Array(CODE_LEN).fill(''));
   const [joining, setJoining] = useState(false);
   const [scanHint, setScanHint] = useState<string | null>(null);
-  const { toast, showToast } = useMemberToast();
+  const { showToast } = useToast();
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -55,7 +56,6 @@ export function JoinGymView({ isDark, onBack, onNavigate }: GymViewProps) {
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      <MemberToast toast={toast} />
       <div className="flex items-center gap-3">
         <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
           <ArrowLeft className="w-5 h-5" />

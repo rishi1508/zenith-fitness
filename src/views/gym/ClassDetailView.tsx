@@ -7,7 +7,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { listClasses, listMembers, listenToSession, enrol, unenrol } from '../../gymService';
 import { localDateISO } from '../../gymStats';
 import { trainerName, memberName, dayLabel, formatTime12h, endTime12h } from '../../gymMemberHelpers';
-import { MemberToast, useMemberToast } from '../../components';
+import {  } from '../../components';
+import { useToast } from '../../ui';
 
 /** `classId` prop arrives as `${classId}|${date}` (ClassesView encodes
  *  the date into the nav param since sessions aren't their own route). */
@@ -20,7 +21,7 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
   const [members, setMembers] = useState<GymMember[]>([]);
   const [session, setSession] = useState<GymClassSession | null>(null);
   const [busy, setBusy] = useState(false);
-  const { toast, showToast } = useMemberToast();
+  const { showToast } = useToast();
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -99,7 +100,6 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      <MemberToast toast={toast} />
       <div className="flex items-center gap-3">
         <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
           <ArrowLeft className="w-5 h-5" />

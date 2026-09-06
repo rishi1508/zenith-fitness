@@ -7,7 +7,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { listenToClasses, listenToMembers, saveClass, deleteClass, listenToSession, markAttendance } from '../../gymService';
 import { localDateISO } from '../../gymStats';
-import { StaffToast } from '../../components/gym/StaffToast';
+import { useToast } from '../../ui';
 
 const WEEKDAYS = [
   { id: 1, label: 'Mon' }, { id: 2, label: 'Tue' }, { id: 3, label: 'Wed' },
@@ -27,7 +27,7 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingClass, setEditingClass] = useState<GymClass | null>(null);
   const [attendanceClass, setAttendanceClass] = useState<GymClass | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const gymId = gym?.id;
@@ -60,9 +60,9 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
     if (!confirm(`Delete "${cls.name}" (${WEEKDAY_LABEL[cls.weekday]})? This can't be undone.`)) return;
     try {
       await deleteClass(gym.id, cls.id);
-      setToast('Class deleted');
+      showToast('Class deleted');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to delete class');
+      showToast(err instanceof Error ? err.message : 'Failed to delete class', 'error');
     }
   };
 
@@ -71,7 +71,7 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
     try {
       await saveClass(gym.id, { ...cls, active: !cls.active });
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to update class');
+      showToast(err instanceof Error ? err.message : 'Failed to update class', 'error');
     }
   };
 
@@ -151,7 +151,7 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
           trainers={trainers}
           editingClass={editingClass}
           onClose={() => setShowForm(false)}
-          onSuccess={() => { setShowForm(false); setToast(editingClass ? 'Class updated' : 'Class added'); }}
+          onSuccess={() => { setShowForm(false); showToast(editingClass ? 'Class updated' : 'Class added'); }}
         />
       )}
 
@@ -164,7 +164,6 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
           onClose={() => setAttendanceClass(null)}
         />
       )}
-      <StaffToast message={toast} isDark={isDark} onDismiss={() => setToast(null)} />
     </div>
   );
 }

@@ -10,7 +10,7 @@ import { localDateISO } from '../../gymStats';
 import { clearMemberTrainer } from '../../gymStaffHelpers';
 import { StatusChip } from '../../components/gym/StaffMemberRow';
 import { StaffPaymentSheet } from '../../components/gym/StaffPaymentSheet';
-import { StaffToast } from '../../components/gym/StaffToast';
+import { useToast } from '../../ui';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -41,7 +41,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
   const [planStartDraft, setPlanStartDraft] = useState('');
   const [planEndDraft, setPlanEndDraft] = useState('');
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const member = useMemo(() => members.find((m) => m.uid === memberUid) ?? null, [members, memberUid]);
   const trainers = useMemo(() => members.filter((m) => m.role === 'trainer'), [members]);
@@ -116,10 +116,10 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
         planStart: planStartDraft || undefined,
         planEnd: planEndDraft || undefined,
       });
-      setToast('Plan updated');
+      showToast('Plan updated');
       setEditingPlan(false);
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to update plan');
+      showToast(err instanceof Error ? err.message : 'Failed to update plan', 'error');
     } finally {
       setSaving(false);
     }
@@ -129,9 +129,9 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
     setSaving(true);
     try {
       await updateMember(gym.id, member.uid, { frozen: !member.frozen });
-      setToast(member.frozen ? 'Membership unfrozen' : 'Membership frozen');
+      showToast(member.frozen ? 'Membership unfrozen' : 'Membership frozen');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to update');
+      showToast(err instanceof Error ? err.message : 'Failed to update', 'error');
     } finally {
       setSaving(false);
     }
@@ -142,9 +142,9 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
     try {
       if (uid) await updateMember(gym.id, member.uid, { trainerUid: uid });
       else await clearMemberTrainer(gym.id, member.uid);
-      setToast('Trainer updated');
+      showToast('Trainer updated');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to update trainer');
+      showToast(err instanceof Error ? err.message : 'Failed to update trainer', 'error');
     } finally {
       setSaving(false);
     }
@@ -155,10 +155,10 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
     setSaving(true);
     try {
       await updateMember(gym.id, member.uid, { notes: notesDraft.trim() || undefined });
-      setToast('Notes saved');
+      showToast('Notes saved');
       setEditingNotes(false);
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to save notes');
+      showToast(err instanceof Error ? err.message : 'Failed to save notes', 'error');
     } finally {
       setSaving(false);
     }
@@ -171,7 +171,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
       await removeMember(gym.id, member.uid);
       onBack();
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to remove member');
+      showToast(err instanceof Error ? err.message : 'Failed to remove member', 'error');
       setSaving(false);
     }
   };
@@ -363,12 +363,11 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
           onClose={() => setShowPayment(false)}
           onSuccess={() => {
             setShowPayment(false);
-            setToast('Payment recorded');
+            showToast('Payment recorded');
             setRefreshTick((n) => n + 1);
           }}
         />
       )}
-      <StaffToast message={toast} isDark={isDark} onDismiss={() => setToast(null)} />
     </div>
   );
 }

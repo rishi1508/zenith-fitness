@@ -6,7 +6,8 @@ import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { listenToClasses, listMembers, upcomingSessions } from '../../gymService';
 import { trainerName, dayLabel } from '../../gymMemberHelpers';
-import { ClassSessionRow, MemberToast, useMemberToast } from '../../components';
+import { ClassSessionRow } from '../../components';
+import { useToast } from '../../ui';
 
 /** Next 7 days of classes, grouped by day. Trainer names come from
  *  listMembers, which only staff can list (see firestore.rules) — for a
@@ -17,7 +18,7 @@ export function ClassesView({ isDark, onBack, onNavigate }: GymViewProps) {
   const { user } = useAuth();
   const [classes, setClasses] = useState<GymClass[] | null>(null);
   const [members, setMembers] = useState<GymMember[]>([]);
-  const { toast, showToast } = useMemberToast();
+  const { showToast } = useToast();
   const isStaff = role === 'trainer' || role === 'manager' || role === 'owner';
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
@@ -48,7 +49,6 @@ export function ClassesView({ isDark, onBack, onNavigate }: GymViewProps) {
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      <MemberToast toast={toast} />
       <div className="flex items-center gap-3">
         <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
           <ArrowLeft className="w-5 h-5" />

@@ -9,7 +9,7 @@ import {
 import { localDateISO } from '../../gymStats';
 import { QrCode, QrScanner } from '../../components';
 import { StatusChip } from '../../components/gym/StaffMemberRow';
-import { StaffToast } from '../../components/gym/StaffToast';
+import { useToast } from '../../ui';
 
 /** Staff check-in console — see docs/GYM_TIER_A_SPEC.md §6.3. Available
  *  to all staff (trainer+); nothing here is manager-gated. */
@@ -24,7 +24,7 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
   const [scanning, setScanning] = useState(false);
   const [manualSearch, setManualSearch] = useState('');
   const [successInfo, setSuccessInfo] = useState<{ member: GymMember; at: string } | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const gymId = gym?.id;
@@ -69,7 +69,7 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
       setCode(plain);
       setCodeDate(localDateISO(new Date()));
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to generate code');
+      showToast(err instanceof Error ? err.message : 'Failed to generate code', 'error');
     } finally {
       setRotating(false);
     }
@@ -81,10 +81,10 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
       const { checkin } = await checkinMember(gym.id, uid, method);
       const m = memberByUid.get(uid);
       if (m) setSuccessInfo({ member: m, at: checkin.at });
-      else setToast('Checked in');
+      else showToast('Checked in');
       setCheckinsToday((prev) => (prev.some((c) => c.id === checkin.id) ? prev : [checkin, ...prev]));
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Check-in failed');
+      showToast(err instanceof Error ? err.message : 'Check-in failed', 'error');
     }
   };
 
@@ -92,7 +92,7 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
     if (!gym) return;
     const parsed = parseQrPayload(text);
     if (!parsed || parsed.kind !== 'member' || parsed.gymId !== gym.id) {
-      setToast('Not a valid member QR for this gym');
+      showToast('Not a valid member QR for this gym', 'error');
       return;
     }
     void recordCheckin(parsed.uid, 'staff-qr');
@@ -242,7 +242,6 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
           </div>
         </div>
       )}
-      <StaffToast message={toast} isDark={isDark} onDismiss={() => setToast(null)} />
     </div>
   );
 }

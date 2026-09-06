@@ -8,7 +8,8 @@ import { checkinMember, verifyDailyCode, memberQrPayload, parseQrPayload, listCh
 import { localDateISO, addDaysISO } from '../../gymStats';
 import { startOfWeekISO } from '../../gymMemberHelpers';
 import { hapticNotification } from '../../haptics';
-import { QrCode, QrScanner, MemberCodeInput, MemberToast, useMemberToast } from '../../components';
+import { QrCode, QrScanner, MemberCodeInput } from '../../components';
+import { useToast } from '../../ui';
 
 type Tab = 'scan' | 'code' | 'myqr';
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -23,7 +24,7 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
   const [busy, setBusy] = useState(false);
   const [weekCheckins, setWeekCheckins] = useState<GymCheckin[] | null>(null);
-  const { toast, showToast } = useMemberToast();
+  const { showToast } = useToast();
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -111,7 +112,6 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      <MemberToast toast={toast} />
       <div className="flex items-center gap-3">
         <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
           <ArrowLeft className="w-5 h-5" />

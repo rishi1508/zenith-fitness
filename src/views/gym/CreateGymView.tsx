@@ -5,7 +5,8 @@ import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { createGym } from '../../gymService';
-import { MemberToast, useMemberToast } from '../../components';
+import {  } from '../../components';
+import { useToast } from '../../ui';
 
 /** Zenith-admin only: creates a new gym (the caller becomes its owner). */
 export function CreateGymView({ isDark, onBack, onNavigate }: GymViewProps) {
@@ -15,7 +16,7 @@ export function CreateGymView({ isDark, onBack, onNavigate }: GymViewProps) {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [creating, setCreating] = useState(false);
-  const { toast, showToast } = useMemberToast();
+  const { showToast } = useToast();
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -62,7 +63,6 @@ export function CreateGymView({ isDark, onBack, onNavigate }: GymViewProps) {
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      <MemberToast toast={toast} />
       {backHeader}
       <div className={`rounded-xl border p-5 space-y-3 ${cardBg} ${cardBorder}`}>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gym name" className={inputCls} autoFocus />

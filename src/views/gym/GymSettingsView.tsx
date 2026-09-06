@@ -8,7 +8,7 @@ import { isAdmin } from '../../admin';
 import { updateGym, setStaffRole, listenToMembers } from '../../gymService';
 import { addStaffByEmail, clearGymAccentColor, regenerateJoinCode } from '../../gymStaffHelpers';
 import { QrCode } from '../../components';
-import { StaffToast } from '../../components/gym/StaffToast';
+import { useToast } from '../../ui';
 
 const ACCENT_PRESETS = [
   '#f97316', '#ef4444', '#f59e0b', '#10b981', '#14b8a6', '#3b82f6', '#6366f1', '#a855f7',
@@ -70,7 +70,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
   const [addingStaff, setAddingStaff] = useState(false);
 
   const [regenerating, setRegenerating] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => listenToMembers(gym.id, setStaffMembers), [gym.id]);
 
@@ -93,9 +93,9 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
         logoUrl: logoUrl.trim() || undefined,
         accentColor: accentColor || undefined,
       });
-      setToast('Gym profile saved');
+      showToast('Gym profile saved');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to save');
+      showToast(err instanceof Error ? err.message : 'Failed to save', 'error');
     } finally {
       setSavingProfile(false);
     }
@@ -110,9 +110,9 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
     setSavingPlans(true);
     try {
       await updateGym(gym.id, { plans });
-      setToast('Plans saved');
+      showToast('Plans saved');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to save plans');
+      showToast(err instanceof Error ? err.message : 'Failed to save plans', 'error');
     } finally {
       setSavingPlans(false);
     }
@@ -121,18 +121,18 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
   const handleRoleChange = async (uid: string, newRole: Exclude<GymRole, 'member'>) => {
     try {
       await setStaffRole(gym.id, uid, newRole);
-      setToast('Role updated');
+      showToast('Role updated');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to update role');
+      showToast(err instanceof Error ? err.message : 'Failed to update role', 'error');
     }
   };
   const handleRemoveStaff = async (uid: string) => {
     if (!confirm('Remove this person from staff?')) return;
     try {
       await setStaffRole(gym.id, uid, null);
-      setToast('Staff removed');
+      showToast('Staff removed');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to remove staff');
+      showToast(err instanceof Error ? err.message : 'Failed to remove staff', 'error');
     }
   };
   const handleAddStaff = async () => {
@@ -140,10 +140,10 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
     setAddingStaff(true);
     try {
       const { name: addedName } = await addStaffByEmail(gym.id, staffEmail.trim(), staffRoleInput);
-      setToast(`${addedName} added as ${staffRoleInput}`);
+      showToast(`${addedName} added as ${staffRoleInput}`);
       setStaffEmail('');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to add staff');
+      showToast(err instanceof Error ? err.message : 'Failed to add staff', 'error');
     } finally {
       setAddingStaff(false);
     }
@@ -152,9 +152,9 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
   const handleCopyCode = async () => {
     try {
       await navigator.clipboard.writeText(gym.joinCode);
-      setToast('Join code copied');
+      showToast('Join code copied');
     } catch {
-      setToast('Could not copy — copy it manually');
+      showToast('Could not copy — copy it manually', 'error');
     }
   };
   const handleRegenerate = async () => {
@@ -162,9 +162,9 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
     setRegenerating(true);
     try {
       await regenerateJoinCode(gym.id, gym.joinCode);
-      setToast('Join code regenerated');
+      showToast('Join code regenerated');
     } catch (err) {
-      setToast(err instanceof Error ? err.message : 'Failed to regenerate code');
+      showToast(err instanceof Error ? err.message : 'Failed to regenerate code', 'error');
     } finally {
       setRegenerating(false);
     }
@@ -342,7 +342,6 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
         <QrCode value={`zenith://gym/${gym.id}/join`} size={180} isDark={isDark} label="Join QR" />
       </div>
 
-      <StaffToast message={toast} isDark={isDark} onDismiss={() => setToast(null)} />
     </div>
   );
 }
