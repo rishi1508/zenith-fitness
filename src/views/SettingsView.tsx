@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   ChevronLeft, FileSpreadsheet, Download, Upload,
   CheckCircle2, Copy, Volume2, Palette, Sun, Moon, Clock, User, LogOut, LogIn,
-  Cloud, Bell, Flame,
+  Cloud, Bell, Flame, Trash2,
 } from 'lucide-react';
 import * as storage from '../storage';
 import { useAuth } from '../auth/AuthContext';
@@ -12,7 +12,9 @@ import * as buddyService from '../buddyService';
 import { manualCheckForUpdates } from '../UpdateChecker';
 import { enablePushNotifications, pushSupported, pushPermissionState } from '../pushService';
 import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '../healthSync';
+import { deleteMyAccount } from '../accountService';
 import { Capacitor } from '@capacitor/core';
+import { Sheet, Button, useToast } from '../ui';
 
 declare const __APP_VERSION__: string;
 
@@ -92,6 +94,57 @@ function EditProfileSection({ isDark }: { isDark: boolean }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// Delete Account Section — Play Store requirement. The confirm sheet
+// uses the new `src/ui` kit (it's an overlay, self-contained regardless
+// of this legacy screen's isDark styling); the row that opens it matches
+// the surrounding Account card.
+function DeleteAccountSection({ isDark }: { isDark: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { signOut } = useAuth();
+  const { showToast } = useToast();
+
+  const handleDelete = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await deleteMyAccount();
+      await signOut();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not delete your account.', 'error');
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+          isDark ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400' : 'bg-red-50 hover:bg-red-100 text-red-600'
+        }`}
+      >
+        <Trash2 className="w-4 h-4" />
+        Delete Account
+      </button>
+      <Sheet open={open} onClose={() => { if (!deleting) setOpen(false); }} title="Delete account?">
+        <div className="flex flex-col gap-3 pb-1">
+          <p className="text-sm text-muted">
+            This permanently deletes your account and all your data — workouts, plans, body
+            weight, buddies and gym membership. This can't be undone.
+          </p>
+          <Button variant="danger" size="lg" full loading={deleting} onClick={handleDelete}>
+            Delete my account
+          </Button>
+          <Button variant="secondary" size="lg" full disabled={deleting} onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+        </div>
+      </Sheet>
+    </>
   );
 }
 
@@ -700,6 +753,7 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
               <LogOut className="w-4 h-4" />
               Sign Out
             </button>
+            <DeleteAccountSection isDark={isDark} />
           </div>
         ) : isGuest ? (
           <div className="space-y-3">
