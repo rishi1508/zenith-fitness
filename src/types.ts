@@ -355,3 +355,29 @@ export interface SessionReaction {
   emoji: string;
   timestamp: string;
 }
+
+// ============ APP SETTINGS ============
+
+/** Preferences shared by every line chart in the app (exercise volume,
+ *  body weight, …). Persisted under `zenith_settings` and synced. */
+export interface ChartSettings {
+  /** Draw the moving-average overlay line. */
+  showMovingAverage: boolean;
+  /** Draw the raw data-point series (line + dots). */
+  showRawPoints: boolean;
+  /** Trailing window for the moving average, in points (2–30). */
+  movingAverageWindow: number;
+}
+
+export interface StreakSettings {
+  /** Days per week the user has committed to train (1–6). `null` means
+   *  "auto": derive from the active weekly plan's non-rest days, else 3. */
+  commitment: number | null;
+}
+
+/** Single persisted settings object. New preferences go here rather than
+ *  in yet another top-level localStorage key. */
+export interface AppSettings {
+  chart: ChartSettings;
+  streak: StreakSettings;
+}

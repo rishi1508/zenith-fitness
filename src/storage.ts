@@ -1,4 +1,4 @@
-import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, BodyMeasurementEntry, BodyMeasurementField, VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from './types';
+import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, BodyMeasurementEntry, BodyMeasurementField, VolumeGoal, WeeklyVolumeProgress, MuscleGroup, AppSettings } from './types';
 import { queueFirestoreSync, addToSharedExerciseLibrary } from './firestoreSync';
 import { computeWeekStreak } from './streakService';
 
@@ -1507,4 +1507,38 @@ export function toggleExerciseFavorite(exerciseId: string): boolean {
 
 export function getFavoriteExercises(): Exercise[] {
   return getExercises().filter(e => e.isFavorite);
+}
+
+// ============ APP SETTINGS (zenith_settings) ============
+// One object for new preferences. Stored under STORAGE_KEYS.SETTINGS, which
+// is already mapped to users/{uid}/data/settings in firestoreSync.
+
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  chart: {
+    showMovingAverage: true,
+    showRawPoints: true,
+    movingAverageWindow: 5,
+  },
+  streak: {
+    commitment: null,
+  },
+};
+
+export function getAppSettings(): AppSettings {
+  const stored = getItem<Partial<AppSettings>>(STORAGE_KEYS.SETTINGS, {});
+  return {
+    chart: { ...DEFAULT_APP_SETTINGS.chart, ...(stored.chart ?? {}) },
+    streak: { ...DEFAULT_APP_SETTINGS.streak, ...(stored.streak ?? {}) },
+  };
+}
+
+/** Shallow-merge a patch into one settings section and persist. */
+export function updateAppSettings<K extends keyof AppSettings>(
+  section: K,
+  patch: Partial<AppSettings[K]>,
+): AppSettings {
+  const current = getAppSettings();
+  const next: AppSettings = { ...current, [section]: { ...current[section], ...patch } };
+  setItem(STORAGE_KEYS.SETTINGS, next);
+  return next;
 }
