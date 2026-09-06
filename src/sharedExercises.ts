@@ -1,4 +1,4 @@
-import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import * as storage from './storage';
 import { isAdmin } from './admin';
@@ -122,6 +122,21 @@ export async function deleteSharedExercise(ex: Exercise): Promise<void> {
   } catch (err) {
     console.error('[SharedExercises] delete failed:', err);
   }
+}
+
+/** Admin console: one-shot fetch of every shared exercise, for
+ *  AdminLibraryView's browse + delete list. Not a live listener — the
+ *  screen is opened rarely and the only action is delete. */
+export async function listAllSharedExercises(): Promise<SharedExerciseDoc[]> {
+  const snap = await getDocs(collection(db, COLLECTION));
+  return snap.docs.map((d) => d.data() as SharedExerciseDoc);
+}
+
+/** Admin console: remove any shared exercise by id (firestore.rules
+ *  restricts this to the creator or an admin; AdminLibraryView is
+ *  admin-only, so no ownership check is needed here). */
+export async function deleteSharedExerciseById(id: string): Promise<void> {
+  await deleteDoc(doc(db, COLLECTION, id));
 }
 
 /**

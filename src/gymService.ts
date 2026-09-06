@@ -9,7 +9,7 @@ import { deliverPush } from './pushService';
 import { membershipStatus, localDateISO, addMonthsISO } from './gymStats';
 import type {
   Gym, GymPlan, GymMember, GymPayment, GymCheckin, GymDailyStat, GymClass, GymClassSession, GymAnnouncement,
-  GymContext, GymRole, CheckinMethod, PaymentMethod, MembershipStatus,
+  GymContext, GymRole, CheckinMethod, PaymentMethod, MembershipStatus, UserProfile,
 } from './types';
 
 /**
@@ -213,12 +213,71 @@ export async function createGym(input: { name: string; address?: string; phone?:
 
 /** Owner/manager: update gym profile fields (not staff, plans handled
  *  the same way here, join code, or daily code — those go through
- *  dedicated functions to match the narrower rule grants they have). */
+ *  dedicated functions to match the narrower rule grants they have).
+ *  `subscriptionStatus`/`pilotEndsAt`/`notes` are admin-only in practice
+ *  (firestore.rules' `isAdmin()` OR-clause on the gym doc) — used by
+ *  AdminGymsView's edit sheet. */
 export async function updateGym(
   gymId: string,
-  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'plans'>>,
+  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
 ): Promise<void> {
   await updateDoc(doc(db, 'gyms', gymId), stripUndefined({ ...patch }));
+}
+
+/** Zenith-admin only (firestore.rules' `isAdmin()` OR-clause on
+ *  `gyms` create): creates a gym owned by `ownerUid`, who need not be
+ *  the caller. Same batch shape as `createGym`, but the owner's member
+ *  doc is populated from their existing `userProfiles` doc instead of
+ *  `auth.currentUser`. Used by AdminGymsView's "New gym" sheet, which
+ *  looks the owner up by email first. */
+export async function createGymForOwner(
+  input: { name: string; address?: string; phone?: string; plans?: GymPlan[] },
+  ownerUid: string,
+): Promise<Gym> {
+  const ownerSnap = await getDoc(doc(db, 'userProfiles', ownerUid));
+  const owner = ownerSnap.exists() ? (ownerSnap.data() as UserProfile) : null;
+
+  const gymId = doc(collection(db, 'gyms')).id;
+  const joinCode = generateJoinCode();
+  const now = new Date().toISOString();
+
+  const gym: Gym = stripUndefined({
+    id: gymId,
+    name: input.name,
+    address: input.address,
+    phone: input.phone,
+    ownerUid,
+    staff: { [ownerUid]: 'owner' },
+    joinCode,
+    plans: input.plans && input.plans.length ? input.plans : DEFAULT_PLANS,
+    memberCount: 1,
+    createdAt: now,
+    subscriptionStatus: 'pilot',
+  });
+  const member: GymMember = stripUndefined({
+    uid: ownerUid,
+    name: owner?.displayName || 'Owner',
+    email: owner?.email || undefined,
+    photoURL: owner?.photoURL || null,
+    role: 'owner',
+    joinedAt: now,
+  });
+  const context: GymContext = { gymId, gymRole: 'owner', joinedAt: now };
+
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'gyms', gymId), gym);
+  batch.set(doc(db, 'gymJoinCodes', joinCode), { gymId });
+  batch.set(doc(db, 'gyms', gymId, 'members', ownerUid), member);
+  batch.set(doc(db, 'userProfiles', ownerUid), { gym: context }, { merge: true });
+  await batch.commit();
+
+  return gym;
+}
+
+/** Zenith-admin only: every gym, for AdminGymsView's list. */
+export async function listAllGyms(): Promise<Gym[]> {
+  const snap = await getDocs(collection(db, 'gyms'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Gym);
 }
 
 /** Owner-only: grants/revokes a staff role. Keeps members/{uid}.role in

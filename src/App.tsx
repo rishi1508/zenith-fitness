@@ -20,6 +20,7 @@ import {
 import type { GymView, GymNavParams } from './views';
 import { HomeTabView, TrainTabView, HealthTabView, YouTabView } from './views/tabs';
 import { ZenChatView, InsightsView } from './views/zen';
+import { AdminGymsView, AdminUsersView, AdminLibraryView } from './views/admin';
 import { AppShell } from './shell/AppShell';
 import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
@@ -35,7 +36,7 @@ import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 import { useGym } from './gym/GymContext';
 
-export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView;
+export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library';
 export type Theme = 'dark' | 'light';
 
 function App() {
@@ -1372,6 +1373,9 @@ function App() {
             onOpenHistory={() => navigateTo('history')}
             onOpenBuddies={() => navigateTo('buddies')}
             onOpenSettings={() => navigateTo('settings')}
+            onOpenAdminGyms={() => navigateTo('admin-gyms')}
+            onOpenAdminUsers={() => navigateTo('admin-users')}
+            onOpenAdminLibrary={() => navigateTo('admin-library')}
           />
         )}
         {view === 'history' && (
@@ -1513,6 +1517,15 @@ function App() {
         )}
         {view === 'insights' && (
           <InsightsView isDark={isDark} onBack={() => goBack()} />
+        )}
+        {view === 'admin-gyms' && (
+          <AdminGymsView onBack={() => goBack()} />
+        )}
+        {view === 'admin-users' && (
+          <AdminUsersView onBack={() => goBack()} />
+        )}
+        {view === 'admin-library' && (
+          <AdminLibraryView onBack={() => goBack()} />
         )}
         {view === 'zen' && (
           <ZenChatView
