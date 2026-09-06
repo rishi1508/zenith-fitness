@@ -51,7 +51,7 @@ export const config = { maxDuration: 60 };
 
 const DEFAULT_MODEL = 'gemma-4-31b-it';
 const DEFAULT_FALLBACK_MODEL = 'gemma-4-27b-it';
-const GEMINI_TIMEOUT_MS = 27_000;
+const GEMINI_TIMEOUT_MS = 50_000; // a full think on Gemma 4 takes ~20–30 s; a timeout is final (no second model attempt would fit in the 60 s function limit)
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 const LIMITS = {
@@ -146,16 +146,15 @@ interface GeminiResponse {
   error?: { message?: string; status?: string };
 }
 
-async function callGemini(model: string, contents: GeminiContent[], apiKey: string, allowThinkingConfig = true): Promise<{ status: number; body: GeminiResponse }> {
+async function callGemini(model: string, contents: GeminiContent[], apiKey: string): Promise<{ status: number; body: GeminiResponse }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), GEMINI_TIMEOUT_MS);
-  // Gemma 4 is a thinking model: without this it spends ~20 s reasoning and
-  // may echo that reasoning into the text. Ask for no thinking budget; if a
-  // model rejects the field (400 mentioning thinking) retry once without it.
-  // Thinking tokens count against maxOutputTokens, so leave room for both.
+  // Gemma 4 is a thinking model and we let it think (Rishi's call): the
+  // client shows placeholders meanwhile. Thought parts are filtered out in
+  // extractText, and thinking tokens count against maxOutputTokens, so the
+  // cap leaves room for both.
   const generationConfig: Record<string, unknown> = { temperature: 0.6, maxOutputTokens: 1500 };
-  if (allowThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: 0 };
   try {
     const r = await fetch(url, {
       method: 'POST',
@@ -164,10 +163,6 @@ async function callGemini(model: string, contents: GeminiContent[], apiKey: stri
       signal: ctrl.signal,
     });
     const body = (await r.json().catch(() => ({}))) as GeminiResponse;
-    if (r.status === 400 && allowThinkingConfig && /think/i.test(body.error?.message ?? '')) {
-      clearTimeout(timer);
-      return callGemini(model, contents, apiKey, false);
-    }
     return { status: r.status, body };
   } catch (err) {
     const aborted = (err as Error).name === 'AbortError';
