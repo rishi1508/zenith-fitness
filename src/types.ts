@@ -253,6 +253,10 @@ export interface UserProfile {
   /** ISO timestamp of the last heartbeat from the user's app.
    *  Used to render the online/offline/busy dot on buddy avatars. */
   lastActive?: string;
+  /** Cached pointer to the gym this user belongs to (member or staff),
+   *  mirrored from gyms/{gymId}/members/{uid}. null once they leave.
+   *  See GymContext in the Gym OS lite section below. */
+  gym?: GymContext | null;
 }
 
 /** Buddy request between two users */
@@ -401,4 +405,93 @@ export interface StreakSettings {
 export interface AppSettings {
   chart: ChartSettings;
   streak: StreakSettings;
+}
+
+// ============ GYM OS LITE (Tier A) ============
+// See docs/GYM_TIER_A_SPEC.md §2. Gym data lives entirely in Firestore
+// (src/gymService.ts) — no new localStorage keys. The only local trace
+// is the cached `gym` pointer on UserProfile below.
+
+export type GymRole = 'member' | 'trainer' | 'manager' | 'owner';
+export type MembershipStatus = 'active' | 'expiring' | 'expired' | 'frozen' | 'none';
+export type CheckinMethod = 'member-qr' | 'staff-qr' | 'code' | 'manual';
+export type PaymentMethod = 'upi' | 'cash' | 'card' | 'other';
+
+export interface GymPlan { id: string; name: string; months: number; price: number; active: boolean }
+
+export interface Gym {
+  id: string;
+  name: string;
+  logoUrl?: string;
+  accentColor?: string;          // hex, applied to --accent when set
+  address?: string;
+  phone?: string;
+  ownerUid: string;
+  staff: Record<string, Exclude<GymRole, 'member'>>;
+  joinCode: string;              // 6 chars A–Z0–9, members enter this to join
+  plans: GymPlan[];
+  /** sha256(`${code}:${date}:${gymId}`) of today's 6-digit check-in code; members hash their input and compare. */
+  dailyCodeHash?: string;
+  dailyCodeDate?: string;        // YYYY-MM-DD local
+  memberCount: number;           // denormalised, updated on add/remove
+  createdAt: string;
+  subscriptionStatus: 'pilot' | 'active' | 'lapsed';
+  pilotEndsAt?: string;
+}
+
+export interface GymMember {
+  uid: string;                   // real auth uid, or `demo_<n>` for seeded members
+  name: string;
+  phone?: string;
+  email?: string;
+  photoURL?: string | null;
+  role: GymRole;
+  joinedAt: string;
+  planId?: string;
+  planStart?: string;            // ISO date
+  planEnd?: string;              // ISO date (exclusive end)
+  frozen?: boolean;
+  trainerUid?: string;
+  notes?: string;
+  lastCheckinAt?: string;
+  lastWorkoutAt?: string;
+  checkinCount30d?: number;      // denormalised by client on check-in
+}
+
+export interface GymPayment { id: string; uid: string; amount: number; method: PaymentMethod; paidAt: string; months: number; planId?: string; note?: string; recordedBy: string }
+export interface GymCheckin { id: string; uid: string; at: string; date: string /* YYYY-MM-DD local */; method: CheckinMethod; byUid: string }
+export interface GymClass { id: string; name: string; weekday: number /* 0=Sun..6 */; startTime: string /* HH:mm */; durationMin: number; trainerUid?: string; capacity?: number /* undefined = uncapped */; active: boolean }
+export interface GymClassSession { id: string /* `${classId}_${YYYY-MM-DD}` */; classId: string; date: string; enrolled: string[]; attended: string[] }
+export interface GymAnnouncement { id: string; text: string; audience: 'all' | { classId: string }; byUid: string; byName: string; at: string }
+
+/** Cached on userProfiles/{uid} so the app knows which gym to load on start. */
+export interface GymContext { gymId: string; gymRole: GymRole; joinedAt: string }
+
+/** Dashboard aggregate stats — computed client-side by gymStats.computeDashboard
+ *  from data fetched once (members, last-30d checkins, last-90d payments,
+ *  classes, last-7d sessions). See docs/GYM_TIER_A_SPEC.md §5. */
+export interface DashboardStats {
+  totalMembers: number;
+  activeMembers: number;
+  expiringIn7: number;
+  expiringIn30: number;
+  expired: number;
+  frozen: number;
+  checkinsToday: number;
+  /** 30 entries, oldest first, ending today. */
+  checkinsPerDay: Array<{ date: string; count: number }>;
+  /** 24 hourly buckets (local hour-of-day), aggregated over the last 30 days. */
+  checkinsPerHour: number[];
+  /** Distinct uids with a check-in or workout in the last 7 days. */
+  activeThisWeek: number;
+  /** Joined >30d ago, no check-in/workout in 14d, not expired/frozen. */
+  atRisk: GymMember[];
+  /** Members whose plan has expired (and who aren't frozen), with days overdue. */
+  duesOutstanding: Array<{ member: GymMember; daysOverdue: number }>;
+  revenue30d: number;
+  revenue90d: number;
+  newMembers30d: number;
+  /** Of members joined in the last 30d, the share (0–1) with ≥2 check-ins. */
+  signupToActive: number;
+  classFill: Array<{ cls: GymClass; avgEnrolled: number; avgAttended: number; capacity?: number }>;
 }
