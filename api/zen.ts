@@ -47,11 +47,11 @@ import {
 
 // Gemma at 700 output tokens can take 15–25 s. A model switch means up to
 // two sequential calls, so this is kept well under half of maxDuration.
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 120 };
 
 const DEFAULT_MODEL = 'gemma-4-31b-it';
 const DEFAULT_FALLBACK_MODEL = 'gemma-4-27b-it';
-const GEMINI_TIMEOUT_MS = 50_000; // a full think on Gemma 4 takes ~20–30 s; a timeout is final (no second model attempt would fit in the 60 s function limit)
+const GEMINI_TIMEOUT_MS = 100_000; // Gemma 4 thinks for 20–60 s; a timeout is final (no second model attempt)
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 const LIMITS = {
@@ -146,7 +146,8 @@ interface GeminiResponse {
   error?: { message?: string; status?: string };
 }
 
-interface Tuning { maxOutputTokens?: number; thinkingBudget?: number }
+interface Tuning { maxOutputTokens?: number; thinkingBudget?: number; thinkingLevel?: string; model?: string }
+const DEFAULT_THINKING_LEVEL = process.env.ZEN_THINKING_LEVEL || undefined;
 const DEFAULT_MAX_OUTPUT_TOKENS = Number(process.env.ZEN_MAX_OUTPUT_TOKENS) || 1500;
 const DEFAULT_THINKING_BUDGET = process.env.ZEN_THINKING_BUDGET ? Number(process.env.ZEN_THINKING_BUDGET) : undefined;
 
@@ -160,7 +161,10 @@ async function callGemini(model: string, contents: GeminiContent[], apiKey: stri
   // cap leaves room for both.
   const generationConfig: Record<string, unknown> = { temperature: 0.6, maxOutputTokens: tuning.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS };
   const budget = tuning.thinkingBudget ?? DEFAULT_THINKING_BUDGET;
-  if (budget !== undefined) generationConfig.thinkingConfig = { thinkingBudget: budget };
+  const level = tuning.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+  if (budget !== undefined || level) {
+    generationConfig.thinkingConfig = { ...(budget !== undefined ? { thinkingBudget: budget } : {}), ...(level ? { thinkingLevel: level } : {}) };
+  }
   try {
     const r = await fetch(url, {
       method: 'POST',
@@ -219,7 +223,7 @@ async function generate(
 
   const now = Date.now();
   const pref = await readModelPreference(db);
-  const start = pickStartModel(pref, primary, fallback, now);
+  const start = tuning.model || pickStartModel(pref, primary, fallback, now);
 
   let model = start;
   let r = await callGemini(model, contents, apiKey, tuning);
@@ -297,6 +301,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tuning: Tuning = {
       maxOutputTokens: typeof t.maxOutputTokens === 'number' ? Math.min(8192, Math.max(200, t.maxOutputTokens)) : undefined,
       thinkingBudget: typeof t.thinkingBudget === 'number' ? Math.max(0, t.thinkingBudget) : undefined,
+      thinkingLevel: typeof t.thinkingLevel === 'string' && /^[a-z]{2,12}$/.test(t.thinkingLevel) ? t.thinkingLevel : undefined,
+      model: typeof t.model === 'string' && /^[a-z0-9.-]{3,40}$/.test(t.model) ? t.model : undefined,
     };
 
     const contents = buildContents(buildSystemTurn({ context, dataAnswer, tz }), messages);
