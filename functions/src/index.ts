@@ -1,5 +1,8 @@
 import {onDocumentUpdated} from "firebase-functions/v2/firestore";
+import {onMessagePublished} from "firebase-functions/v2/pubsub";
+import {logger} from "firebase-functions/v2";
 import * as admin from "firebase-admin";
+import {GoogleAuth} from "google-auth-library";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -23,7 +26,7 @@ const db = admin.firestore();
  * skip. Either way, exactly one workout per session per participant.
  */
 export const saveWorkoutOnSessionComplete = onDocumentUpdated(
-  "workoutSessions/{sessionId}",
+  {document: "workoutSessions/{sessionId}", maxInstances: 3},
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
@@ -117,4 +120,71 @@ export const saveWorkoutOnSessionComplete = onDocumentUpdated(
       }
     }
   },
+);
+
+/**
+ * Billing kill switch. The Cloud Billing budget "Zenith Fitness monthly cap"
+ * publishes its current spend to the `billing-alerts` topic several times a
+ * day. When spend reaches the budget amount this detaches the billing
+ * account from the project, which drops every service back to the free
+ * (Spark) limits instead of billing further. Re-attaching is a manual step
+ * in the Cloud console. A message with attribute dryRun="true" only checks
+ * that the function holds the permissions it needs and logs the result.
+ */
+interface BudgetNotification {
+  budgetDisplayName?: string;
+  costAmount?: number;
+  budgetAmount?: number;
+  currencyCode?: string;
+  costIntervalStart?: string;
+}
+
+export const capBilling = onMessagePublished(
+  {
+    topic: "billing-alerts",
+    maxInstances: 1,
+    region: "us-central1",
+    // Dedicated identity: the only principal in the project allowed to detach billing.
+    serviceAccount: "billing-cap@zenith-fitness-18e2a.iam.gserviceaccount.com",
+  },
+  async (event) => {
+    const msg = (event.data.message.json ?? {}) as BudgetNotification;
+    const dryRun = event.data.message.attributes?.dryRun === "true";
+    const projectId = process.env.GCLOUD_PROJECT ?? "zenith-fitness-18e2a";
+    const cost = Number(msg.costAmount ?? 0);
+    const budget = Number(msg.budgetAmount ?? 0);
+    logger.info("budget notification", {cost, budget, currency: msg.currencyCode, dryRun});
+
+    const auth = new GoogleAuth({scopes: ["https://www.googleapis.com/auth/cloud-platform"]});
+    const client = await auth.getClient();
+    const infoUrl = `https://cloudbilling.googleapis.com/v1/projects/${projectId}/billingInfo`;
+    const info = await client.request<{billingEnabled?: boolean; billingAccountName?: string}>({url: infoUrl});
+    const account = info.data.billingAccountName ?? "";
+
+    if (dryRun) {
+      const projPerm = await client.request<{permissions?: string[]}>({
+        url: `https://cloudresourcemanager.googleapis.com/v1/projects/${projectId}:testIamPermissions`,
+        method: "POST", data: {permissions: ["resourcemanager.projects.deleteBillingAssignment"]},
+      });
+      const acctPerm = account ? await client.request<{permissions?: string[]}>({
+        url: `https://cloudbilling.googleapis.com/v1/${account}:testIamPermissions`,
+        method: "POST", data: {permissions: ["billing.resourceAssociations.delete"]},
+      }) : {data: {permissions: []}};
+      logger.info("DRY RUN — permission check", {
+        billingEnabled: info.data.billingEnabled, account,
+        canDetachFromProject: (projPerm.data.permissions ?? []).length === 1,
+        canDetachFromAccount: (acctPerm.data.permissions ?? []).length === 1,
+        wouldDisable: budget > 0 && cost >= budget,
+      });
+      return;
+    }
+
+    if (!(budget > 0) || cost < budget) return;
+    if (!info.data.billingEnabled) {
+      logger.warn("over budget but billing is already disabled", {cost, budget});
+      return;
+    }
+    await client.request({url: infoUrl, method: "PUT", data: {billingAccountName: ""}});
+    logger.error("BILLING DISABLED: spend reached the monthly cap; project is back on free limits", {cost, budget, account});
+  }
 );
