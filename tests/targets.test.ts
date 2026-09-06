@@ -18,4 +18,9 @@ describe('targets', () => {
     expect(t.carbs).toBe(264);
     expect(t.waterMl).toBe(2750);
   });
+  it('carries the maintenance basis through for display, and omits it when not given', () => {
+    const base = { maintenanceKcal: 2750, weightKg: 78, goal: 'cut' as const, targetRatePctPerWeek: -0.5 };
+    expect(computeTargets({ ...base, maintenanceBasis: 'adaptive' })).toMatchObject({ kcal: 2320, maintenanceBasis: 'adaptive' });
+    expect(computeTargets(base)).not.toHaveProperty('maintenanceBasis');
+  });
 });
