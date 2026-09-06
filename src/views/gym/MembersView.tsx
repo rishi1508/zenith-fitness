@@ -8,7 +8,7 @@ import { isAdmin } from '../../admin';
 import { addMember, listenToMembers, membershipStatus, recordPayment } from '../../gymService';
 import { localDateISO } from '../../gymStats';
 import { StaffMemberRow } from '../../components/gym/StaffMemberRow';
-import { StaffToast } from '../../components/gym/StaffToast';
+import { useToast } from '../../ui';
 
 const FILTERS: Array<{ id: MembershipStatus | 'all'; label: string }> = [
   { id: 'all', label: 'All' },
@@ -37,16 +37,16 @@ function memberSubtitle(m: GymMember, plans: GymPlan[]): string {
 }
 
 /** Members directory — see docs/GYM_TIER_A_SPEC.md §6.3. */
-export function MembersView({ isDark, onBack, onNavigate }: GymViewProps) {
+export function MembersView({ isDark, onBack, onNavigate, membersFilter }: GymViewProps) {
   const { gym, role } = useGym();
   const { user } = useAuth();
   const canEdit = role === 'manager' || role === 'owner' || isAdmin(user?.uid);
 
   const [members, setMembers] = useState<GymMember[]>([]);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<MembershipStatus | 'all'>('all');
+  const [filter, setFilter] = useState<MembershipStatus | 'all'>(membersFilter ?? 'all');
   const [showAdd, setShowAdd] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const gymId = gym?.id;
@@ -139,10 +139,9 @@ export function MembersView({ isDark, onBack, onNavigate }: GymViewProps) {
           plans={gym.plans}
           trainers={trainers}
           onClose={() => setShowAdd(false)}
-          onSuccess={() => { setShowAdd(false); setToast('Member added'); }}
+          onSuccess={() => { setShowAdd(false); showToast('Member added'); }}
         />
       )}
-      <StaffToast message={toast} isDark={isDark} onDismiss={() => setToast(null)} />
     </div>
   );
 }

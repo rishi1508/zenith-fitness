@@ -8,6 +8,8 @@
  * See docs/GYM_TIER_A_SPEC.md §6.1.
  */
 
+import type { MembershipStatus } from '../../types';
+
 /** The gym-related view names — folded into App.tsx's `View` union. */
 export type GymView =
   | 'gym-join'
@@ -28,6 +30,9 @@ export type GymView =
 export interface GymNavParams {
   classId?: string;
   memberUid?: string;
+  /** Pre-selected filter chip for `gym-members` (the Manage segment's
+   *  "Payments" row lands there filtered to overdue). */
+  membersFilter?: MembershipStatus | 'all';
 }
 
 /** Shared prop shape for every view under src/views/gym/, placeholder or
@@ -40,4 +45,5 @@ export interface GymViewProps {
   gymId?: string;
   classId?: string;
   memberUid?: string;
+  membersFilter?: MembershipStatus | 'all';
 }

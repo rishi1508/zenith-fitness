@@ -1,18 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, RefreshCw, Users, CalendarCheck, Clock3, IndianRupee, UserPlus, AlertTriangle } from 'lucide-react';
 import type { GymViewProps } from './types';
-import type { GymMember, DashboardStats } from '../../types';
+import type { GymMember } from '../../types';
 import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
-import { listMembers, listCheckins, listPayments, listClasses, computeDashboard, membershipStatus } from '../../gymService';
-import { listSessions } from '../../gymStaffHelpers';
-import { localDateISO, addDaysISO } from '../../gymStats';
+import { membershipStatus } from '../../gymService';
+import { useGymDashboard } from '../../gym/useGymDashboard';
 import { InteractiveLineChart } from '../../components';
 import { DashboardStatTile } from '../../components/gym/DashboardStatTile';
 import { StaffMemberRow } from '../../components/gym/StaffMemberRow';
 import { StaffPaymentSheet } from '../../components/gym/StaffPaymentSheet';
-import { StaffToast } from '../../components/gym/StaffToast';
+import { useToast } from '../../ui';
 
 const WEEKDAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -39,45 +38,9 @@ export function GymDashboardView({ isDark, onBack, onNavigate }: GymViewProps) {
   const { user } = useAuth();
   const canView = role === 'owner' || role === 'manager' || isAdmin(user?.uid);
 
-  const [members, setMembers] = useState<GymMember[]>([]);
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshTick, setRefreshTick] = useState(0);
+  const { members, stats, loading, error, refresh } = useGymDashboard(gym?.id, canView);
   const [paymentTarget, setPaymentTarget] = useState<GymMember | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-
-  useEffect(() => {
-    const gymId = gym?.id;
-    if (!gymId || !canView) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const now = new Date();
-        const checkinsSinceISO = new Date(now.getTime() - 30 * 86_400_000).toISOString();
-        const paymentsSinceISO = new Date(now.getTime() - 90 * 86_400_000).toISOString();
-        const sessionsSinceDate = addDaysISO(localDateISO(now), -6);
-
-        const [membersList, checkins30d, payments90d, classes] = await Promise.all([
-          listMembers(gymId, { limit: 600 }),
-          listCheckins(gymId, { sinceISO: checkinsSinceISO, limit: 5000 }),
-          listPayments(gymId, { sinceISO: paymentsSinceISO }),
-          listClasses(gymId),
-        ]);
-        const sessions7d = await listSessions(gymId, classes, sessionsSinceDate);
-        const computed = computeDashboard({ members: membersList, checkins30d, payments90d, classes, sessions7d, now });
-        if (!cancelled) { setMembers(membersList); setStats(computed); }
-      } catch (err) {
-        console.warn('[GymDashboard] load failed:', err);
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [gym?.id, canView, refreshTick]);
+  const { showToast } = useToast();
 
   const subtle = isDark ? 'text-zinc-500' : 'text-gray-500';
   const cardCls = `rounded-xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`;
@@ -97,7 +60,7 @@ export function GymDashboardView({ isDark, onBack, onNavigate }: GymViewProps) {
         </div>
         {canView && (
           <button
-            onClick={() => setRefreshTick((n) => n + 1)}
+            onClick={() => refresh()}
             disabled={loading}
             className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}
           >
@@ -277,12 +240,11 @@ export function GymDashboardView({ isDark, onBack, onNavigate }: GymViewProps) {
           onClose={() => setPaymentTarget(null)}
           onSuccess={() => {
             setPaymentTarget(null);
-            setToast('Payment recorded');
-            setRefreshTick((n) => n + 1);
+            showToast('Payment recorded');
+            refresh();
           }}
         />
       )}
-      <StaffToast message={toast} isDark={isDark} onDismiss={() => setToast(null)} />
     </div>
   );
 }
