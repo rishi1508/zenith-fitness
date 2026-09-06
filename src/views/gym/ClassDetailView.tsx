@@ -31,12 +31,16 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
     listClasses(gym.id).then(setClasses).catch((err) => console.warn('[ClassDetail] failed to load classes:', err));
   }, [gym?.id]);
 
+  const isStaffViewer = role === 'trainer' || role === 'manager' || role === 'owner';
+
+  // Only staff may list members (see firestore.rules); a plain member
+  // skips the lookup and names fall back to "Trainer"/"Member".
   useEffect(() => {
-    if (!gym?.id) return;
+    if (!gym?.id || !isStaffViewer) return;
     listMembers(gym.id)
       .then(setMembers)
       .catch((err) => { console.warn('[ClassDetail] members lookup unavailable:', err); setMembers([]); });
-  }, [gym?.id]);
+  }, [gym?.id, isStaffViewer]);
 
   useEffect(() => {
     if (!gym?.id || !classId || !date) return;
@@ -44,7 +48,6 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
   }, [gym?.id, classId, date]);
 
   const cls = classes?.find((c) => c.id === classId);
-  const isStaffViewer = role === 'trainer' || role === 'manager' || role === 'owner';
 
   if (!gym || !classId || !date) {
     return (

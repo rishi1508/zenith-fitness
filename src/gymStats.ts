@@ -197,12 +197,20 @@ export function computeDashboard(input: {
     }
   }
 
+  // Latest check-in per member from the fetched window — the denormalised
+  // lastCheckinAt is only updated best-effort, so don't rely on it alone.
+  const lastCheckinByUid = new Map<string, string>();
+  for (const c of checkins30d) {
+    const prev = lastCheckinByUid.get(c.uid);
+    if (!prev || c.date > prev) lastCheckinByUid.set(c.uid, c.date);
+  }
   const atRisk = members.filter((m) => {
+    if (m.role !== 'member') return false; // staff aren't retention targets
     const status = membershipStatus(m, now);
     if (status === 'expired' || status === 'frozen') return false;
     const tenureDays = daysBetween(dateOnly(m.joinedAt), today);
     if (tenureDays <= AT_RISK_MIN_TENURE_DAYS) return false;
-    const lastSeen = latestOf(m.lastCheckinAt, m.lastWorkoutAt);
+    const lastSeen = latestOf(m.lastCheckinAt, m.lastWorkoutAt, lastCheckinByUid.get(m.uid));
     if (!lastSeen) return true;
     return daysBetween(dateOnly(lastSeen), today) >= AT_RISK_INACTIVE_DAYS;
   });

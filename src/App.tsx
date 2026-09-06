@@ -1283,9 +1283,10 @@ function App() {
                     {gym.logoUrl ? (
                       <img src={gym.logoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
                     ) : (
-                      <Building2 className="w-3.5 h-3.5" />
+                      <Building2 className="w-3.5 h-3.5" style={{ color: 'var(--accent, currentColor)' }} />
                     )}
-                    <span className="max-w-[6rem] truncate">{gym.name}</span>
+                    {/* Name only from sm: up — with it, the header wraps onto two lines on phones. */}
+                    <span className="hidden sm:inline max-w-[6rem] truncate">{gym.name}</span>
                   </button>
                 )}
                 {/* Duolingo-style streak pill — tap to open calendar + freeze state */}

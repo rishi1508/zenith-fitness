@@ -9,15 +9,16 @@ import { trainerName, dayLabel } from '../../gymMemberHelpers';
 import { ClassSessionRow, MemberToast, useMemberToast } from '../../components';
 
 /** Next 7 days of classes, grouped by day. Trainer names come from
- *  listMembers, which only staff can actually list (see
- *  firestore.rules) — a plain member's lookup fails silently and every
- *  row falls back to "Trainer". */
+ *  listMembers, which only staff can list (see firestore.rules) — for a
+ *  plain member the lookup is skipped and every row falls back to
+ *  "Trainer". */
 export function ClassesView({ isDark, onBack, onNavigate }: GymViewProps) {
-  const { gym } = useGym();
+  const { gym, role } = useGym();
   const { user } = useAuth();
   const [classes, setClasses] = useState<GymClass[] | null>(null);
   const [members, setMembers] = useState<GymMember[]>([]);
   const { toast, showToast } = useMemberToast();
+  const isStaff = role === 'trainer' || role === 'manager' || role === 'owner';
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -29,11 +30,11 @@ export function ClassesView({ isDark, onBack, onNavigate }: GymViewProps) {
   }, [gym?.id]);
 
   useEffect(() => {
-    if (!gym?.id) return;
+    if (!gym?.id || !isStaff) return;
     listMembers(gym.id)
       .then(setMembers)
       .catch((err) => { console.warn('[Classes] members lookup unavailable:', err); setMembers([]); });
-  }, [gym?.id]);
+  }, [gym?.id, isStaff]);
 
   const grouped = useMemo(() => {
     const sessions = upcomingSessions(classes ?? [], new Date(), 7);

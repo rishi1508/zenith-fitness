@@ -1,9 +1,9 @@
 import {
   doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot,
-  query, where, orderBy, limit as fsLimit, writeBatch, arrayUnion, arrayRemove,
+  query, where, orderBy, limit as fsLimit, documentId, writeBatch, arrayUnion, arrayRemove,
   increment, deleteField,
 } from 'firebase/firestore';
-import type { QueryConstraint } from 'firebase/firestore';
+import type { QueryConstraint, DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { deliverPush } from './pushService';
 import { membershipStatus, localDateISO, addMonthsISO } from './gymStats';
@@ -54,13 +54,37 @@ const DEFAULT_PLANS: GymPlan[] = [
 // ============ MEMBERSHIP CONTEXT ============
 
 /** Reads the caller's cached gym pointer from userProfiles/{me}.gym. */
-export async function getMyGymContext(): Promise<GymContext | null> {
+export function getMyGymContext(): Promise<GymContext | null> {
   const user = auth.currentUser;
-  if (!user) return null;
-  const snap = await getDoc(doc(db, 'userProfiles', user.uid));
-  if (!snap.exists()) return null;
-  const data = snap.data() as { gym?: GymContext | null };
-  return data.gym ?? null;
+  if (!user) return Promise.resolve(null);
+  const extract = (snap: DocumentSnapshot): GymContext | null =>
+    snap.exists() ? ((snap.data() as { gym?: GymContext | null }).gym ?? null) : null;
+  return new Promise((resolve, reject) => {
+    // Right after sign-in the app merges heartbeat/profile fields into
+    // this doc before it's in the local cache; until that write is
+    // acknowledged the SDK's latency-compensated view of the doc is just
+    // those pending fields (no `gym`), so a plain getDoc reports "no gym".
+    // Wait for a settled snapshot instead — bounded, so an offline start
+    // with a queued write still resolves with whatever the cache holds.
+    let latest: DocumentSnapshot | null = null;
+    let unsub = () => {};
+    const timer = setTimeout(() => {
+      unsub();
+      if (latest) resolve(extract(latest));
+      else reject(new Error('Profile unavailable'));
+    }, 8000);
+    unsub = onSnapshot(
+      doc(db, 'userProfiles', user.uid),
+      (snap) => {
+        latest = snap;
+        if (snap.metadata.hasPendingWrites) return;
+        clearTimeout(timer);
+        unsub();
+        resolve(extract(snap));
+      },
+      (err) => { clearTimeout(timer); unsub(); reject(err); },
+    );
+  });
 }
 
 /** Live-subscribes to a gym doc. */
@@ -327,7 +351,10 @@ export async function renewMembership(
   if (!plan) throw new Error('Plan not found');
 
   const today = localDateISO(new Date());
-  const extendFromExisting = startFrom === 'planEnd' && !!member.planEnd;
+  // Only extend from planEnd while it's still in the future — a lapsed
+  // member renewing after their plan ended starts a fresh period from
+  // today rather than back-dating it to the old end.
+  const extendFromExisting = startFrom === 'planEnd' && !!member.planEnd && member.planEnd.slice(0, 10) >= today;
   const base = extendFromExisting ? (member.planEnd as string) : today;
   const planStart = extendFromExisting ? (member.planStart ?? today) : today;
   const planEnd = addMonthsISO(base, plan.months);
@@ -367,12 +394,23 @@ export async function recordPayment(
 }
 
 export async function listPayments(gymId: string, opts?: { uid?: string; sinceISO?: string; limit?: number }): Promise<GymPayment[]> {
+  const col = collection(db, 'gyms', gymId, 'payments');
+  const limit = opts?.limit ?? 200;
+  if (opts?.uid) {
+    // Per-member history: `uid ==` combined with an order/range on `paidAt`
+    // needs a composite index, so fetch by uid alone (a member has at most
+    // a few dozen payments) and filter/sort client-side.
+    const snap = await getDocs(query(col, where('uid', '==', opts.uid), fsLimit(limit)));
+    return snap.docs
+      .map((d) => d.data() as GymPayment)
+      .filter((p) => !opts.sinceISO || p.paidAt >= opts.sinceISO)
+      .sort((a, b) => b.paidAt.localeCompare(a.paidAt));
+  }
   const constraints: QueryConstraint[] = [];
-  if (opts?.uid) constraints.push(where('uid', '==', opts.uid));
   if (opts?.sinceISO) constraints.push(where('paidAt', '>=', opts.sinceISO));
   constraints.push(orderBy('paidAt', 'desc'));
-  constraints.push(fsLimit(opts?.limit ?? 200));
-  const snap = await getDocs(query(collection(db, 'gyms', gymId, 'payments'), ...constraints));
+  constraints.push(fsLimit(limit));
+  const snap = await getDocs(query(col, ...constraints));
   return snap.docs.map((d) => d.data() as GymPayment);
 }
 
@@ -389,10 +427,18 @@ export async function checkinMember(gymId: string, uid: string, method: CheckinM
   const date = localDateISO(new Date());
   const checkinId = `${uid}_${date}`;
   const ref = doc(db, 'gyms', gymId, 'checkins', checkinId);
-  const existing = await getDoc(ref);
-
-  if (existing.exists()) {
-    return { created: false, checkin: existing.data() as GymCheckin };
+  // Idempotency probe. A member reading their OWN check-in is allowed by
+  // rules via `resource.data.uid`, which errors (→ permission-denied) when
+  // the doc doesn't exist yet — i.e. exactly the first check-in of the
+  // day. Treat that denial as "not there yet" and go on to create it;
+  // staff can read any check-in so they never hit this branch.
+  try {
+    const existing = await getDoc(ref);
+    if (existing.exists()) {
+      return { created: false, checkin: existing.data() as GymCheckin };
+    }
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'permission-denied') throw err;
   }
 
   const checkin: GymCheckin = { id: checkinId, uid, at: new Date().toISOString(), date, method, byUid: user.uid };
@@ -432,11 +478,17 @@ export async function verifyDailyCode(gym: Gym, code: string): Promise<boolean> 
 }
 
 export async function listCheckins(gymId: string, opts: { sinceISO: string; uid?: string; limit?: number }): Promise<GymCheckin[]> {
-  const constraints: QueryConstraint[] = [where('at', '>=', opts.sinceISO)];
-  if (opts.uid) constraints.push(where('uid', '==', opts.uid));
-  constraints.push(orderBy('at', 'desc'));
-  constraints.push(fsLimit(opts.limit ?? 500));
-  const snap = await getDocs(query(collection(db, 'gyms', gymId, 'checkins'), ...constraints));
+  const col = collection(db, 'gyms', gymId, 'checkins');
+  const limit = opts.limit ?? 500;
+  if (opts.uid) {
+    // Per-member history. `uid ==` + range on `at` would need a composite
+    // index; instead order by document id — ids are `${uid}_${date}`, so
+    // within one uid that's date order — which the automatic single-field
+    // index on `uid` already supports, and trim to `sinceISO` client-side.
+    const snap = await getDocs(query(col, where('uid', '==', opts.uid), orderBy(documentId(), 'desc'), fsLimit(limit)));
+    return snap.docs.map((d) => d.data() as GymCheckin).filter((c) => c.at >= opts.sinceISO);
+  }
+  const snap = await getDocs(query(col, where('at', '>=', opts.sinceISO), orderBy('at', 'desc'), fsLimit(limit)));
   return snap.docs.map((d) => d.data() as GymCheckin);
 }
 
