@@ -119,6 +119,15 @@ async function consumeLimit(db: admin.firestore.Firestore, key: string, windows:
   });
 }
 
+/** Bound an awaited stage so a stalled dependency surfaces as a named 504
+ *  instead of the platform killing the function silently at maxDuration. */
+function withTimeout<T>(p: Promise<T>, ms: number, stage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new HttpError(504, `Zen is slow right now (${stage}). Please try again.`, { reason: 'busy', stage })), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 async function consumeQuotas(db: admin.firestore.Firestore, uid: string): Promise<void> {
   await consumeLimit(db, uid, [
     { field: 'm', windowMs: MINUTE_MS, max: LIMITS.userPerMinute, message: 'Zen needs a breather — try again in a minute.' },
@@ -225,7 +234,7 @@ async function generate(
   const fallback = process.env.GEMINI_FALLBACK_MODEL || DEFAULT_FALLBACK_MODEL;
 
   const now = Date.now();
-  const pref = await readModelPreference(db);
+  const pref = await withTimeout(readModelPreference(db), 8_000, 'preference');
   const start = tuning.model || pickStartModel(pref, primary, fallback, now);
 
   let model = start;
@@ -255,7 +264,7 @@ async function generate(
   }
 
   const toWrite = preferenceToWrite({ startedWith: start, succeededWith: model, now });
-  if (toWrite) await writeModelPreference(db, toWrite);
+  if (toWrite) await withTimeout(writeModelPreference(db, toWrite), 8_000, 'preference-write');
 
   const u = r.body.usageMetadata;
   const usage = u ? { promptTokens: u.promptTokenCount ?? 0, outputTokens: u.candidatesTokenCount ?? 0 } : undefined;
@@ -280,8 +289,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const idToken = typeof body.idToken === 'string' ? body.idToken : '';
     if (!idToken) throw new HttpError(401, 'Please sign in to talk to Zen.', { reason: 'auth' });
     let uid: string;
-    try { uid = (await a.auth().verifyIdToken(idToken)).uid; }
-    catch { throw new HttpError(401, 'Your session has expired. Please sign in again.', { reason: 'auth' }); }
+    try { uid = (await withTimeout(a.auth().verifyIdToken(idToken), 10_000, 'auth')).uid; }
+    catch (e) {
+      if (e instanceof HttpError) throw e;
+      throw new HttpError(401, 'Your session has expired. Please sign in again.', { reason: 'auth' });
+    }
 
     if (process.env.ZEN_REQUIRE_PREMIUM === 'true') await assertPremium(db, uid);
 
@@ -293,7 +305,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const dataAnswer = typeof body.dataAnswer === 'string' ? body.dataAnswer : undefined;
     const tz = typeof body.tz === 'string' && body.tz.length <= 64 ? body.tz : undefined;
 
-    await consumeQuotas(db, uid);
+    await withTimeout(consumeQuotas(db, uid), 12_000, 'quota');
 
     // Admins may ask for raw-shape diagnostics (never user data) with debug: true.
     const adminUids = (process.env.ADMIN_UIDS || 'BXedteurc3bPydsehvPIdVWPTbM2,upLvcTSoE5SS7lOmhYBKHFWSV0r1').split(',');
