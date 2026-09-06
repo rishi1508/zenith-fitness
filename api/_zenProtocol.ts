@@ -130,7 +130,9 @@ export function normalizeZenRequest(raw: Record<string, unknown>): ZenRequest | 
       if (!exercise) return null;
       return { kind, exercise, sessions: clampInt(raw.sessions, 1, 20, 8) };
     }
-    case 'workouts_range': {
+    case 'workouts_range':
+    case 'nutrition_range':
+    case 'activity_range': {
       const from = typeof raw.from === 'string' ? raw.from.slice(0, 10) : '';
       const to = typeof raw.to === 'string' ? raw.to.slice(0, 10) : '';
       if (!ISO_DATE.test(from) || !ISO_DATE.test(to)) return null;
@@ -144,6 +146,7 @@ export function normalizeZenRequest(raw: Record<string, unknown>): ZenRequest | 
     case 'plan_detail':
     case 'gym_summary':
     case 'prs':
+    case 'phase_detail':
       return { kind };
     default:
       return null;

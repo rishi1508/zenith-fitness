@@ -3,15 +3,18 @@ import { buildExtendedContext, suggestNextWorkout } from '../coachService';
 import type { ExtendedCoachContext } from '../coachService';
 import { localIso, weekStartISO, addDays, workoutDaySet } from '../streakService';
 import { membershipStatus, upcomingSessions } from '../gymStats';
+import { addDaysISO, getNutritionDay, getPhaseSettings, getTargets, listActivityDays, listNutritionDays, localDateISO } from '../health/store';
 import type { Gym, GymMember, GymClass, MembershipStatus, Workout, BodyMeasurementEntry } from '../types';
 import { fmtDay, fmtDate, fmtShort, fmtVolume, fmtExerciseBest, workoutVolume, capChars, signed, num } from './format';
+import { activityContextLine, nutritionContextLines, phaseContextLine, weightTrend } from './healthLines';
 
 /**
  * `buildZenContext()` — everything Zen needs to know about this user,
  * packaged as one compact string (see docs/REVAMP_SPEC.md §6). Built
  * entirely from `storage.ts` + `coachService.ts` + `streakService.ts` +
- * `gymStats.ts`, none of which touch Firestore, so this module has no
- * network or auth dependency of its own.
+ * `gymStats.ts` + the *cached* reads of `health/store.ts`, none of which
+ * touch the network, so this module has no network or auth dependency of
+ * its own.
  *
  * Gym data is the one exception: it lives in Firestore via `useGym()`,
  * not localStorage, so the caller (a component that already holds that
@@ -101,6 +104,20 @@ export function buildZenContext(opts: BuildZenContextOptions = {}): string {
     const m = formatMeasurements(ctx.latestMeasurement);
     if (m) lines.push(`Measurements (${fmtDate(ctx.latestMeasurement.date)}): ${m}.`);
   }
+
+  // Nutrition / activity / phase (docs/HEALTH_SPEC.md §6). All cache
+  // reads — no Firestore round trip on the way into a chat turn.
+  const today = localDateISO(now);
+  const weekStart = addDaysISO(today, -6);
+  lines.push(...nutritionContextLines({
+    today: getNutritionDay(today),
+    week: listNutritionDays(weekStart, today),
+    targets: getTargets(),
+  }));
+  const activityLine = activityContextLine(listActivityDays(weekStart, today));
+  if (activityLine) lines.push(activityLine);
+  const phaseLine = phaseContextLine(getPhaseSettings(), weightTrend(storage.getBodyWeightEntries(), now));
+  if (phaseLine) lines.push(phaseLine);
 
   const gymLine = formatGymBlock(opts.gym, now);
   if (gymLine) lines.push(gymLine);

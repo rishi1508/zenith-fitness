@@ -294,6 +294,9 @@ function describeDataRequest(request: ZenRequest): string {
     case 'gym_summary': return 'Checking your gym membership…';
     case 'prs': return 'Checking your personal records…';
     case 'volume_by_muscle': return 'Checking your training volume by muscle group…';
+    case 'nutrition_range': return 'Checking what you have been eating…';
+    case 'activity_range': return 'Checking your steps and sleep…';
+    case 'phase_detail': return 'Checking your weight trend and targets…';
     default: return 'Checking your data…';
   }
 }

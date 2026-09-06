@@ -1,19 +1,22 @@
 import * as storage from '../storage';
 import type { Exercise } from '../types';
 import { membershipStatus, upcomingSessions } from '../gymStats';
+import { addDaysISO, getPhaseSettings, getTargets, listActivityDays, listNutritionDays, localDateISO } from '../health/store';
 import type { ZenGymInput } from './contextPack';
 import {
   fmtDay, fmtDate, fmtVolume, fmtSets, workoutVolume, capChars, num, localDay,
   isTraining, byDateAsc, byDateDesc,
 } from './format';
+import { formatActivityRange, formatNutritionRange, formatPhaseDetail } from './healthLines';
 
 /**
  * Resolves one `zen_request` (the server's one-round data protocol, see
  * api/_zenPersona.ts) into the compact text Zen asked for. Everything
- * here reads from `storage.ts` except `gym_summary`, which needs the
- * gym data the caller already holds via `useGym()` — see
- * `contextPack.ts`'s `ZenGymInput` for why this module doesn't reach
- * into Firestore itself.
+ * here reads from `storage.ts` and the cached day maps of
+ * `health/store.ts` except `gym_summary`, which needs the gym data the
+ * caller already holds via `useGym()` — see `contextPack.ts`'s
+ * `ZenGymInput` for why this module doesn't reach into Firestore
+ * itself.
  */
 
 export type ZenRequestKind =
@@ -24,7 +27,10 @@ export type ZenRequestKind =
   | 'plan_detail'
   | 'gym_summary'
   | 'prs'
-  | 'volume_by_muscle';
+  | 'volume_by_muscle'
+  | 'nutrition_range'
+  | 'activity_range'
+  | 'phase_detail';
 
 export interface ZenRequest {
   kind: ZenRequestKind;
@@ -56,6 +62,9 @@ function resolve(request: ZenRequest, opts: ResolveZenDataOptions): string {
     case 'gym_summary': return gymSummary(opts.gym);
     case 'prs': return prs();
     case 'volume_by_muscle': return volumeByMuscle(request.weeks ?? 4);
+    case 'nutrition_range': return nutritionRange(request.from ?? '', request.to ?? '');
+    case 'activity_range': return activityRange(request.from ?? '', request.to ?? '');
+    case 'phase_detail': return phaseDetail();
     default: return 'Unknown request.';
   }
 }
@@ -169,6 +178,42 @@ function prs(): string {
   if (records.length === 0) return 'No personal records logged yet.';
   const lines = records.map((pr) => `${pr.exerciseName}: ${num(pr.weight, 2)}×${pr.reps} (${fmtDate(pr.date)})`);
   return `Personal records (${lines.length}):\n${lines.join('\n')}`;
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** Longest span a single answer may cover — the per-day cache holds 90. */
+const MAX_RANGE_DAYS = 60;
+
+/** Clamps a request's range to something the cache can actually answer. */
+function boundRange(from: string, to: string): { from: string; to: string } | null {
+  if (!ISO_DATE.test(from) || !ISO_DATE.test(to)) return null;
+  const [start, end] = from <= to ? [from, to] : [to, from];
+  const earliest = addDaysISO(end, -(MAX_RANGE_DAYS - 1));
+  return { from: start < earliest ? earliest : start, to: end };
+}
+
+function nutritionRange(fromRaw: string, toRaw: string): string {
+  const range = boundRange(fromRaw, toRaw);
+  if (!range) return 'Invalid date range.';
+  return formatNutritionRange(listNutritionDays(range.from, range.to), range.from, range.to, getTargets());
+}
+
+function activityRange(fromRaw: string, toRaw: string): string {
+  const range = boundRange(fromRaw, toRaw);
+  if (!range) return 'Invalid date range.';
+  return formatActivityRange(listActivityDays(range.from, range.to), range.from, range.to);
+}
+
+function phaseDetail(): string {
+  const now = new Date();
+  const to = localDateISO(now);
+  return formatPhaseDetail({
+    phase: getPhaseSettings(),
+    targets: getTargets(),
+    weights: storage.getBodyWeightEntries(),
+    nutritionDays: listNutritionDays(addDaysISO(to, -20), to),
+    now,
+  });
 }
 
 function volumeByMuscle(weeks: number): string {
