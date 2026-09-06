@@ -108,8 +108,11 @@ export interface WorkoutTemplate {
 
 export interface UserStats {
   totalWorkouts: number;
+  /** Weekly N★ streak (weeks) at `streakLevel`. See streakService. */
   currentStreak: number;
   longestStreak: number;
+  /** Days/week the shown streak is measured at (1–6). */
+  streakLevel?: number;
   thisWeekWorkouts: number;
   lastWorkoutDate?: string;
   totalVolume: number;        // Total weight lifted all time
@@ -145,24 +148,6 @@ export interface BodyMeasurementEntry {
   notes?: string;
 }
 
-/**
- * Per-user streak tracking + freeze tokens.
- *   - `freezes`: 0..MAX_FREEZES currently held
- *   - `daysSinceLastFreeze`: how long since a freeze was consumed OR last
- *     earned. Rolls over to 0 when a new freeze is awarded.
- *   - `freezeConsumedDates`: ISO dates (YYYY-MM-DD) the freeze covered
- *     so calculateStats / buddy views can render them as "frozen" not
- *     "missed".
- *   - `lastProcessedDate`: the YYYY-MM-DD we last settled freeze state
- *     for (idempotency — processing on every app mount stays safe).
- */
-export interface StreakState {
-  freezes: number;
-  freezeConsumedDates: string[]; // YYYY-MM-DD strings
-  lastProcessedDate: string; // YYYY-MM-DD
-  streakDaysSinceFreezeGain: number; // resets to 0 when a freeze is awarded
-}
-
 // Weekly volume goals per muscle group
 export interface VolumeGoal {
   muscleGroup: MuscleGroup;
@@ -186,6 +171,9 @@ export interface BuddyCompareStats {
   headline: {
     totalWorkouts: number;
     currentStreak: number;
+    /** Days/week `currentStreak` is measured at. Absent on snapshots
+     *  written by clients older than the N★ streak. */
+    streakLevel?: number;
     totalVolume: number;
     avgVolumePerSession: number;
   };
@@ -229,6 +217,8 @@ export interface UserProfile {
   joinedAt: string;
   totalWorkouts: number;
   currentStreak: number;
+  /** Days/week `currentStreak` is measured at. Absent for legacy clients. */
+  streakLevel?: number;
   isWorkingOut: boolean;
   activeWorkoutName?: string;
   activeWorkoutStartedAt?: string;

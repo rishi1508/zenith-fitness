@@ -12,7 +12,6 @@ import { Capacitor } from '@capacitor/core';
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt, AskCoachBubble } from './components';
 import { hasLLMConfig } from './llm';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import { settleStreak, isStreakActiveThisWeek } from './streakService';
 import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView, CoachChatView } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
@@ -185,9 +184,6 @@ function App() {
     // Fill in missed days with auto-rest so streaks reflect real consistency
     // (up to 7 days per gap). Idempotent so running on every mount is safe.
     storage.autoLogMissedRestDays();
-    // Consume/earn streak freezes based on days that have passed since
-    // the last app open. Also idempotent.
-    settleStreak();
     // Rebuild PRs from workout history so stored records stay consistent with the
     // current max-weight-then-reps hierarchy (also heals records from older logic).
     storage.recomputePersonalRecords();
@@ -241,6 +237,7 @@ function App() {
       const compareStats = computeMyCompareStats(
         storage.getWorkouts(),
         storage.getExercises(),
+        freshStats.streakLevel ?? 1,
       );
       buddyService.upsertUserProfile(freshStats, compareStats);
     } catch (err) {
@@ -1077,7 +1074,8 @@ function App() {
                 {stats && (
                   <StreakButton
                     streakCount={stats.currentStreak}
-                    active={isStreakActiveThisWeek()}
+                    level={stats.streakLevel ?? 1}
+                    active={stats.thisWeekWorkouts > 0}
                     isDark={isDark}
                   />
                 )}

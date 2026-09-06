@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { TrendingUp, Flame, Trophy } from 'lucide-react';
 import type { Workout } from '../types';
 import { formatVolume } from '../utils';
+import * as storage from '../storage';
+import { computeStreakSummary } from '../streakService';
 
 interface WeeklyInsightsCardProps {
   workouts: Workout[];
@@ -36,51 +38,12 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
     return { thisWeekVolume: twv, lastWeekVolume: lwv, volumeChange: vc };
   }, [thisWeekWorkouts, lastWeekWorkouts]);
   
-  // Calculate current streak (consecutive workout days)
-  const calculateStreak = useMemo(() => {
-    const completedWorkouts = workouts
-      .filter(w => w.completed && w.type !== 'rest')
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    if (completedWorkouts.length === 0) return 0;
-
-    let streak = 0;
-    let currentDate = new Date();
-    currentDate.setHours(0, 0, 0, 0);
-
-    // Check if worked out today or yesterday to start the streak
-    const lastWorkoutDate = new Date(completedWorkouts[0].date);
-    lastWorkoutDate.setHours(0, 0, 0, 0);
-
-    const daysSinceLastWorkout = Math.floor((currentDate.getTime() - lastWorkoutDate.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysSinceLastWorkout > 1) return 0; // Streak broken
-
-    // Count unique workout dates
-    const uniqueDates = new Set<string>();
-    completedWorkouts.forEach(w => {
-      const d = new Date(w.date);
-      d.setHours(0, 0, 0, 0);
-      uniqueDates.add(d.toISOString().split('T')[0]);
-    });
-
-    const sortedDates = Array.from(uniqueDates).sort().reverse();
-
-    for (let i = 0; i < sortedDates.length; i++) {
-      const checkDate = new Date(sortedDates[i]);
-      const expectedDate = new Date(currentDate);
-      expectedDate.setDate(expectedDate.getDate() - i);
-
-      // Allow for 1 day gap (rest days count)
-      const diff = Math.abs(checkDate.getTime() - expectedDate.getTime()) / (1000 * 60 * 60 * 24);
-      if (diff <= 1) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-
-    return streak;
-  }, [workouts]);
+  // Weekly N★ streak — same engine as the header pill and the modal.
+  const commitment = storage.getStreakCommitment();
+  const streakInfo = useMemo(
+    () => computeStreakSummary(workouts, commitment).shown,
+    [workouts, commitment],
+  );
   
   // Count PRs this week (exercises with higher weight than any previous)
   const countPRsThisWeek = useMemo(() => {
@@ -113,11 +76,12 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
     return prCount;
   }, [workouts, thisWeekWorkouts]);
   
-  // Calculate weekly goal progress (assume 4-5 workouts is the goal)
-  const weeklyGoal = 5;
+  // Weekly goal = the days/week the user committed to for their streak.
+  const weeklyGoal = commitment;
   const goalProgress = Math.min((thisWeekWorkouts.length / weeklyGoal) * 100, 100);
-  
-  const streak = calculateStreak;
+
+  const streak = streakInfo.current;
+  const streakLabel = streakInfo.level >= 2 ? `${streakInfo.level}★ Week Streak` : 'Week Streak';
   const prCount = countPRsThisWeek;
   
   if (thisWeekWorkouts.length === 0 && lastWeekWorkouts.length === 0) return null;
@@ -194,7 +158,7 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
               </div>
               <div>
                 <div className="text-xl font-bold">{streak}</div>
-                <div className="text-xs text-zinc-400">Day Streak</div>
+                <div className="text-xs text-zinc-400">{streakLabel}</div>
               </div>
             </div>
           )}

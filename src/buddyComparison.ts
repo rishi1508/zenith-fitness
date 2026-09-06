@@ -1,5 +1,5 @@
 import type { Workout, Exercise, MuscleGroup, BuddyCompareStats } from './types';
-import { computeWeekStreak } from './streakService';
+import { computeStreak } from './streakService';
 
 // ========== Public types ==========
 
@@ -12,6 +12,8 @@ export interface SideStat {
 export interface HeadlineStats {
   totalWorkouts: number;
   currentStreak: number;
+  /** Days/week `currentStreak` is measured at. */
+  streakLevel: number;
   totalVolume: number;
   avgVolumePerSession: number;
 }
@@ -91,7 +93,7 @@ function computeSideStatForExercise(
   };
 }
 
-function computeHeadline(workouts: Workout[]): HeadlineStats {
+function computeHeadline(workouts: Workout[], streakLevel = 1): HeadlineStats {
   const completed = workouts.filter((w) => w.completed && w.type !== 'rest');
   let totalVolume = 0;
   for (const w of completed) {
@@ -101,14 +103,14 @@ function computeHeadline(workouts: Workout[]): HeadlineStats {
       }
     }
   }
-  // Streak is now weekly — matches storage.calculateStats. Buddy compare
-  // snapshot doesn't have access to the local freeze state, so we pass an
-  // empty frozen set. Fine: the worst case is we under-count by the number
-  // of frozen weeks, which is typically 0.
-  const { current: currentStreak } = computeWeekStreak(completed, new Set());
+  // N★ weekly streak at the given level — replayed from history exactly
+  // like storage.calculateStats, so the snapshot matches what the user
+  // sees in their own header.
+  const streak = computeStreak(completed, streakLevel);
   return {
     totalWorkouts: completed.length,
-    currentStreak,
+    currentStreak: streak.current,
+    streakLevel: streak.level,
     totalVolume: Math.round(totalVolume),
     avgVolumePerSession: completed.length
       ? Math.round(totalVolume / completed.length)
@@ -146,8 +148,9 @@ function computeMuscleGroupVolumes(
 export function computeMyCompareStats(
   workouts: Workout[],
   exercises: Exercise[],
+  streakLevel = 1,
 ): BuddyCompareStats {
-  const headline = computeHeadline(workouts);
+  const headline = computeHeadline(workouts, streakLevel);
   const groupByExId = new Map<string, MuscleGroup>();
   const groupByExName = new Map<string, MuscleGroup>();
   for (const e of exercises) {
@@ -269,7 +272,12 @@ export function computeComparisonFromStats(
   me: BuddyCompareStats,
   buddy: BuddyCompareStats,
 ): ComparisonResult {
-  const headline = { me: me.headline, buddy: buddy.headline };
+  // Snapshots from clients older than the N★ streak lack `streakLevel`;
+  // they were measured at 1 day/week.
+  const headline = {
+    me: { ...me.headline, streakLevel: me.headline.streakLevel ?? 1 },
+    buddy: { ...buddy.headline, streakLevel: buddy.headline.streakLevel ?? 1 },
+  };
 
   // Match exercises by NAME (case-insensitive, trimmed) rather than by id.
   // Different users usually have different exerciseIds for the same exercise

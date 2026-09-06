@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { deliverPush } from './pushService';
-import { computeWeekStreak } from './streakService';
+import { computeStreak } from './streakService';
 
 /** Recursively strip `undefined` values so Firestore's setDoc doesn't
  *  reject them. Preserves arrays, nulls, and primitives as-is. */
@@ -53,11 +53,13 @@ export async function upsertUserProfile(
       profile.joinedAt = new Date().toISOString();
       profile.totalWorkouts = stats?.totalWorkouts ?? 0;
       profile.currentStreak = stats?.currentStreak ?? 0;
+      profile.streakLevel = stats?.streakLevel ?? 1;
       profile.isWorkingOut = false;
     } else {
       if (stats) {
         profile.totalWorkouts = stats.totalWorkouts;
         profile.currentStreak = stats.currentStreak;
+        profile.streakLevel = stats.streakLevel ?? 1;
       }
     }
 
@@ -468,11 +470,9 @@ export async function getBuddyStats(buddyUid: string): Promise<UserStats | null>
     }, 0);
   }, 0);
 
-  // Weekly streak — matches storage.calculateStats. No access to buddy's
-  // freeze state from our side, so we pass an empty frozen set.
-  const { current: currentStreak, longest: longestStreak } = computeWeekStreak(
-    completed, new Set(),
-  );
+  // Weekly streak at 1 day/week — we don't know the buddy's commitment
+  // from their raw workouts, so report the base level.
+  const { current: currentStreak, longest: longestStreak } = computeStreak(completed, 1);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -487,6 +487,7 @@ export async function getBuddyStats(buddyUid: string): Promise<UserStats | null>
     totalWorkouts: completed.length,
     currentStreak,
     longestStreak,
+    streakLevel: 1,
     thisWeekWorkouts,
     lastWorkoutDate: completed[0]?.date,
     totalVolume,

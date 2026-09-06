@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   ChevronLeft, FileSpreadsheet, Download, Upload,
   CheckCircle2, Copy, Volume2, Palette, Sun, Moon, Clock, User, LogOut, LogIn,
-  Cloud, Bell,
+  Cloud, Bell, Flame,
 } from 'lucide-react';
 import * as storage from '../storage';
 import { useAuth } from '../auth/AuthContext';
@@ -90,6 +90,47 @@ function EditProfileSection({ isDark }: { isDark: boolean }) {
         >
           Cancel
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Streak Settings Section — the days/week the N★ streak is measured at.
+function StreakSettingsSection({ isDark, onChange }: { isDark: boolean; onChange: () => void }) {
+  const [commitment, setCommitment] = useState<number | null>(() => storage.getAppSettings().streak.commitment);
+  const resolved = storage.getStreakCommitment();
+
+  const choose = (value: number | null) => {
+    storage.updateAppSettings('streak', { commitment: value });
+    setCommitment(value);
+    onChange();
+  };
+
+  const chip = (active: boolean) => `px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+    active
+      ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white'
+      : isDark ? 'bg-[#252525] text-zinc-400 hover:bg-[#303030]' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+  }`;
+
+  return (
+    <div className={`rounded-xl p-4 border space-y-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
+      <div className="flex items-center gap-2">
+        <Flame className="w-5 h-5 text-orange-400" />
+        <span className="font-medium">Streak commitment</span>
+      </div>
+      <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+        How many days a week you commit to train. A week counts toward your streak
+        only when you hit this number; freezes protect this level.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        <button onClick={() => choose(null)} className={chip(commitment === null)}>
+          Auto ({resolved} · from plan)
+        </button>
+        {[1, 2, 3, 4, 5, 6].map((n) => (
+          <button key={n} onClick={() => choose(n)} className={chip(commitment === n)}>
+            {n} {n === 1 ? 'day' : 'days'}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -684,6 +725,9 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
 
       {/* Rest Timer Presets */}
       <RestTimerPresetsSection isDark={isDark} />
+
+      {/* Streak commitment (days/week) */}
+      <StreakSettingsSection isDark={isDark} onChange={onDataChange} />
 
       {/* Data Import/Export */}
       <div className={`rounded-xl p-4 border space-y-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>

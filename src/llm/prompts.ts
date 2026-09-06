@@ -129,13 +129,12 @@ function formatPlanSection(ctx: ExtendedCoachContext): string {
 
 function formatStreakSection(ctx: ExtendedCoachContext): string {
   const s = ctx.streak;
-  const lines: string[] = ['== Streak (weekly model) =='];
+  const lines: string[] = ['== Streak (weekly N-star model: a week counts when the user trains on at least N distinct days) =='];
+  lines.push(`- Level: ${s.level} day${s.level === 1 ? '' : 's'}/week`);
   lines.push(`- Current: ${s.currentWeeks} week${s.currentWeeks === 1 ? '' : 's'}`);
   lines.push(`- Longest: ${s.longestWeeks} week${s.longestWeeks === 1 ? '' : 's'}`);
-  lines.push(`- Streak freezes available: ${s.freezesAvailable}/2`);
-  if (s.freezesAvailable < 2) {
-    lines.push(`- Days until next freeze earned: ${s.daysToNextFreeze}`);
-  }
+  lines.push(`- Streak freezes banked: ${s.freezesAvailable}/2 (one earned per 30 workouts)`);
+  lines.push(`- Workouts until next freeze: ${s.workoutsToNextFreeze}`);
   lines.push(`- Total all-time non-rest workouts logged: ${ctx.totalWorkouts}`);
   return lines.join('\n');
 }

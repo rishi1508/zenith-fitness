@@ -1,6 +1,6 @@
 import type { Workout, Exercise, BodyWeightEntry, BodyMeasurementEntry, WeeklyPlan, MuscleGroup, PersonalRecord } from './types';
 import * as storage from './storage';
-import { computeWeekStreak, getStreakState, weekStartISO, MAX_FREEZES, daysUntilNextFreeze } from './streakService';
+
 
 /**
  * Rule-based "Coach" — runs heuristics over the user's local workout
@@ -829,8 +829,10 @@ export interface ExtendedCoachContext {
   streak: {
     currentWeeks: number;
     longestWeeks: number;
+    /** Days/week the streak is measured at (1–6). */
+    level: number;
     freezesAvailable: number;
-    daysToNextFreeze: number;
+    workoutsToNextFreeze: number;
   };
   /** Total exercises in the user's library, broken down by muscle group. */
   libraryByMuscleGroup: Partial<Record<MuscleGroup, number>>;
@@ -895,21 +897,15 @@ export function buildExtendedContext(): ExtendedCoachContext {
     ? [...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
     : null;
 
-  // Streak: weekly streak + freeze state.
-  const streakState = getStreakState();
-  const frozenWeeks = new Set(
-    streakState.freezeConsumedDates.map((ds) => weekStartISO(new Date(ds + 'T00:00:00')))
-  );
-  const { current, longest } = computeWeekStreak(completed, frozenWeeks);
+  // Streak: N★ weekly streak + freeze bank, replayed from history.
+  const { shown, committed } = storage.getStreakSummary(completed);
   const streak = {
-    currentWeeks: current,
-    longestWeeks: longest,
-    freezesAvailable: streakState.freezes,
-    daysToNextFreeze: daysUntilNextFreeze(streakState),
+    currentWeeks: shown.current,
+    longestWeeks: shown.longest,
+    level: shown.level,
+    freezesAvailable: committed.freezes,
+    workoutsToNextFreeze: committed.workoutsUntilNextFreeze,
   };
-  // Touch MAX_FREEZES so the linter doesn't complain about the unused
-  // import; it's there for readers who want to know the cap.
-  void MAX_FREEZES;
 
   // Library breakdown by muscle group.
   const libraryByMuscleGroup: Partial<Record<MuscleGroup, number>> = {};

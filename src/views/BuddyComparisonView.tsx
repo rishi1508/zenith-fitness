@@ -10,7 +10,7 @@ import {
   computeMyCompareStats, computeComparisonFromStats,
   type ComparisonResult,
 } from '../buddyComparison';
-import { computeWeekStreak } from '../streakService';
+import { buddyStreakFromProfile } from '../streakService';
 
 interface BuddyComparisonViewProps {
   buddyUid: string;
@@ -47,7 +47,7 @@ export function BuddyComparisonView({
 
   // My comparison snapshot is computed fresh from local storage.
   const myStats = useMemo(
-    () => computeMyCompareStats(storage.getWorkouts(), storage.getExercises()),
+    () => computeMyCompareStats(storage.getWorkouts(), storage.getExercises(), storage.getStreakCommitment()),
     [],
   );
 
@@ -63,26 +63,16 @@ export function BuddyComparisonView({
           // Buddy hasn't opened the updated app yet — no snapshot to compare against.
           setError(`${buddyName} hasn't synced comparison data yet. Ask them to open the app once and try again.`);
         } else {
-          // Recompute the streak LOCALLY from activityDays so the unit
-          // is always "weeks" — never trust headline.currentStreak or
-          // profile.currentStreak, an older client could have written a
-          // day count there.
+          // Use the N★ streak the buddy's client published; recompute at
+          // level 1 from activityDays only for legacy snapshots.
           const cs = profile.compareStats;
-          let buddyWeekStreak = 0;
-          if (cs.activityDays) {
-            const synthetic = Object.entries(cs.activityDays)
-              .filter(([, v]) => v > 0)
-              .map(([ds]) => ({
-                completed: true, type: 'workout' as const, date: ds,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              } as any));
-            buddyWeekStreak = computeWeekStreak(synthetic, new Set()).current;
-          }
+          const buddyStreak = buddyStreakFromProfile(profile);
           setBuddyStats({
             ...cs,
             headline: {
               ...cs.headline,
-              currentStreak: buddyWeekStreak,
+              currentStreak: buddyStreak.weeks,
+              streakLevel: buddyStreak.level,
               totalWorkouts: Math.max(cs.headline.totalWorkouts, profile.totalWorkouts || 0),
             },
           });
@@ -212,7 +202,7 @@ export function BuddyComparisonView({
         <div className="space-y-2">
           {[
             { label: 'Workouts', me: headline.me.totalWorkouts, buddy: headline.buddy.totalWorkouts, suffix: '' },
-            { label: 'Streak', me: headline.me.currentStreak, buddy: headline.buddy.currentStreak, suffix: 'w' },
+            { label: headline.me.streakLevel !== headline.buddy.streakLevel || headline.me.streakLevel >= 2 ? `Streak (${headline.me.streakLevel}★ vs ${headline.buddy.streakLevel}★)` : 'Streak', me: headline.me.currentStreak, buddy: headline.buddy.currentStreak, suffix: 'w' },
             { label: 'Total volume', me: formatVolume(headline.me.totalVolume), buddy: formatVolume(headline.buddy.totalVolume), suffix: 'kg' },
             { label: 'Avg / session', me: formatVolume(headline.me.avgVolumePerSession), buddy: formatVolume(headline.buddy.avgVolumePerSession), suffix: 'kg' },
           ].map((row) => {

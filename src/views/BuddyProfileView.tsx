@@ -6,7 +6,7 @@ import {
 import type { UserProfile, Workout, UserStats, BuddyRelationship } from '../types';
 import * as buddyService from '../buddyService';
 import { StartSessionModal, ActivityHeatmap } from '../components';
-import { computeWeekStreak, weekStartISO } from '../streakService';
+import { buddyStreakFromProfile, weekStartISO } from '../streakService';
 
 interface BuddyProfileViewProps {
   buddyUid: string;
@@ -46,26 +46,12 @@ export function BuddyProfileView({
           const profileWorkouts = p.totalWorkouts || 0;
           const csWorkouts = cs?.headline.totalWorkouts || 0;
 
-          // Recompute the streak WEEKLY on our side from the buddy's
-          // activityDays snapshot. Never trust profile.currentStreak or
-          // compareStats.headline.currentStreak — a buddy running an
-          // older version of the app might be writing that field as a
-          // day-count, which produces the "219 week streak" we were
-          // showing on the buddy list before.
-          let currentStreak = 0;
-          let longestStreak = 0;
-          if (cs?.activityDays) {
-            const synthetic = Object.entries(cs.activityDays)
-              .filter(([, v]) => v > 0)
-              .map(([ds]) => ({
-                completed: true,
-                type: 'workout' as const,
-                date: ds,
-              } as unknown as Workout));
-            const { current, longest } = computeWeekStreak(synthetic, new Set());
-            currentStreak = current;
-            longestStreak = longest;
-          }
+          // Trust the N★ streak the buddy's own client published; fall
+          // back to a level-1 recompute from activityDays for clients
+          // older than the N★ model (see buddyStreakFromProfile).
+          const buddyStreak = buddyStreakFromProfile(p);
+          const currentStreak = buddyStreak.weeks;
+          const longestStreak = buddyStreak.longest;
 
           const thisWS = weekStartISO(new Date());
           const thisWeek = cs?.activityDays
@@ -78,6 +64,7 @@ export function BuddyProfileView({
             totalWorkouts: Math.max(csWorkouts, profileWorkouts),
             currentStreak,
             longestStreak,
+            streakLevel: buddyStreak.level,
             thisWeekWorkouts: thisWeek,
             totalVolume: cs?.headline.totalVolume || 0,
             avgVolumePerSession: cs?.headline.avgVolumePerSession || 0,
@@ -193,7 +180,7 @@ export function BuddyProfileView({
         <div className="grid grid-cols-2 gap-3">
           {[
             { icon: <Dumbbell className="w-5 h-5" />, value: stats.totalWorkouts, label: 'Workouts', color: 'text-orange-400', bg: 'bg-orange-500/10' },
-            { icon: <Flame className="w-5 h-5" />, value: `${stats.currentStreak}w`, label: 'Streak', color: 'text-red-400', bg: 'bg-red-500/10' },
+            { icon: <Flame className="w-5 h-5" />, value: `${stats.currentStreak}w`, label: (stats.streakLevel ?? 1) >= 2 ? `${stats.streakLevel}★ Streak` : 'Streak', color: 'text-red-400', bg: 'bg-red-500/10' },
             { icon: <TrendingUp className="w-5 h-5" />, value: stats.thisWeekWorkouts, label: 'This Week', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
             { icon: <Zap className="w-5 h-5" />, value: stats.avgVolumePerSession > 0 ? `${Math.round(stats.avgVolumePerSession / 1000)}k` : '0', label: 'Avg Volume (kg)', color: 'text-blue-400', bg: 'bg-blue-500/10' },
           ].map(({ icon, value, label, color, bg }, i) => (

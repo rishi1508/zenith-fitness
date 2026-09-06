@@ -1,6 +1,7 @@
 import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, BodyMeasurementEntry, BodyMeasurementField, VolumeGoal, WeeklyVolumeProgress, MuscleGroup, AppSettings } from './types';
 import { queueFirestoreSync, addToSharedExerciseLibrary } from './firestoreSync';
-import { computeWeekStreak } from './streakService';
+import { computeStreakSummary, resolveCommitment } from './streakService';
+import type { StreakSummary } from './streakService';
 
 const STORAGE_KEYS = {
   WORKOUTS: 'zenith_workouts',
@@ -15,7 +16,6 @@ const STORAGE_KEYS = {
   BODY_WEIGHT: 'zenith_body_weight', // Body weight tracking entries
   BODY_MEASUREMENTS: 'zenith_body_measurements', // Per-part circumference log
   DELOAD_WEEKS: 'zenith_deload_weeks', // Array of ISO week strings that were deload weeks
-  STREAK: 'zenith_streak', // Streak freeze state (see StreakState in types)
 };
 
 // Generic storage helpers
@@ -573,31 +573,28 @@ export function calculateStats(): UserStats {
     new Date(w.date) >= weekStart
   ).length;
   
-  // Weekly streak — one point per week that has ≥1 non-rest workout.
-  // See streakService.computeWeekStreak for the exact algorithm. We
-  // pull frozen weeks out of localStorage directly to avoid an import
-  // cycle (streakService → storage → streakService).
-  let frozenWeeks: Set<string> = new Set();
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.STREAK);
-    if (raw) {
-      const parsed = JSON.parse(raw) as { freezeConsumedDates?: string[] };
-      frozenWeeks = new Set(parsed.freezeConsumedDates || []);
-    }
-  } catch { /* ignore */ }
-  const { current: currentStreak, longest: longestStreak } = computeWeekStreak(
-    workoutOnly, frozenWeeks,
-  );
+  // N★ weekly streak — replayed from history, see streakService.
+  const { shown } = getStreakSummary(workoutOnly);
 
   return {
     totalWorkouts: workoutOnly.length,
-    currentStreak,
-    longestStreak,
+    currentStreak: shown.current,
+    longestStreak: shown.longest,
+    streakLevel: shown.level,
     thisWeekWorkouts,
     lastWorkoutDate: sorted[0]?.date,
     totalVolume,
     avgVolumePerSession,
   };
+}
+
+// Streak — the committed days/week and the full replayed summary.
+export function getStreakCommitment(): number {
+  return resolveCommitment(getAppSettings().streak, getActivePlan());
+}
+
+export function getStreakSummary(workouts: Workout[] = getWorkouts()): StreakSummary {
+  return computeStreakSummary(workouts, getStreakCommitment());
 }
 
 // Google Sheets Import
