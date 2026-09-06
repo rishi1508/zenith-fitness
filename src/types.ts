@@ -6,12 +6,31 @@ export interface Exercise {
   /** Finer-grained bucket than isCompound — drives smart defaults like
    *  rest-timer length. If omitted we derive it from isCompound. */
   category?: ExerciseCategory;
-  notes?: string; // Personal notes: form cues, pain points, RPE targets
+  equipment?: ExerciseEquipment;
+  /** PERSONAL notes — private to this user, never shared. */
+  notes?: string;
+  /** CREATOR notes — written by whoever created the exercise (or an
+   *  admin) and shown to everyone who has it. Read-only for others. */
+  sharedNotes?: string;
   videoUrl?: string; // YouTube or form guide link
   isFavorite?: boolean; // Mark as favorite for quick access
+  /** uid of the user who created / owns the shared definition. Absent on
+   *  the built-in seed until the shared library assigns one. */
+  createdBy?: string;
+  createdByName?: string;
+  /** When this local exercise was matched to a shared one by NAME (the
+   *  user had already created their own copy), the shared doc's id.
+   *  Absent when the local id IS the shared id. */
+  sharedId?: string;
 }
 
 export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'core' | 'other';
+export const EXERCISE_CATEGORIES: readonly ExerciseCategory[] = ['compound', 'isolation', 'cardio', 'core', 'other'];
+
+export type ExerciseEquipment =
+  | 'barbell' | 'dumbbell' | 'machine' | 'cable' | 'bodyweight' | 'kettlebell' | 'band' | 'other';
+export const EXERCISE_EQUIPMENT: readonly ExerciseEquipment[] =
+  ['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight', 'kettlebell', 'band', 'other'];
 
 export type MuscleGroup = 
   | 'chest' 
@@ -23,6 +42,8 @@ export type MuscleGroup =
   | 'core' 
   | 'full_body'
   | 'other';
+export const MUSCLE_GROUPS: readonly MuscleGroup[] =
+  ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'legs', 'core', 'full_body', 'other'];
 
 export interface WorkoutSet {
   id: string;

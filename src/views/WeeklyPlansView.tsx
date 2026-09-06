@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import type { WeeklyPlan, DayPlan, Exercise } from '../types';
 import * as storage from '../storage';
+import { ExerciseForm } from '../components/ExerciseForm';
+import { createAndPublishExercise } from '../sharedExercises';
 
 // Day Exercise Editor - Edit exercises for a single day (internal component)
 function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
@@ -19,24 +21,10 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
   const [searchQuery, setSearchQuery] = useState('');
   const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
   const [showCreate, setShowCreate] = useState(false);
-  const [newMuscleGroup, setNewMuscleGroup] = useState<string>('chest');
 
   const filteredExercises = allExercises.filter(ex =>
     ex.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const handleCreateAndAdd = () => {
-    const name = searchQuery.trim();
-    if (!name) return;
-    // Prevent duplicates (case-insensitive)
-    const existing = allExercises.find(
-      (e) => e.name.trim().toLowerCase() === name.toLowerCase(),
-    );
-    const ex = existing || storage.addCustomExercise(name, newMuscleGroup);
-    if (!existing) setAllExercises(storage.getExercises());
-    addExercise(ex);
-    setShowCreate(false);
-  };
   
   const addExercise = (exercise: Exercise) => {
     setExercises([...exercises, {
@@ -142,34 +130,32 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
             </button>
           )}
           {searchQuery.trim() && showCreate && (
-            <div className={`rounded-xl border p-4 space-y-3 ${isDark ? 'bg-[#1a1a1a] border-orange-500/40' : 'bg-white border-orange-400'}`}>
-              <div className="text-sm font-medium">New exercise: "{searchQuery.trim()}"</div>
-              <div>
-                <label className={`text-xs block mb-1 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Muscle group</label>
-                <select
-                  value={newMuscleGroup}
-                  onChange={(e) => setNewMuscleGroup(e.target.value)}
-                  className={`w-full rounded-lg px-3 py-2 text-sm border ${
-                    isDark ? 'bg-[#252525] border-[#3e3e3e] text-white' : 'bg-white border-gray-200'
-                  } focus:outline-none focus:border-orange-500`}
-                >
-                  {['chest','back','shoulders','biceps','triceps','legs','core','full_body','other'].map(g => (
-                    <option key={g} value={g}>{g.replace('_', ' ')}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowCreate(false)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isDark ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-gray-100 hover:bg-gray-200'
-                  }`}
-                >Cancel</button>
-                <button
-                  onClick={handleCreateAndAdd}
-                  className="flex-1 py-2 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
-                >Create & add</button>
-              </div>
+            <div className={`rounded-xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-orange-500/40' : 'bg-white border-orange-400'}`}>
+              <div className="text-sm font-medium mb-3">New exercise</div>
+              <ExerciseForm
+                mode="create"
+                isDark={isDark}
+                compact
+                canEditShared
+                initial={{ name: searchQuery.trim() }}
+                submitLabel="Create & add"
+                onCancel={() => setShowCreate(false)}
+                onUseExisting={(ex) => { setShowCreate(false); addExercise(ex); }}
+                onSubmit={(values) => {
+                  const created = createAndPublishExercise({
+                    name: values.name,
+                    muscleGroup: values.muscleGroup,
+                    category: values.category,
+                    equipment: values.equipment,
+                    sharedNotes: values.sharedNotes || undefined,
+                    notes: values.notes || undefined,
+                    videoUrl: values.videoUrl || undefined,
+                  });
+                  setAllExercises(storage.getExercises());
+                  setShowCreate(false);
+                  addExercise(created);
+                }}
+              />
             </div>
           )}
         </div>

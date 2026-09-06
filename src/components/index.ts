@@ -24,3 +24,4 @@ export { PushPermissionPrompt } from './PushPermissionPrompt';
 export { InsightCard } from './InsightCard';
 export { BYOKSetup } from './BYOKSetup';
 export { AskCoachBubble } from './AskCoachBubble';
+export { ExerciseForm } from './ExerciseForm';

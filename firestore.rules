@@ -10,7 +10,8 @@ rules_version = '2';
 //   chats/{chatId}               — chat doc; messages nested
 //   notifications/{uid}/items/…  — in-app notifications
 //   workoutSessions/{id}         — group workout sessions + subcollections
-//   shared/{document}            — shared exercise library
+//   sharedExercises/{id}         — shared exercise library, one doc per exercise
+//   shared/{document}            — LEGACY single-doc exercise library (read-only)
 //
 // The read rule on userProfiles intentionally allows any signed-in user to
 // read any profile so search + buddy comparison work across accounts.
@@ -20,6 +21,11 @@ service cloud.firestore {
 
     function signedIn() {
       return request.auth != null;
+    }
+
+    // Accounts allowed to edit any shared exercise. Mirrors src/admin.ts.
+    function isAdmin() {
+      return signedIn() && request.auth.uid in ['BXedteurc3bPydsehvPIdVWPTbM2'];
     }
 
     // ---------- userProfiles ----------
@@ -147,11 +153,23 @@ service cloud.firestore {
       }
     }
 
-    // ---------- shared exercise library ----------
+    // ---------- shared exercise library (one doc per exercise) ----------
+    // Anyone signed in can read and can create exercises they own. Only
+    // the creator or an admin can change or remove a definition — this
+    // is what makes "creator notes visible to everyone" trustworthy.
+    match /sharedExercises/{exerciseId} {
+      allow read:   if signedIn();
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+      allow delete: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
+    // ---------- LEGACY shared exercise library ----------
+    // The old single array document. Kept readable because older clients
+    // still pull it and useOnlineStatus uses it as a connectivity probe;
+    // no longer writable — any signed-in user could overwrite it wholesale.
     match /shared/{document} {
       allow read:   if signedIn();
-      allow create: if signedIn();
-      allow update: if signedIn();
     }
 
     // ---------- shared templates library ----------

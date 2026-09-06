@@ -8,6 +8,31 @@ import * as storage from '../storage';
 import * as sessionService from '../workoutSessionService';
 import { hapticImpact, hapticNotification } from '../haptics';
 import { defaultRestSecondsFor } from '../restTimer';
+import { ExerciseForm } from '../components/ExerciseForm';
+import { labelize } from '../exerciseUtils';
+import type { ExerciseFormValues } from '../components/ExerciseForm';
+import { createAndPublishExercise } from '../sharedExercises';
+
+/** Shared by both pickers: create the exercise locally + in the shared
+ *  library, and broadcast it to the group session (if any) so buddies get
+ *  the SAME id instead of re-creating it with a different one. */
+function createExerciseFromForm(values: ExerciseFormValues, sessionId?: string): Exercise {
+  const created = createAndPublishExercise({
+    name: values.name,
+    muscleGroup: values.muscleGroup,
+    category: values.category,
+    equipment: values.equipment,
+    sharedNotes: values.sharedNotes || undefined,
+    notes: values.notes || undefined,
+    videoUrl: values.videoUrl || undefined,
+  });
+  if (sessionId) {
+    sessionService
+      .addCustomExerciseToSession(sessionId, created)
+      .catch((err) => console.warn('[Session] broadcast new exercise failed', err));
+  }
+  return created;
+}
 
 // Module-level AudioContext so oscillators don't constantly warm up a new
 // context (which Android autoplay policy keeps in "suspended"). Lazily
@@ -163,6 +188,7 @@ export function ActiveWorkoutView({
   // Add exercise to current workout
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addSearchQuery, setAddSearchQuery] = useState('');
+  const [addCreating, setAddCreating] = useState(false);
   const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
 
   const refreshExercises = () => setAllExercises(storage.getExercises());
@@ -587,24 +613,46 @@ export function ActiveWorkoutView({
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold">Add Exercise</h3>
                 <button
-                  onClick={() => { setShowAddExercise(false); setAddSearchQuery(''); }}
+                  onClick={() => { setShowAddExercise(false); setAddSearchQuery(''); setAddCreating(false); }}
                   className="p-2 text-zinc-400 hover:text-white"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                <input
-                  type="text"
-                  value={addSearchQuery}
-                  onChange={(e) => setAddSearchQuery(e.target.value)}
-                  placeholder="Search exercises..."
-                  className="w-full pl-10 pr-4 py-3 bg-[#252525] border border-[#3e3e3e] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
-                  autoFocus
+              {!addCreating && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={addSearchQuery}
+                    onChange={(e) => setAddSearchQuery(e.target.value)}
+                    placeholder="Search exercises..."
+                    className="w-full pl-10 pr-4 py-3 bg-[#252525] border border-[#3e3e3e] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+            {addCreating ? (
+              <div className="overflow-y-auto max-h-[60vh] p-4">
+                <div className="text-sm text-zinc-400 mb-3">New exercise — it goes into your library and the shared library.</div>
+                <ExerciseForm
+                  mode="create"
+                  isDark
+                  compact
+                  canEditShared
+                  initial={{ name: addSearchQuery.trim() }}
+                  onCancel={() => setAddCreating(false)}
+                  onUseExisting={(ex) => { setAddCreating(false); addExercise(ex); }}
+                  onSubmit={(values) => {
+                    const created = createExerciseFromForm(values, workout.sessionId);
+                    refreshExercises();
+                    setAddCreating(false);
+                    addExercise(created);
+                  }}
                 />
               </div>
-            </div>
+            ) : (
             <div className="overflow-y-auto max-h-[60vh] p-2">
               {allExercises
                 .filter(ex =>
@@ -622,7 +670,8 @@ export function ActiveWorkoutView({
                       <div>
                         <div className="font-medium">{ex.name}</div>
                         <div className="text-xs text-zinc-500">
-                          {ex.muscleGroup.replace('_', ' ')}
+                          {labelize(ex.muscleGroup)}
+                          {ex.equipment && <span> · {labelize(ex.equipment)}</span>}
                           {lastData && lastData[0] && (
                             <span className="text-orange-400 ml-2">
                               Last: {lastData[0].weight}kg x {lastData[0].reps}
@@ -638,28 +687,16 @@ export function ActiveWorkoutView({
                 <div className="mt-3 pt-3 border-t border-[#2e2e2e]">
                   <div className="text-xs text-zinc-500 mb-2 px-3">Can't find what you're looking for?</div>
                   <button
-                    onClick={() => {
-                      const created = storage.addCustomExercise(addSearchQuery.trim(), 'other');
-                      refreshExercises();
-                      addExercise(created);
-                      // If we're inside a buddy session, broadcast the
-                      // new exercise so the other participants pick it
-                      // up with the SAME id and don't end up creating
-                      // their own duplicate when they try to log it.
-                      if (workout.sessionId) {
-                        sessionService
-                          .addCustomExerciseToSession(workout.sessionId, created)
-                          .catch((err) => console.warn('[Session] broadcast new exercise failed', err));
-                      }
-                    }}
+                    onClick={() => setAddCreating(true)}
                     className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center gap-2 text-orange-400"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Create "{addSearchQuery.trim()}"</span>
+                    <span>Create "{addSearchQuery.trim()}"…</span>
                   </button>
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       )}
@@ -690,6 +727,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   const [expanded, setExpanded] = useState(true);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [swapCreating, setSwapCreating] = useState(false);
   const completedCount = exercise.sets.filter(s => s.completed).length;
   
   // Get all exercises for the selector
@@ -714,8 +752,9 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   // was useMemo'd with stale deps, which is why saved notes sometimes
   // wouldn't appear here.
   const [exerciseData, setExerciseData] = useState<{
-    notes?: string; videoUrl?: string;
+    notes?: string; sharedNotes?: string; videoUrl?: string;
     muscleGroup?: Exercise['muscleGroup']; isCompound?: boolean;
+    equipment?: Exercise['equipment']; createdByName?: string;
   }>({});
   useEffect(() => {
     const exercises = storage.getExercises();
@@ -724,11 +763,14 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
       || exercises.find(e => e.name.trim().toLowerCase() === nameKey);
     setExerciseData({
       notes: ex?.notes,
+      sharedNotes: ex?.sharedNotes,
       videoUrl: ex?.videoUrl,
       muscleGroup: ex?.muscleGroup,
       isCompound: ex?.isCompound,
+      equipment: ex?.equipment,
+      createdByName: ex?.createdByName,
     });
-  }, [exercise.exerciseId, exercise.exerciseName, showInfo]);
+  }, [exercise.exerciseId, exercise.exerciseName, showInfo, expanded]);
 
   // Get PR for this exercise — match by id OR by name so session workouts
   // (which carry the host's exerciseIds) resolve to the local user's PR.
@@ -776,24 +818,55 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                   onClick={() => {
                     setShowExerciseSelector(false);
                     setSearchQuery('');
+                    setSwapCreating(false);
                   }}
                   className="p-2 text-zinc-400 hover:text-white"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search exercises..."
-                  className="w-full pl-10 pr-4 py-3 bg-[#252525] border border-[#3e3e3e] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
-                  autoFocus
+              {!swapCreating && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search exercises..."
+                    className="w-full pl-10 pr-4 py-3 bg-[#252525] border border-[#3e3e3e] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+            {swapCreating ? (
+              <div className="overflow-y-auto max-h-[60vh] p-4">
+                <div className="text-sm text-zinc-400 mb-3">New exercise — it goes into your library and the shared library.</div>
+                <ExerciseForm
+                  mode="create"
+                  isDark
+                  compact
+                  canEditShared
+                  initial={{ name: searchQuery.trim() }}
+                  onCancel={() => setSwapCreating(false)}
+                  onUseExisting={(ex) => {
+                    setSwapCreating(false);
+                    onSwapExercise(ex);
+                    setShowExerciseSelector(false);
+                    setSearchQuery('');
+                  }}
+                  onSubmit={(values) => {
+                    const created = createExerciseFromForm(values, sessionId);
+                    setAllExercises(storage.getExercises());
+                    onExerciseCreated();
+                    setSwapCreating(false);
+                    onSwapExercise(created);
+                    setShowExerciseSelector(false);
+                    setSearchQuery('');
+                  }}
                 />
               </div>
-            </div>
+            ) : (
             <div className="overflow-y-auto max-h-[60vh] p-2">
               {filteredExercises.length === 0 && !searchQuery.trim() ? (
                 <div className="text-center py-8 text-zinc-500">
@@ -816,7 +889,8 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                         <div>
                           <div className="font-medium">{ex.name}</div>
                           <div className="text-xs text-zinc-500">
-                            {ex.muscleGroup.replace('_', ' ')}
+                            {labelize(ex.muscleGroup)}
+                            {ex.equipment && <span> · {labelize(ex.equipment)}</span>}
                             {lastData && lastData[0] && (
                               <span className="text-orange-400 ml-2">
                                 Last: {lastData[0].weight}kg × {lastData[0].reps}
@@ -834,31 +908,16 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                 <div className="mt-3 pt-3 border-t border-[#2e2e2e]">
                   <div className="text-xs text-zinc-500 mb-2 px-3">Can't find what you're looking for?</div>
                   <button
-                    onClick={() => {
-                      const created = storage.addCustomExercise(searchQuery.trim(), 'other');
-                      setAllExercises(storage.getExercises());
-                      onExerciseCreated();
-                      onSwapExercise(created);
-                      // Inside a buddy session: broadcast so the
-                      // other participants get the same exercise id
-                      // in their library and don't end up creating
-                      // duplicates with the same name.
-                      if (sessionId) {
-                        sessionService
-                          .addCustomExerciseToSession(sessionId, created)
-                          .catch((err) => console.warn('[Session] broadcast new exercise failed', err));
-                      }
-                      setShowExerciseSelector(false);
-                      setSearchQuery('');
-                    }}
+                    onClick={() => setSwapCreating(true)}
                     className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center gap-2 text-orange-400"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Create "{searchQuery.trim()}"</span>
+                    <span>Create "{searchQuery.trim()}"…</span>
                   </button>
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       )}
@@ -951,22 +1010,39 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                   <div className="font-medium mt-0.5">{exercise.sets.length}</div>
                 </div>
                 {exerciseData.isCompound !== undefined && (
-                  <div className="bg-[#252525] rounded-lg p-3 col-span-2">
+                  <div className="bg-[#252525] rounded-lg p-3">
                     <div className="text-[10px] uppercase text-zinc-500 font-semibold">Type</div>
                     <div className="font-medium mt-0.5">{exerciseData.isCompound ? 'Compound' : 'Isolation'}</div>
                   </div>
                 )}
+                {exerciseData.equipment && (
+                  <div className="bg-[#252525] rounded-lg p-3">
+                    <div className="text-[10px] uppercase text-zinc-500 font-semibold">Equipment</div>
+                    <div className="font-medium mt-0.5">{labelize(exerciseData.equipment)}</div>
+                  </div>
+                )}
               </div>
-              {exerciseData.notes ? (
+              {exerciseData.sharedNotes && (
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5" /> Notes & cues
+                    <FileText className="w-3.5 h-3.5" /> {exerciseData.createdByName ? `Notes from ${exerciseData.createdByName}` : 'Creator notes'}
                   </div>
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-zinc-300 whitespace-pre-wrap">
+                    {exerciseData.sharedNotes}
+                  </div>
+                </div>
+              )}
+              {exerciseData.notes && (
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5" /> My notes
+                  </div>
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-zinc-300 whitespace-pre-wrap">
                     {exerciseData.notes}
                   </div>
                 </div>
-              ) : (
+              )}
+              {!exerciseData.sharedNotes && !exerciseData.notes && (
                 <p className="text-xs text-zinc-500 italic">No notes yet — add cues or form reminders from the Exercise Library.</p>
               )}
               {exerciseData.videoUrl && (
@@ -987,12 +1063,20 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
           {/* Exercise Notes & Video */}
-          {(exerciseData.notes || exerciseData.videoUrl) && (
+          {(exerciseData.sharedNotes || exerciseData.notes || exerciseData.videoUrl) && (
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+              {exerciseData.sharedNotes && (
+                <div className="mb-2">
+                  <div className="text-xs font-medium text-blue-400 mb-1 flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> {exerciseData.createdByName ? `Notes from ${exerciseData.createdByName}` : 'Creator notes'}
+                  </div>
+                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">{exerciseData.sharedNotes}</div>
+                </div>
+              )}
               {exerciseData.notes && (
                 <div className="mb-2">
-                  <div className="text-xs font-medium text-blue-400 mb-1 flex items-center gap-1"><FileText className="w-3 h-3" /> Notes</div>
-                  <div className="text-sm text-zinc-300">{exerciseData.notes}</div>
+                  <div className="text-xs font-medium text-emerald-400 mb-1 flex items-center gap-1"><FileText className="w-3 h-3" /> My notes</div>
+                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">{exerciseData.notes}</div>
                 </div>
               )}
               {exerciseData.videoUrl && (

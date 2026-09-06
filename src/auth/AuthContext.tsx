@@ -17,7 +17,8 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '../firebase';
-import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, pullSharedExercises } from '../firestoreSync';
+import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners } from '../firestoreSync';
+import { startSharedExerciseSync, stopSharedExerciseSync } from '../sharedExercises';
 import * as otpService from '../otpService';
 
 const GUEST_MODE_KEY = 'zenith_guest_mode';
@@ -95,11 +96,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!didMigrate) {
               await pullFirestoreToLocalStorage(firebaseUser.uid);
             }
-            await pullSharedExercises();
             onDataRefresh?.();
             setupFirestoreListeners(firebaseUser.uid, () => {
               onDataRefresh?.();
             });
+            // Shared exercise library — live merge into the local library.
+            // Goes through storage.saveExercises so the per-user doc picks
+            // it up too (the old one-shot pull wrote localStorage directly
+            // and the per-user listener then clobbered it).
+            startSharedExerciseSync(() => onDataRefresh?.());
           } catch (err) {
             console.error('[Auth] Migration/sync error:', err);
             // Best-effort: still attach the listener so future syncs work.
@@ -240,6 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     teardownFirestoreListeners();
+    stopSharedExerciseSync();
     await firebaseSignOut(auth);
     setUser(null);
   }, []);

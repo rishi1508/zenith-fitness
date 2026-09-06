@@ -1,5 +1,5 @@
-import type { Workout, WorkoutTemplate, Exercise, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, BodyMeasurementEntry, BodyMeasurementField, VolumeGoal, WeeklyVolumeProgress, MuscleGroup, AppSettings } from './types';
-import { queueFirestoreSync, addToSharedExerciseLibrary } from './firestoreSync';
+import type { Workout, WorkoutTemplate, Exercise, ExerciseCategory, ExerciseEquipment, PersonalRecord, UserStats, WorkoutSet, WeeklyPlan, DayPlan, BodyWeightEntry, BodyMeasurementEntry, BodyMeasurementField, VolumeGoal, WeeklyVolumeProgress, MuscleGroup, AppSettings } from './types';
+import { queueFirestoreSync } from './firestoreSync';
 import { computeStreakSummary, resolveCommitment } from './streakService';
 import type { StreakSummary } from './streakService';
 
@@ -404,23 +404,77 @@ export function getExercises(): Exercise[] {
   return getItem<Exercise[]>(STORAGE_KEYS.EXERCISES, defaultExercises);
 }
 
-export function addCustomExercise(name: string, muscleGroup: string): Exercise {
+/** Case-insensitive, whitespace-collapsed key for matching exercise names. */
+export function exerciseNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function findExerciseByName(name: string, exercises: Exercise[] = getExercises()): Exercise | undefined {
+  const key = exerciseNameKey(name);
+  if (!key) return undefined;
+  return exercises.find(e => exerciseNameKey(e.name) === key);
+}
+
+export interface NewExerciseInput {
+  name: string;
+  muscleGroup: MuscleGroup;
+  category: ExerciseCategory;
+  equipment?: ExerciseEquipment;
+  /** Creator notes — shared with everyone. */
+  sharedNotes?: string;
+  /** Personal notes — private. */
+  notes?: string;
+  videoUrl?: string;
+  createdBy?: string;
+  createdByName?: string;
+}
+
+/** Create a user-defined exercise in the local library. Publishing it to
+ *  the shared library is the caller's job (see sharedExercises.ts). */
+export function createExercise(input: NewExerciseInput): Exercise {
   const exercises = getExercises();
+  const clean = (s?: string) => (s && s.trim() ? s.trim() : undefined);
   const newExercise: Exercise = {
-    id: `custom_${Date.now()}`,
-    name: name.trim(),
-    muscleGroup: muscleGroup.toLowerCase().replace(' ', '_') as Exercise['muscleGroup'],
-    isCompound: false,
+    id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name: input.name.trim().replace(/\s+/g, ' '),
+    muscleGroup: input.muscleGroup,
+    category: input.category,
+    isCompound: input.category === 'compound',
+    equipment: input.equipment,
+    sharedNotes: clean(input.sharedNotes),
+    notes: clean(input.notes),
+    videoUrl: clean(input.videoUrl),
+    createdBy: input.createdBy,
+    createdByName: input.createdByName,
   };
+  // Firestore rejects `undefined` field values and JSON.stringify drops
+  // them anyway — strip up front so the object is clean everywhere.
+  for (const k of Object.keys(newExercise) as (keyof Exercise)[]) {
+    if (newExercise[k] === undefined) delete newExercise[k];
+  }
   exercises.push(newExercise);
   setItem(STORAGE_KEYS.EXERCISES, exercises);
-
-  // Push to shared exercise library (all users)
-  addToSharedExerciseLibrary(newExercise).catch(err =>
-    console.error('[Storage] Shared library sync failed:', err)
-  );
-
   return newExercise;
+}
+
+/** Merge a patch into one exercise and persist. Returns the updated
+ *  exercise, or null if the id is unknown. Empty-string fields clear. */
+export function updateExercise(id: string, patch: Partial<Exercise>): Exercise | null {
+  const exercises = getExercises();
+  const idx = exercises.findIndex(e => e.id === id);
+  if (idx < 0) return null;
+  const merged: Exercise = { ...exercises[idx], ...patch };
+  if (patch.category !== undefined) merged.isCompound = patch.category === 'compound';
+  if (patch.name !== undefined) merged.name = patch.name.trim().replace(/\s+/g, ' ');
+  for (const k of ['notes', 'sharedNotes', 'videoUrl'] as const) {
+    if (typeof merged[k] === 'string' && !merged[k]!.trim()) delete merged[k];
+  }
+  for (const k of Object.keys(merged) as (keyof Exercise)[]) {
+    if (merged[k] === undefined) delete merged[k];
+  }
+  exercises[idx] = merged;
+  setItem(STORAGE_KEYS.EXERCISES, exercises);
+  return merged;
 }
 
 // Save the full exercises array (for bulk operations like delete or import)
