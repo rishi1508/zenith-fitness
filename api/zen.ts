@@ -153,7 +153,8 @@ async function callGemini(model: string, contents: GeminiContent[], apiKey: stri
   // Gemma 4 is a thinking model: without this it spends ~20 s reasoning and
   // may echo that reasoning into the text. Ask for no thinking budget; if a
   // model rejects the field (400 mentioning thinking) retry once without it.
-  const generationConfig: Record<string, unknown> = { temperature: 0.6, maxOutputTokens: 700 };
+  // Thinking tokens count against maxOutputTokens, so leave room for both.
+  const generationConfig: Record<string, unknown> = { temperature: 0.6, maxOutputTokens: 1500 };
   if (allowThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: 0 };
   try {
     const r = await fetch(url, {
@@ -193,9 +194,21 @@ async function writeModelPreference(db: admin.firestore.Firestore, pref: { prefe
   await db.collection('zenLimits').doc('global').set(pref, { merge: true });
 }
 
+/** Raw-shape diagnostics, returned only to admins who pass `debug: true`. */
+interface ZenDebug { model: string; status: number; finishReason?: string; blockReason?: string; parts?: Array<{ thought: boolean; chars: number }>; error?: string; usage?: unknown }
+function describe(model: string, r: { status: number; body: GeminiResponse }): ZenDebug {
+  const c = r.body.candidates?.[0];
+  return {
+    model, status: r.status, finishReason: c?.finishReason, blockReason: r.body.promptFeedback?.blockReason,
+    parts: c?.content?.parts?.map((p) => ({ thought: !!p.thought, chars: (p.text ?? '').length })),
+    error: r.body.error?.message?.slice(0, 300), usage: r.body.usageMetadata,
+  };
+}
+
 async function generate(
   contents: GeminiContent[],
   db: admin.firestore.Firestore,
+  debug: ZenDebug[] | null = null,
 ): Promise<{ text: string; model: string; usage?: { promptTokens: number; outputTokens: number } }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new HttpError(503, 'Zen is not configured on the server yet.');
@@ -208,25 +221,28 @@ async function generate(
 
   let model = start;
   let r = await callGemini(model, contents, apiKey);
+  debug?.push(describe(model, r));
   if (isSwitchableStatus(r.status)) {
     const next = otherModel(model, primary, fallback);
     if (next !== model) {
       console.warn(`[zen] model ${model} returned ${r.status} — switching to ${next}`);
       model = next;
       r = await callGemini(model, contents, apiKey);
+      debug?.push(describe(model, r));
     }
   }
+  const dbgExtra = debug ? { debug } : {};
   if (isSwitchableStatus(r.status)) {
-    throw new HttpError(429, 'Zen is busy, try again in a minute.', { reason: 'busy', retryAfterSec: 60 });
+    throw new HttpError(429, 'Zen is busy, try again in a minute.', { reason: 'busy', retryAfterSec: 60, ...dbgExtra });
   }
   if (r.status < 200 || r.status >= 300) {
     console.error('[zen] Gemini error', model, r.status, (r.body.error?.message || '').slice(0, 200));
-    throw new HttpError(502, "Zen couldn't answer right now. Please try again.", { reason: 'busy' });
+    throw new HttpError(502, "Zen couldn't answer right now. Please try again.", { reason: 'busy', ...dbgExtra });
   }
   const text = extractText(r.body);
   if (!text) {
     console.warn('[zen] empty reply', model, r.body.candidates?.[0]?.finishReason, r.body.promptFeedback?.blockReason);
-    throw new HttpError(502, "Zen couldn't answer that one. Try rephrasing.", { reason: 'empty' });
+    throw new HttpError(502, "Zen couldn't answer that one. Try rephrasing.", { reason: 'empty', ...dbgExtra });
   }
 
   const toWrite = preferenceToWrite({ startedWith: start, succeededWith: model, now });
@@ -270,8 +286,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await consumeQuotas(db, uid);
 
+    // Admins may ask for raw-shape diagnostics (never user data) with debug: true.
+    const adminUids = (process.env.ADMIN_UIDS || 'BXedteurc3bPydsehvPIdVWPTbM2,upLvcTSoE5SS7lOmhYBKHFWSV0r1').split(',');
+    const debug: ZenDebug[] | null = body.debug === true && adminUids.includes(uid) ? [] : null;
+
     const contents = buildContents(buildSystemTurn({ context, dataAnswer, tz }), messages);
-    const { text, model, usage } = await generate(contents, db);
+    const { text, model, usage } = await generate(contents, db, debug);
 
     // One-round data protocol. With dataAnswer already supplied we never
     // ask again — any stray request block is stripped and the text returned.
@@ -280,7 +300,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (request) { res.status(200).json({ needData: request, model }); return; }
     }
     const clean = stripZenRequests(text) || "I don't have enough data to answer that yet. Tell me a bit more, or log a few more sessions.";
-    res.status(200).json({ text: clean, model, usage });
+    res.status(200).json({ text: clean, model, usage, ...(debug ? { debug } : {}) });
   } catch (err) {
     if (err instanceof HttpError) {
       res.status(err.status).json({ error: err.message, ...err.extra });
