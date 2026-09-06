@@ -140,7 +140,7 @@ export function FoodSearchView({ date, meal, onBack, onOpenScan }: FoodSearchVie
     setSearching(true);
     void (async () => {
       await loadFoodIndex();
-      const boost = [...favouriteIds, ...recents.map((r) => r.id)];
+      const boost = { favouriteIds, recentIds: recents.map((r) => r.id) };
       const found = await Promise.resolve(searchFoods(debounced, { limit: 40, boost }));
       if (cancelled) return;
       const custom = customFoods.filter((f) => matches(f, debounced));
