@@ -6,6 +6,7 @@ import { DeloadSuggestion } from '../components/DeloadSuggestion';
 import { computeDeloadSuggestion } from '../deloadDetector';
 import { VersionInfo } from '../UpdateChecker';
 import { useAuth } from '../auth/AuthContext';
+import { AUTO_FINISH_IDLE_MS } from '../autoFinish';
 
 interface HomeViewProps {
   workouts: Workout[];
@@ -78,8 +79,11 @@ export function HomeView({ workouts, isDark, onStartWorkout, onViewHistory, onMa
               {pausedElapsed}
             </div>
           </div>
-          <div className={`text-sm mb-3 ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>
+          <div className={`text-sm mb-1 ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>
             {activeWorkout.name} &middot; {activeWorkout.exercises.length} exercise{activeWorkout.exercises.length !== 1 ? 's' : ''}
+          </div>
+          <div className={`text-xs mb-3 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+            Finishes itself after {AUTO_FINISH_IDLE_MS / 3_600_000}h without activity.
           </div>
           <div className="flex gap-3">
             <button

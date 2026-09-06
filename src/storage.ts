@@ -138,6 +138,21 @@ export function deleteWorkout(id: string): void {
   setItem(STORAGE_KEYS.WORKOUTS, workouts);
 }
 
+/**
+ * Drop `completed: false` workouts that are NOT the current active one.
+ * saveActiveWorkout writes the in-progress workout into this array on
+ * every edit; discarding or abandoning it used to leave that incomplete
+ * copy behind forever, where it showed up in History as an empty card.
+ * Returns how many were removed.
+ */
+export function pruneOrphanedIncompleteWorkouts(activeWorkoutId: string | null): number {
+  const workouts = getWorkouts();
+  const kept = workouts.filter(w => w.completed || w.id === activeWorkoutId);
+  const removed = workouts.length - kept.length;
+  if (removed > 0) setItem(STORAGE_KEYS.WORKOUTS, kept);
+  return removed;
+}
+
 export function getWorkoutsByDate(date: string): Workout[] {
   return getWorkouts().filter(w => w.date.startsWith(date));
 }

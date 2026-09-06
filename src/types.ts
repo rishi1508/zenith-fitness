@@ -53,6 +53,12 @@ export interface Workout {
   startedAt?: string;
   completedAt?: string;
   sessionId?: string; // set when this workout is part of a group session
+  /** ISO time of the user's last interaction with this in-progress
+   *  workout. Drives the idle auto-finish (see App.tsx). */
+  lastActivityAt?: string;
+  /** True when the app finished this workout itself after the user went
+   *  idle, instead of the user tapping Finish. */
+  autoCompleted?: boolean;
 }
 
 export type WorkoutType = 
@@ -298,6 +304,10 @@ export interface SessionParticipant {
   totalSets: number;
   currentExercise: string;
   duration?: number;
+  /** ISO time of this participant's last interaction with their workout.
+   *  The idle auto-finish only ends a group session once EVERY active
+   *  participant has been idle past the threshold. */
+  lastActiveAt?: string;
 }
 
 /** A group workout session (2-3 participants). */

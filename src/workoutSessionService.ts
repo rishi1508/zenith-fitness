@@ -199,6 +199,7 @@ export async function syncProgress(
     [`participants.${user.uid}.completedSets`]: completedSets,
     [`participants.${user.uid}.totalSets`]: totalSets,
     [`participants.${user.uid}.currentExercise`]: currentExercise,
+    [`participants.${user.uid}.lastActiveAt`]: new Date().toISOString(),
   });
 
   // Store detailed exercise data in subcollection
@@ -208,6 +209,42 @@ export async function syncProgress(
     lastUpdated: Date.now(),
   };
   await setDoc(progressRef, progress);
+}
+
+/** Stamp the current participant's `lastActiveAt` (any tap in the app
+ *  while their session workout is open). Caller throttles. */
+export async function touchParticipantActivity(sessionId: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  try {
+    await updateDoc(doc(db, 'workoutSessions', sessionId), {
+      [`participants.${user.uid}.lastActiveAt`]: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('[Session] touchParticipantActivity failed:', err);
+  }
+}
+
+/** One-shot read of a session. */
+export async function getSession(sessionId: string): Promise<WorkoutSession | null> {
+  const snap = await getDoc(doc(db, 'workoutSessions', sessionId));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as WorkoutSession) : null;
+}
+
+/**
+ * End a session because EVERY participant (host included) has gone idle.
+ * Unlike finishSessionForAll this may be called by any participant — the
+ * caller has already checked every participant's lastActiveAt. No-op
+ * unless the session is still active, so a host who already ended it
+ * isn't overwritten.
+ */
+export async function endSessionIdle(sessionId: string, completedAt: string): Promise<void> {
+  const sessionRef = doc(db, 'workoutSessions', sessionId);
+  const snap = await getDoc(sessionRef);
+  if (!snap.exists()) return;
+  const session = snap.data() as WorkoutSession;
+  if (session.status !== 'active') return;
+  await updateDoc(sessionRef, { status: 'completed', completedAt });
 }
 
 /** Mark participant as completed. */

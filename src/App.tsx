@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dumbbell, Calendar,
-  Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon, Trophy,
+  Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon, Trophy, TimerOff, X,
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
@@ -9,6 +9,11 @@ import { UpdateChecker } from './UpdateChecker';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
+import type { PluginListenerHandle } from '@capacitor/core';
+import {
+  ACTIVITY_THROTTLE_MS, AUTO_FINISH_CHECK_MS, buildAutoFinishedWorkout, formatEndedAt,
+  isIdlePastThreshold, lastActivityMs, participantIsActive,
+} from './autoFinish';
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt, AskCoachBubble } from './components';
 import { hasLLMConfig } from './llm';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -35,6 +40,14 @@ function App() {
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
   const [showSplash, setShowSplash] = useState(true);
   const [missingDays, setMissingDays] = useState<string[]>([]);
+  // Banner shown after the idle auto-finish closed (or discarded) a
+  // forgotten workout. Auto-dismisses.
+  const [autoFinishNotice, setAutoFinishNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!autoFinishNotice) return;
+    const t = setTimeout(() => setAutoFinishNotice(null), 12_000);
+    return () => clearTimeout(t);
+  }, [autoFinishNotice]);
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationData, setCelebrationData] = useState<{
     name: string;
@@ -181,6 +194,19 @@ function App() {
   }, [goBack]);
 
   const loadData = useCallback(() => {
+    // Which workout (if any) is in progress — read FIRST so the orphan
+    // prune below never touches it.
+    let savedActiveWorkout: Workout | null = null;
+    try {
+      const raw = localStorage.getItem('zenith_active_workout');
+      if (raw) savedActiveWorkout = JSON.parse(raw) as Workout;
+    } catch (e) {
+      console.error('[Recovery] Failed to parse active workout:', e);
+    }
+    // saveActiveWorkout writes the in-progress workout into history on
+    // every edit; a discarded / abandoned session used to leave that
+    // `completed: false` copy behind as an empty History card.
+    storage.pruneOrphanedIncompleteWorkouts(savedActiveWorkout?.id ?? null);
     // Fill in missed days with auto-rest so streaks reflect real consistency
     // (up to 7 days per gap). Idempotent so running on every mount is safe.
     storage.autoLogMissedRestDays();
@@ -195,29 +221,21 @@ function App() {
     setMissingDays(missing);
     
     // CRITICAL: Restore active workout if one was in progress (screen timeout fix)
-    // Restored workout stays paused on home screen -- user can resume via banner
-    try {
-      const savedActiveWorkout = localStorage.getItem('zenith_active_workout');
-      if (savedActiveWorkout) {
-        const workout = JSON.parse(savedActiveWorkout);
-        setActiveWorkout(workout);
-        // If the saved workout was part of a buddy session, restore the
-        // session id too. The existing session-status watcher will then
-        // reattach: if the host ended / cancelled the session while we
-        // were closed, the watcher's status='completed' branch saves
-        // our workout to history (skipValidation), and the
-        // status='cancelled' branch discards it. This is the recovery
-        // path for "host ended the session but I had the app closed /
-        // backgrounded — the workout never got saved." Without this,
-        // the orphaned workout would sit in zenith_active_workout
-        // indefinitely.
-        if (workout?.sessionId) {
-          setActiveSessionId(workout.sessionId);
-        }
-        console.log('[Recovery] Restored active workout session (paused on home)');
+    // Restored workout stays paused on home screen -- user can resume via
+    // banner. The idle auto-finish effect runs as soon as this lands in
+    // state, so a workout forgotten for days is closed right here.
+    if (savedActiveWorkout) {
+      setActiveWorkout(savedActiveWorkout);
+      // If the saved workout was part of a buddy session, restore the
+      // session id too. The existing session-status watcher will then
+      // reattach: if the host ended / cancelled the session while we
+      // were closed, the watcher's status='completed' branch saves
+      // our workout to history (skipValidation), and the
+      // status='cancelled' branch discards it.
+      if (savedActiveWorkout.sessionId) {
+        setActiveSessionId(savedActiveWorkout.sessionId);
       }
-    } catch (e) {
-      console.error('[Recovery] Failed to restore active workout:', e);
+      console.log('[Recovery] Restored active workout session (paused on home)');
     }
     
     // Data loaded, hide splash
@@ -658,6 +676,7 @@ function App() {
       }),
       completed: false,
       startedAt: new Date().toISOString(),
+      lastActivityAt: new Date().toISOString(),
       ...(sessionId ? { sessionId } : {}),
     };
     setActiveWorkout(workout);
@@ -701,8 +720,10 @@ function App() {
   };
 
   const saveActiveWorkout = (workout: Workout) => {
-    storage.saveWorkout(workout);
-    setActiveWorkout(workout);
+    // Every edit is an interaction — restarts the idle auto-finish clock.
+    const stamped: Workout = { ...workout, lastActivityAt: new Date().toISOString() };
+    storage.saveWorkout(stamped);
+    setActiveWorkout(stamped);
   };
   saveActiveWorkoutRef.current = saveActiveWorkout;
 
@@ -859,6 +880,151 @@ function App() {
   // re-subscribe every time the function identity changes.
   finishWorkoutRef.current = finishWorkout;
 
+  // ---- Idle auto-finish (see src/autoFinish.ts) ----
+
+  /** Close an idle workout as of `endedAt` (the last interaction). */
+  const autoFinishWorkout = (workout: Workout, endedAt: string, inSession: boolean) => {
+    if (finishedOnceRef.current === workout.id) return;
+    finishedOnceRef.current = workout.id;
+
+    const finished = buildAutoFinishedWorkout(workout, endedAt);
+    const endedLabel = formatEndedAt(endedAt);
+    localStorage.removeItem('zenith_active_workout');
+
+    if (finished) {
+      storage.saveWorkout(finished);
+      storage.recomputePersonalRecords();
+      syncWorkoutToHealth(finished).catch(() => { /* best-effort */ });
+      setAutoFinishNotice(`"${workout.name}" was finished for you — no activity since ${endedLabel}.`);
+    } else {
+      // Nothing logged: drop it (and the incomplete copy in history)
+      // rather than save an empty workout.
+      storage.deleteWorkout(workout.id);
+      setAutoFinishNotice(`An empty workout from ${endedLabel} was discarded — no sets were logged.`);
+    }
+
+    if (inSession && workout.sessionId) {
+      const sid = workout.sessionId;
+      const duration = finished?.duration ?? 0;
+      (async () => {
+        try {
+          if (finished) await sessionService.syncProgress(sid, finished.exercises);
+          await sessionService.completeSession(sid, duration);
+          // Everyone is idle (checked by the caller) → close the session
+          // so the other participants' apps save their workouts too.
+          await sessionService.endSessionIdle(sid, endedAt);
+        } catch (err) {
+          console.error('[AutoFinish] session wrap-up failed:', err);
+        }
+      })();
+    }
+
+    if (user) {
+      buddyService.setWorkingOutStatus(false).catch(() => { /* best-effort */ });
+      upsertMyProfileStats();
+    }
+    setActiveWorkout(null);
+    loadData();
+    if (view === 'active') {
+      navigationHistory.current = ['home'];
+      setView('home');
+    }
+  };
+
+  /**
+   * Decide whether the open workout has been idle long enough. For a
+   * group session, also require every OTHER active participant to be
+   * idle — one buddy still lifting keeps the session (and our workout)
+   * open; we simply re-check a minute later.
+   */
+  const autoFinishInFlightRef = useRef(false);
+  const checkIdleAutoFinish = async () => {
+    if (!activeWorkout || autoFinishInFlightRef.current) return;
+    if (!isIdlePastThreshold(activeWorkout)) return;
+    autoFinishInFlightRef.current = true;
+    try {
+      const inSession = !!activeWorkout.sessionId && activeSessionId === activeWorkout.sessionId;
+      if (inSession && activeWorkout.sessionId) {
+        let session: WorkoutSession | null = null;
+        try {
+          session = await sessionService.getSession(activeWorkout.sessionId);
+        } catch (err) {
+          console.warn('[AutoFinish] could not read session, retrying later:', err);
+          return;
+        }
+        if (session && session.status !== 'active') {
+          // Completed / cancelled elsewhere → the session listener
+          // saves or discards our workout; nothing to do here.
+          return;
+        }
+        if (session) {
+          const othersActive = Object.values(session.participants).some(
+            (p) => p.uid !== user?.uid && participantIsActive(p, session!.startedAt),
+          );
+          if (othersActive) return;
+        }
+      }
+      autoFinishWorkout(activeWorkout, new Date(lastActivityMs(activeWorkout)).toISOString(), inSession);
+    } finally {
+      autoFinishInFlightRef.current = false;
+    }
+  };
+  const checkIdleAutoFinishRef = useRef(checkIdleAutoFinish);
+  checkIdleAutoFinishRef.current = checkIdleAutoFinish;
+
+  // Run the idle check: right away (covers the restore-on-launch case),
+  // every minute while the app is open, and whenever it returns to the
+  // foreground (tab visible / Capacitor appStateChange).
+  useEffect(() => {
+    if (!activeWorkout) return;
+    let cancelled = false;
+    const check = () => { if (!cancelled) void checkIdleAutoFinishRef.current(); };
+    check();
+    const interval = setInterval(check, AUTO_FINISH_CHECK_MS);
+    const onVis = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVis);
+    let capHandle: PluginListenerHandle | null = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('appStateChange', ({ isActive }) => { if (isActive) check(); })
+        .then((h) => { if (cancelled) h.remove(); else capHandle = h; })
+        .catch((e) => console.warn('[AutoFinish] appStateChange listener failed:', e));
+    }
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+      capHandle?.remove();
+    };
+    // Re-arm per workout, not per edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkout?.id]);
+
+  // Any tap / key press while a workout is open counts as "active in the
+  // app" — restarts the idle clock (throttled) so someone browsing
+  // History mid-session isn't auto-finished. In a group session we also
+  // stamp our participant entry so buddies' clients see us as active.
+  const lastActivityStampRef = useRef(0);
+  useEffect(() => {
+    if (!activeWorkout) return;
+    const sessionId = activeWorkout.sessionId && activeSessionId === activeWorkout.sessionId
+      ? activeWorkout.sessionId : null;
+    const onInteract = () => {
+      const now = Date.now();
+      if (now - lastActivityStampRef.current < ACTIVITY_THROTTLE_MS) return;
+      lastActivityStampRef.current = now;
+      const iso = new Date(now).toISOString();
+      setActiveWorkout((w) => (w ? { ...w, lastActivityAt: iso } : w));
+      if (sessionId) sessionService.touchParticipantActivity(sessionId);
+    };
+    window.addEventListener('pointerdown', onInteract, { passive: true });
+    window.addEventListener('keydown', onInteract);
+    return () => {
+      window.removeEventListener('pointerdown', onInteract);
+      window.removeEventListener('keydown', onInteract);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkout?.id, activeWorkout?.sessionId, activeSessionId]);
+
   const pauseWorkout = useCallback(() => {
     // Navigate to home but keep activeWorkout in state + localStorage
     navigationHistory.current = ['home'];
@@ -888,11 +1054,14 @@ function App() {
     }
 
     localStorage.removeItem('zenith_active_workout');
+    // Also drop the incomplete copy saveActiveWorkout put in history.
+    storage.deleteWorkout(activeWorkout.id);
     setActiveWorkout(null);
     if (user) buddyService.setWorkingOutStatus(false);
     navigationHistory.current = ['home'];
     setView('home');
-  }, [activeWorkout, activeSessionId, sessionMode, user]);
+    loadData();
+  }, [activeWorkout, activeSessionId, sessionMode, user, loadData]);
 
   const handleBackfillRestDays = () => {
     storage.backfillRestDays(missingDays);
@@ -942,6 +1111,21 @@ function App() {
         />
       )}
       {user && <PushPermissionPrompt userUid={user.uid} isDark={isDark} />}
+
+      {/* Idle auto-finish notice */}
+      {autoFinishNotice && (
+        <div className="fixed left-4 right-4 z-[60] animate-fadeIn" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}>
+          <div className={`rounded-xl p-3 shadow-lg flex items-start gap-3 border ${
+            isDark ? 'bg-[#1a1a1a] border-orange-500/40 text-zinc-200' : 'bg-white border-orange-300 text-gray-800'
+          }`}>
+            <TimerOff className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 text-sm">{autoFinishNotice}</div>
+            <button onClick={() => setAutoFinishNotice(null)} className={isDark ? 'text-zinc-500 hover:text-white' : 'text-gray-400 hover:text-gray-700'} aria-label="Dismiss">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
       
       {/* Missing Days Prompt */}
       {missingDays.length > 0 && (
