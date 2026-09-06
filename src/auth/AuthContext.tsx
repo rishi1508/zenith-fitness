@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
@@ -9,7 +9,7 @@ import {
   signInWithCredential,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  updateProfile,
+  signInWithCustomToken,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   fetchSignInMethodsForEmail,
@@ -55,6 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const onDataRefresh = useCallback(() => window.dispatchEvent(new Event('zenith-data-refresh')), []);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Ticket handed back by /api/otp for a NEW email between "code verified"
+  // and "name entered". Never persisted.
+  const pendingOtpTicket = useRef<{ email: string; ticket: string } | null>(null);
   const [isGuest, setIsGuest] = useState(() => {
     try { return localStorage.getItem(GUEST_MODE_KEY) === 'true'; } catch { return false; }
   });
@@ -192,54 +195,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await otpService.sendOTP(email);
   }, []);
 
-  // Email OTP: verify the code and try to sign in.
-  // For NEW users, returns { isNewUser: true } WITHOUT creating the account
-  // so LoginView can collect name first. completeOTPRegistration finishes it.
+  // Email OTP: the server checks the code. An existing account (any
+  // provider — the email is proven) comes back with a custom token and we
+  // sign in immediately. A brand-new email comes back with a short-lived
+  // ticket instead, so LoginView can collect a name before the account is
+  // created (completeOTPRegistration).
   const verifyEmailOTP = useCallback(async (email: string, code: string): Promise<{ isNewUser: boolean }> => {
-    await otpService.verifyOTP(email, code);
-
-    const normalizedEmail = email.toLowerCase().trim();
-    const password = await otpService.derivePassword(email);
-
-    try {
-      await signInWithEmailAndPassword(auth, normalizedEmail, password);
+    const result = await otpService.verifyOTP(email, code);
+    if (result.token) {
+      await signInWithCustomToken(auth, result.token);
       return { isNewUser: false };
-    } catch (err: unknown) {
-      const firebaseErr = err as { code?: string };
-
-      if (firebaseErr.code === 'auth/user-not-found') {
-        // Brand new email — don't create yet, let LoginView collect name first
-        return { isNewUser: true };
-      }
-
-      if (firebaseErr.code === 'auth/invalid-credential' || firebaseErr.code === 'auth/wrong-password') {
-        // Email exists but was registered via Google or old password flow.
-        // OTP proved they own the email, so try creating password provider.
-        // This will fail with email-already-in-use if user exists with any provider.
-        try {
-          await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-          return { isNewUser: false };
-        } catch (innerErr: unknown) {
-          const innerCode = (innerErr as { code?: string }).code;
-          if (innerCode === 'auth/email-already-in-use') {
-            throw new Error('This email is registered with Google. Please use "Continue with Google" to sign in.');
-          }
-          throw innerErr;
-        }
-      }
-
-      throw err;
     }
+    if (!result.ticket) throw new Error('Verification failed. Please request a new code.');
+    pendingOtpTicket.current = { email: email.trim().toLowerCase(), ticket: result.ticket };
+    return { isNewUser: true };
   }, []);
 
-  // Complete OTP registration: creates account with displayName already set.
-  // Called AFTER name is collected so onAuthStateChanged navigates with name ready.
+  // Complete OTP registration: the server creates the account with the
+  // display name already set and returns a custom token, so
+  // onAuthStateChanged fires with the name ready.
   const completeOTPRegistration = useCallback(async (email: string, displayName: string) => {
-    const normalizedEmail = email.toLowerCase().trim();
-    const password = await otpService.derivePassword(email);
-    const credential = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-    await updateProfile(credential.user, { displayName });
-    // Force context to pick up the displayName immediately
+    const pending = pendingOtpTicket.current;
+    if (!pending || pending.email !== email.trim().toLowerCase()) {
+      throw new Error('Verification expired. Please request a new code.');
+    }
+    const { token } = await otpService.completeRegistration(email, pending.ticket, displayName);
+    pendingOtpTicket.current = null;
+    const credential = await signInWithCustomToken(auth, token);
     setUser({ ...credential.user } as User);
   }, []);
 
