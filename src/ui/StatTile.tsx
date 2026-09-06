@@ -50,7 +50,7 @@ export function StatTile({ eyebrow, value, unit, sub, tone = 'default', compact,
     </>
   );
   if (onClick) {
-    return <button onClick={onClick} className={`${cls} text-left transition-colors hover:border-accent/40`}>{body}</button>;
+    return <button onClick={onClick} className={`${cls} w-full text-left transition-colors hover:border-accent/40`}>{body}</button>;
   }
   return <div className={cls}>{body}</div>;
 }

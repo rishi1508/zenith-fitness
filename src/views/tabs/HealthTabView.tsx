@@ -39,14 +39,15 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
         <span className="text-[13px] font-bold text-accent">Ask Zen</span>
       </Card>
 
-      <div className="grid grid-cols-2 gap-2">
-        <StatTile
-          eyebrow="Weight"
-          value={latestWeight ? latestWeight.weight : '—'}
-          unit={latestWeight ? 'kg' : undefined}
-          sub={weightChange ? `${weightChange.change > 0 ? '+' : ''}${weightChange.change.toFixed(1)}kg · 30d` : 'No entries yet'}
-          onClick={onOpenBodyWeight}
-        />
+      <StatTile
+        eyebrow="Weight"
+        value={latestWeight ? latestWeight.weight : '—'}
+        unit={latestWeight ? 'kg' : undefined}
+        sub={weightChange ? `${weightChange.change > 0 ? '+' : ''}${weightChange.change.toFixed(1)}kg · 30d` : 'No entries yet'}
+        onClick={onOpenBodyWeight}
+      />
+
+      <Card padding="list">
         <ListRow
           icon={Ruler}
           iconTone="accent"
@@ -54,16 +55,15 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
           subtitle={latestMeasurement ? `Updated ${new Date(latestMeasurement.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'No entries yet'}
           onClick={onOpenBodyMeasurements}
         />
-      </div>
-
-      {/* TODO(R3b): restyle as the real InsightsView list. */}
-      <ListRow
-        icon={TrendingUp}
-        iconTone="accent"
-        title="Insights"
-        subtitle={topInsight ? topInsight.title : 'Muscle balance, plateaus and deload timing'}
-        onClick={onOpenInsights}
-      />
+        {/* TODO(R3b): restyle as the real InsightsView list. */}
+        <ListRow
+          icon={TrendingUp}
+          iconTone="accent"
+          title="Insights"
+          subtitle={topInsight ? topInsight.title : 'Muscle balance, plateaus and deload timing'}
+          onClick={onOpenInsights}
+        />
+      </Card>
 
       <Card className="opacity-60">
         <div className="flex items-center gap-2 mb-1">

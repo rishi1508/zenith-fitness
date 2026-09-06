@@ -73,7 +73,7 @@ export function TrainTabView({
           <div className="flex flex-wrap gap-1.5 mb-3">
             {workoutDays.map((d) => (
               <Chip key={d.dayNumber} on={d.dayNumber === selectedDayNum} onClick={() => selectDay(d.dayNumber)}>
-                Day {d.dayNumber} · {d.name}
+                {/^day\s*\d/i.test(d.name) ? d.name : `Day ${d.dayNumber} · ${d.name}`}
               </Chip>
             ))}
           </div>
