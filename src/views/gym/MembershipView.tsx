@@ -5,7 +5,7 @@ import type { GymPayment } from '../../types';
 import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { listPayments, membershipStatus } from '../../gymService';
-import { formatDateShort, formatMoney } from '../../gymMemberHelpers';
+import { formatMoney } from '../../gymMemberHelpers';
 import { MembershipCard } from '../../components';
 
 /** Current plan/status, a renewal reminder for anyone not comfortably
@@ -76,7 +76,8 @@ export function MembershipView({ isDark, onBack }: GymViewProps) {
               <div key={p.id} className={`rounded-xl border p-3 flex items-center justify-between ${cardBg} ${cardBorder}`}>
                 <div>
                   <div className="text-sm font-semibold">{formatMoney(p.amount)}</div>
-                  <div className={`text-xs ${subtle}`}>{formatDateShort(p.paidAt)} · {p.method.toUpperCase()} · {p.months}mo</div>
+                  {/* paidAt is a full timestamp — format in local time (formatDateShort is for date-only strings and would show the UTC day). */}
+                  <div className={`text-xs ${subtle}`}>{new Date(p.paidAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} · {p.method.toUpperCase()} · {p.months}mo</div>
                 </div>
               </div>
             ))}

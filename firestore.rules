@@ -37,7 +37,9 @@ service cloud.firestore {
     function isGymStaff(gymId) { return signedIn() && request.auth.uid in gymDoc(gymId).staff; }
     function gymStaffRole(gymId) { return gymDoc(gymId).staff[request.auth.uid]; }
     function isGymManager(gymId) { return isGymStaff(gymId) && gymStaffRole(gymId) in ['manager', 'owner']; }
-    function isGymOwner(gymId) { return signedIn() && request.auth.uid == gymDoc(gymId).ownerUid; }
+    // A gym has one ownerUid but may grant `staff[uid] = 'owner'` to others
+    // (the client treats that role as owner too) — accept either.
+    function isGymOwner(gymId) { return signedIn() && (request.auth.uid == gymDoc(gymId).ownerUid || (isGymStaff(gymId) && gymStaffRole(gymId) == 'owner')); }
     function isGymMember(gymId) { return signedIn() && exists(/databases/$(database)/documents/gyms/$(gymId)/members/$(request.auth.uid)); }
 
     // ---------- userProfiles ----------
