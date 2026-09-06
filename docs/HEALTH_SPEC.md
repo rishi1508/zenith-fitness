@@ -140,3 +140,34 @@ Unit tests: index build spot-checks (dal, roti, paneer, rice, banana, chicken br
 
 ## 8. Out of scope
 Micronutrients, recipes builder, iOS HealthKit, FatSecret, restaurant chains, water reminders/notifications.
+
+## 9. As built (2026-09-07, integrator notes)
+- **Shipped in 3.18.0.** Packages N1, N2, H1, H2, S1 merged; App/tabs wired per §7; `FoodSearchView` gained
+  `onOpenScan` (camera icon next to the barcode button) as the plate-scan entry point.
+- **Health Connect write-back gap.** No Capacitor plugin that builds under AGP 8 can write
+  `ExerciseSessionRecord`; `@capgo/capacitor-health` reads steps / calories / heart rate / resting HR / sleep /
+  sessions and writes weight only. Finished Zenith workouts are recorded on our own `ActivityDay`
+  (`source: 'zenith'`) so the Activity screen shows them; writing them into Health Connect needs a small
+  custom Kotlin plugin (or the flomentum plugin once it supports AGP 8) — deferred, see §10.
+  `WRITE_EXERCISE` is deliberately not declared. `minSdkVersion` is 26 (Android 8.0+).
+- **Phase engine rate** is the least-squares slope through daily weights (not EMA endpoints) — the endpoint
+  form under-reads by 25–55 % for weekly loggers. `InteractiveLineChart` gained an additive `overlay` prop.
+- **Food data as built:** 3,236 foods — 542 IFCT, 2,420 USDA, 274 curated dishes; 1.36 MB raw / 188 KB
+  gzipped; `index.json` precached by `public/sw.js`. IFCT `enerc` blank/contradictory on 15 rows → kcal derived
+  from macros. USDA names are verbatim (long). `lookupBarcode` cannot set `User-Agent` from a browser; OFF sees
+  the platform UA.
+- **Model router state** lives in `aiQuota/{Pacific date}`; first live scan used `gemini-3.8-flash`
+  (11 s, six items with grams and macros). Per-user scan quota 10/day; `FOODSCAN_REQUIRE_PREMIUM` left false
+  while `PAYWALL_ENFORCED` is false.
+- **Shared foods** are written to `sharedFoods` but never read back (no listener by cost rule); user-created
+  foods are visible only to their creator until a cheap index doc exists.
+- **QA:** scratchpad `qa_318.mjs` (member: targets → diary add → Home ring → phase → manual activity → Zen)
+  and `qa_317.mjs` (roles) both clean; `foodscan_e2e.mjs`, `barcode_e2e.mjs`, `zen_e2e.mjs` live checks pass.
+  Not testable headless: Health Connect permission flow, camera capture, barcode camera scan.
+
+## 10. Follow-ups
+1. Health Connect workout write-back (custom plugin) — needs a device to test.
+2. `sharedFoods` discovery: one index doc updated on create, read once per session.
+3. Shorter display names for USDA foods; more regional dishes (Bengali, North-East).
+4. Per-user rate limit on `api/push.ts`; `request.query.limit` bounds in rules (docs/COST_CONTROLS.md §3).
+5. Remove QA admin uid from `src/admin.ts`, `api/admin.ts`, rules after the pitch.
