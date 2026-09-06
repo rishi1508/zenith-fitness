@@ -20,6 +20,12 @@ import {
 import type { GymView, GymNavParams } from './views';
 import { HomeTabView, TrainTabView, HealthTabView, YouTabView } from './views/tabs';
 import { ZenChatView, InsightsView } from './views/zen';
+import { NutritionTodayView, FoodSearchView, TargetsView } from './views/nutrition';
+import { PhaseView } from './views/phase';
+import { ActivityView } from './views/activity';
+import { FoodScanView } from './views/nutrition/scan';
+import { localDateISO as healthToday } from './health';
+import type { MealSlot } from './types';
 import { AdminGymsView, AdminUsersView, AdminLibraryView } from './views/admin';
 import { AppShell } from './shell/AppShell';
 import { tabRoot } from './shell/tabs';
@@ -36,7 +42,7 @@ import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 import { useGym } from './gym/GymContext';
 
-export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library';
+export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'phase';
 export type Theme = 'dark' | 'light';
 
 function App() {
@@ -50,6 +56,8 @@ function App() {
   // Follow-up prompt from a ZenCard daily note, consumed once by
   // ZenChatView after seeding its composer (see openZen below).
   const [zenPrefill, setZenPrefill] = useState<string | null>(null);
+  // Which day/meal the food search or plate scan adds to (docs/HEALTH_SPEC.md §7).
+  const [foodNav, setFoodNav] = useState<{ date: string; meal: MealSlot }>({ date: healthToday(), meal: 'snacks' });
   const [stats, setStats] = useState<UserStats | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [_templates, _setTemplates] = useState<WorkoutTemplate[]>([]); // LEGACY - kept for backward compat
@@ -1342,6 +1350,7 @@ function App() {
             onOpenGymJoin={() => navigateToGym('gym-join')}
             onOpenBuddies={() => navigateTo('buddies')}
             onOpenZen={openZen}
+            onOpenNutrition={() => { setFoodNav((n) => ({ ...n, date: healthToday() })); navigateTo('nutrition'); }}
           />
         )}
         {view === 'train' && (
@@ -1361,6 +1370,9 @@ function App() {
             onOpenBodyWeight={() => navigateTo('body-weight')}
             onOpenBodyMeasurements={() => navigateTo('body-measurements')}
             onOpenInsights={() => navigateTo('insights')}
+            onOpenNutrition={() => { setFoodNav((n) => ({ ...n, date: healthToday() })); navigateTo('nutrition'); }}
+            onOpenPhase={() => navigateTo('phase')}
+            onOpenActivity={() => navigateTo('activity')}
           />
         )}
         {view === 'you' && (
@@ -1514,6 +1526,29 @@ function App() {
         )}
         {view === 'gym-create' && (
           <CreateGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} />
+        )}
+        {view === 'nutrition' && (
+          <NutritionTodayView
+            onBack={() => goBack()}
+            initialDate={foodNav.date}
+            onAddFood={(date, meal) => { setFoodNav({ date, meal }); navigateTo('food-search'); }}
+            onOpenTargets={() => navigateTo('nutrition-targets')}
+          />
+        )}
+        {view === 'food-search' && (
+          <FoodSearchView date={foodNav.date} meal={foodNav.meal} onBack={() => goBack()} onOpenScan={() => navigateTo('food-scan')} />
+        )}
+        {view === 'food-scan' && (
+          <FoodScanView date={foodNav.date} meal={foodNav.meal} onBack={() => goBack()} onAdded={() => goBack()} />
+        )}
+        {view === 'activity' && (
+          <ActivityView onBack={() => goBack()} />
+        )}
+        {view === 'nutrition-targets' && (
+          <TargetsView onBack={() => goBack()} />
+        )}
+        {view === 'phase' && (
+          <PhaseView isDark={isDark} onBack={() => goBack()} onOpenBodyWeight={() => navigateTo('body-weight')} />
         )}
         {view === 'insights' && (
           <InsightsView isDark={isDark} onBack={() => goBack()} />

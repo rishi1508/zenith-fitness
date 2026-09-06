@@ -14,6 +14,8 @@ import { listenToClasses, upcomingSessions } from '../../gymService';
 import { formatTime12h } from '../../gymMemberHelpers';
 import { ZenCard } from '../zen';
 import { Card, Button, Chip, Sheet, SectionHeader, WeekDots, ListRow, H2, SUB, CAPTION } from '../../ui';
+import { NutritionRing } from '../nutrition';
+import { getTargets, subscribeHealth } from '../../health';
 import type { WeekDotState } from '../../ui';
 
 interface HomeTabViewProps {
@@ -28,6 +30,7 @@ interface HomeTabViewProps {
   onOpenGymJoin: () => void;
   onOpenBuddies: () => void;
   onOpenZen: (prompt?: string) => void;
+  onOpenNutrition: () => void;
 }
 
 function elapsedLabel(startedAt: string): string {
@@ -43,7 +46,10 @@ function elapsedLabel(startedAt: string): string {
 export function HomeTabView({
   theme, workouts, activeWorkout, showBuddies, onStartWorkout, onResumeWorkout, onDiscardWorkout,
   onOpenGymCheckin, onOpenGymJoin, onOpenBuddies, onOpenZen,
+  onOpenNutrition,
 }: HomeTabViewProps) {
+  const [hasTargets, setHasTargets] = useState(() => getTargets() != null);
+  useEffect(() => subscribeHealth(() => setHasTargets(getTargets() != null)), []);
   const isDark = theme === 'dark';
   const { gym } = useGym();
   const { user } = useAuth();
@@ -198,6 +204,16 @@ export function HomeTabView({
         <div className="mt-2"><WeekDots days={weekDots} /></div>
         <p className={`${SUB} mt-2`}>{nudge}</p>
       </Card>
+
+      {hasTargets && (
+        <Card onClick={onOpenNutrition} className="flex items-center justify-between gap-3 text-left">
+          <div>
+            <span className={CAPTION}>Nutrition today</span>
+            <p className={`${SUB} mt-1`}>Tap to log food</p>
+          </div>
+          <NutritionRing size={64} showMacros={false} />
+        </Card>
+      )}
 
       <ZenCard compact onAskZen={onOpenZen} />
 

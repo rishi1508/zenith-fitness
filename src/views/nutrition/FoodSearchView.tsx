@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Plus, ScanBarcode, Search, Star, Zap } from 'lucide-react';
+import { ArrowLeft, Camera, Plus, ScanBarcode, Search, Star, Zap } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthContext';
@@ -23,6 +23,8 @@ export interface FoodSearchViewProps {
   /** Meal preselected in the entry sheet. */
   meal: MealSlot;
   onBack: () => void;
+  /** Opens the premium plate scan (docs/HEALTH_SPEC.md §6) for the same day/meal. */
+  onOpenScan?: () => void;
 }
 
 type Segment = 'recents' | 'favourites' | 'all';
@@ -85,7 +87,7 @@ function publishSharedFood(item: FoodItem): void {
  * barcode scanner, "Create food" (also published to `sharedFoods`) and a
  * macros-only "Quick add".
  */
-export function FoodSearchView({ date, meal, onBack }: FoodSearchViewProps) {
+export function FoodSearchView({ date, meal, onBack, onOpenScan }: FoodSearchViewProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -204,6 +206,7 @@ export function FoodSearchView({ date, meal, onBack }: FoodSearchViewProps) {
           <p className={SUB}>{MEAL_LABEL[meal]}</p>
         </div>
         <IconButton icon={ScanBarcode} label="Scan barcode" onClick={() => setScanning(true)} />
+        {onOpenScan && <IconButton icon={Camera} label="Scan plate" onClick={onOpenScan} />}
       </div>
 
       <div className="relative">
