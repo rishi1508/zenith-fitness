@@ -32,6 +32,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import { assertPremium, consumeLimit, DAY_MS, HttpError, MINUTE_MS } from './_limits.js';
 import {
   buildContents,
   buildSystemTurn,
@@ -52,8 +53,6 @@ export const config = { maxDuration: 120 };
 const DEFAULT_MODEL = 'gemma-4-31b-it';
 const DEFAULT_FALLBACK_MODEL = 'gemma-4-26b-a4b-it'; // the only other Gemma 4 model on the key (verified via the models listing)
 const GEMINI_TIMEOUT_MS = 100_000; // Gemma 4 thinks for 20–60 s; a timeout is final (no second model attempt)
-const MINUTE_MS = 60 * 1000;
-const DAY_MS = 24 * 60 * MINUTE_MS;
 const LIMITS = {
   userPerMinute: 6,
   userPerDay: 60,
@@ -82,43 +81,6 @@ function setCors(res: VercelResponse): void {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
-class HttpError extends Error {
-  constructor(public status: number, message: string, public extra: Record<string, unknown> = {}) {
-    super(message);
-  }
-}
-
-interface LimitWindow {
-  field: string;
-  windowMs: number;
-  max: number;
-  /** Friendly 429 text; `{min}` is replaced with minutes until the window resets. */
-  message: string;
-}
-
-/** Fixed-window counters in one Firestore doc, consumed in a transaction. */
-async function consumeLimit(db: admin.firestore.Firestore, key: string, windows: LimitWindow[]): Promise<void> {
-  const ref = db.collection('zenLimits').doc(key);
-  await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const data = (snap.exists ? snap.data() : {}) as Record<string, { win: number; count: number }>;
-    const now = Date.now();
-    const next: Record<string, { win: number; count: number }> = {};
-    for (const w of windows) {
-      const win = Math.floor(now / w.windowMs);
-      const cur = data[w.field];
-      const count = cur && cur.win === win ? cur.count : 0;
-      if (count >= w.max) {
-        const retryAfterSec = Math.ceil(((win + 1) * w.windowMs - now) / 1000);
-        const min = Math.max(1, Math.ceil(retryAfterSec / 60));
-        throw new HttpError(429, w.message.replace('{min}', String(min)), { reason: 'quota', retryAfterSec });
-      }
-      next[w.field] = { win, count: count + 1 };
-    }
-    tx.set(ref, { ...next, updatedAt: now }, { merge: true });
-  });
-}
-
 /** Bound an awaited stage so a stalled dependency surfaces as a named 504
  *  instead of the platform killing the function silently at maxDuration. */
 function withTimeout<T>(p: Promise<T>, ms: number, stage: string): Promise<T> {
@@ -136,14 +98,6 @@ async function consumeQuotas(db: admin.firestore.Firestore, uid: string): Promis
   await consumeLimit(db, 'global', [
     { field: 'm', windowMs: MINUTE_MS, max: LIMITS.globalPerMinute, message: 'Zen is busy right now. Try again in a minute.' },
   ]);
-}
-
-/** When ZEN_REQUIRE_PREMIUM=true: paid tier, an admin grant, or a gym membership (spec §5 precedence). */
-async function assertPremium(db: admin.firestore.Firestore, uid: string): Promise<void> {
-  const snap = await db.collection('userProfiles').doc(uid).get();
-  const p = (snap.exists ? snap.data() : {}) as { premiumGrant?: boolean; subscriptionTier?: string; gym?: unknown };
-  const ok = p.premiumGrant === true || p.subscriptionTier === 'premium' || !!p.gym;
-  if (!ok) throw new HttpError(403, 'Zen is part of Zenith Premium.', { reason: 'premium' });
 }
 
 // ----- Gemini ---------------------------------------------------------------
@@ -295,7 +249,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new HttpError(401, 'Your session has expired. Please sign in again.', { reason: 'auth' });
     }
 
-    if (process.env.ZEN_REQUIRE_PREMIUM === 'true') await assertPremium(db, uid);
+    if (process.env.ZEN_REQUIRE_PREMIUM === 'true') await assertPremium(db, uid, 'Zen is part of Zenith Premium.');
 
     const messages = trimMessages(body.messages);
     if (messages.length === 0 || messages[messages.length - 1].role !== 'user') {
