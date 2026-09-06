@@ -4,7 +4,7 @@ import type { ExtendedCoachContext } from '../coachService';
 import { localIso, weekStartISO, addDays, workoutDaySet } from '../streakService';
 import { membershipStatus, upcomingSessions } from '../gymStats';
 import type { Gym, GymMember, GymClass, MembershipStatus, Workout, BodyMeasurementEntry } from '../types';
-import { fmtDay, fmtDate, fmtVolume, fmtExerciseBest, workoutVolume, capChars, signed, num } from './format';
+import { fmtDay, fmtDate, fmtShort, fmtVolume, fmtExerciseBest, workoutVolume, capChars, signed, num } from './format';
 
 /**
  * `buildZenContext()` — everything Zen needs to know about this user,
@@ -86,7 +86,7 @@ export function buildZenContext(opts: BuildZenContextOptions = {}): string {
   if (ctx.personalRecords.length > 0) {
     const top = ctx.personalRecords
       .slice(0, 8)
-      .map((pr) => `${pr.exerciseName} ${num(pr.weight, 2)}×${pr.reps}`)
+      .map((pr) => `${pr.exerciseName} ${num(pr.weight, 2)}×${pr.reps} (${fmtShort(pr.date)})`)
       .join('; ');
     lines.push(`Top PRs: ${top}.`);
   }
