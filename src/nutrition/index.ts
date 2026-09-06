@@ -1,3 +1,23 @@
-// Food database barrel — STUB, owned by package N1 (docs/HEALTH_SPEC.md §2).
-export * from './foodDb';
-export * from './units';
+// Nutrition package — food database + portion maths (docs/HEALTH_SPEC.md §2).
+
+export {
+  loadFoodIndex,
+  searchFoods,
+  getFood,
+  lookupBarcode,
+  gramsFor,
+  macrosFor,
+  scaleMacros,
+  OFF_ATTRIBUTION,
+  SOURCE_ATTRIBUTION,
+} from './foodDb';
+export type { FoodIndexEntry, SearchOptions } from './foodDb';
+
+export {
+  MEASURES,
+  GROUP_UNITS,
+  unitGroupFor,
+  unitsForFood,
+  pieceGramsFor,
+} from './units';
+export type { MeasureLabel, UnitGroup } from './units';
