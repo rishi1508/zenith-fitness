@@ -13,7 +13,7 @@ import type { UserStats } from '../types';
 const FULL_WIDTH_VIEWS = new Set<View>(['gym-dashboard', 'gym-members']);
 /** Views that lay out their own full-height scroll region (chat) — no
  *  shell padding, or the header would scroll out of reach. */
-const NO_PADDING_VIEWS = new Set<View>(['buddy-chat', 'coach-chat']);
+const NO_PADDING_VIEWS = new Set<View>(['buddy-chat', 'zen']);
 
 function barContent(view: View, gymName: string | undefined, firstName: string): { eyebrow?: string; title?: string } {
   switch (view) {

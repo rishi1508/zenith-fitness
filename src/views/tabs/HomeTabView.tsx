@@ -12,6 +12,7 @@ import { DeloadSuggestion, WeeklyPlanSelector, Avatar } from '../../components';
 import { useGym } from '../../gym/GymContext';
 import { listenToClasses, upcomingSessions } from '../../gymService';
 import { formatTime12h } from '../../gymMemberHelpers';
+import { ZenCard } from '../zen';
 import { Card, Button, Chip, Sheet, SectionHeader, WeekDots, ListRow, H2, SUB, CAPTION } from '../../ui';
 import type { WeekDotState } from '../../ui';
 
@@ -26,6 +27,7 @@ interface HomeTabViewProps {
   onOpenGymCheckin: () => void;
   onOpenGymJoin: () => void;
   onOpenBuddies: () => void;
+  onOpenZen: (prompt?: string) => void;
 }
 
 function elapsedLabel(startedAt: string): string {
@@ -40,7 +42,7 @@ function elapsedLabel(startedAt: string): string {
  *  (or "join a gym" prompt), buddies strip. */
 export function HomeTabView({
   theme, workouts, activeWorkout, showBuddies, onStartWorkout, onResumeWorkout, onDiscardWorkout,
-  onOpenGymCheckin, onOpenGymJoin, onOpenBuddies,
+  onOpenGymCheckin, onOpenGymJoin, onOpenBuddies, onOpenZen,
 }: HomeTabViewProps) {
   const isDark = theme === 'dark';
   const { gym } = useGym();
@@ -196,6 +198,8 @@ export function HomeTabView({
         <div className="mt-2"><WeekDots days={weekDots} /></div>
         <p className={`${SUB} mt-2`}>{nudge}</p>
       </Card>
+
+      <ZenCard compact onAskZen={onOpenZen} />
 
       {gym ? (
         <ListRow

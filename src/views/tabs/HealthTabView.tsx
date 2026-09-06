@@ -1,22 +1,19 @@
 import { useMemo } from 'react';
-import { Ruler, Scale, Sparkles, TrendingUp } from 'lucide-react';
+import { Ruler, Scale, TrendingUp } from 'lucide-react';
 import * as storage from '../../storage';
 import { buildCoachReport } from '../../coachService';
-import { Card, StatTile, ListRow, Pill, CAPTION, SUB } from '../../ui';
+import { ZenCard } from '../zen';
+import { Card, StatTile, ListRow, CAPTION, SUB } from '../../ui';
 
 interface HealthTabViewProps {
-  onOpenZen: () => void;
+  onOpenZen: (prompt?: string) => void;
   onOpenBodyWeight: () => void;
   onOpenBodyMeasurements: () => void;
   onOpenInsights: () => void;
 }
 
-/** Health tab root (docs/REVAMP_SPEC.md §3). The Zen card and Insights
- *  row point at the existing coach/coach-chat screens until R3b wires
- *  the real Zen system in — see the TODOs below. */
+/** Health tab root (docs/REVAMP_SPEC.md §3, §6). */
 export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasurements, onOpenInsights }: HealthTabViewProps) {
-  // The daily note reuses the same deterministic insight data the real
-  // Zen dailyNote.ts (R3a) will read from — just without an LLM call.
   const topInsight = useMemo(() => buildCoachReport().insights[0] ?? null, []);
   const latestWeight = useMemo(() => storage.getLatestBodyWeight(), []);
   const weightChange = useMemo(() => storage.getBodyWeightChange(30), []);
@@ -27,17 +24,7 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      {/* TODO(R3b): replace with ZenCard + real Zen daily note / chat. */}
-      <Card onClick={onOpenZen} className="text-left">
-        <div className="flex items-center justify-between mb-1">
-          <span className={CAPTION}>Zen</span>
-          <Pill tone="accent" icon={Sparkles}>Premium</Pill>
-        </div>
-        <p className="text-sm text-text mb-2">
-          {topInsight ? topInsight.body : 'Log a few more workouts and Zen will start noticing patterns.'}
-        </p>
-        <span className="text-[13px] font-bold text-accent">Ask Zen</span>
-      </Card>
+      <ZenCard onAskZen={onOpenZen} />
 
       <StatTile
         eyebrow="Weight"
@@ -55,7 +42,6 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
           subtitle={latestMeasurement ? `Updated ${new Date(latestMeasurement.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'No entries yet'}
           onClick={onOpenBodyMeasurements}
         />
-        {/* TODO(R3b): restyle as the real InsightsView list. */}
         <ListRow
           icon={TrendingUp}
           iconTone="accent"
