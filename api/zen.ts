@@ -146,7 +146,11 @@ interface GeminiResponse {
   error?: { message?: string; status?: string };
 }
 
-async function callGemini(model: string, contents: GeminiContent[], apiKey: string): Promise<{ status: number; body: GeminiResponse }> {
+interface Tuning { maxOutputTokens?: number; thinkingBudget?: number }
+const DEFAULT_MAX_OUTPUT_TOKENS = Number(process.env.ZEN_MAX_OUTPUT_TOKENS) || 1500;
+const DEFAULT_THINKING_BUDGET = process.env.ZEN_THINKING_BUDGET ? Number(process.env.ZEN_THINKING_BUDGET) : undefined;
+
+async function callGemini(model: string, contents: GeminiContent[], apiKey: string, tuning: Tuning = {}): Promise<{ status: number; body: GeminiResponse }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), GEMINI_TIMEOUT_MS);
@@ -154,7 +158,9 @@ async function callGemini(model: string, contents: GeminiContent[], apiKey: stri
   // client shows placeholders meanwhile. Thought parts are filtered out in
   // extractText, and thinking tokens count against maxOutputTokens, so the
   // cap leaves room for both.
-  const generationConfig: Record<string, unknown> = { temperature: 0.6, maxOutputTokens: 1500 };
+  const generationConfig: Record<string, unknown> = { temperature: 0.6, maxOutputTokens: tuning.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS };
+  const budget = tuning.thinkingBudget ?? DEFAULT_THINKING_BUDGET;
+  if (budget !== undefined) generationConfig.thinkingConfig = { thinkingBudget: budget };
   try {
     const r = await fetch(url, {
       method: 'POST',
@@ -204,6 +210,7 @@ async function generate(
   contents: GeminiContent[],
   db: admin.firestore.Firestore,
   debug: ZenDebug[] | null = null,
+  tuning: Tuning = {},
 ): Promise<{ text: string; model: string; usage?: { promptTokens: number; outputTokens: number } }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new HttpError(503, 'Zen is not configured on the server yet.');
@@ -215,14 +222,14 @@ async function generate(
   const start = pickStartModel(pref, primary, fallback, now);
 
   let model = start;
-  let r = await callGemini(model, contents, apiKey);
+  let r = await callGemini(model, contents, apiKey, tuning);
   debug?.push(describe(model, r));
   if (isSwitchableStatus(r.status)) {
     const next = otherModel(model, primary, fallback);
     if (next !== model) {
       console.warn(`[zen] model ${model} returned ${r.status} — switching to ${next}`);
       model = next;
-      r = await callGemini(model, contents, apiKey);
+      r = await callGemini(model, contents, apiKey, tuning);
       debug?.push(describe(model, r));
     }
   }
@@ -285,8 +292,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const adminUids = (process.env.ADMIN_UIDS || 'BXedteurc3bPydsehvPIdVWPTbM2,upLvcTSoE5SS7lOmhYBKHFWSV0r1').split(',');
     const debug: ZenDebug[] | null = body.debug === true && adminUids.includes(uid) ? [] : null;
 
+    // Admin-only generation overrides for tuning experiments.
+    const t = (debug && typeof body.tuning === 'object' && body.tuning ? body.tuning : {}) as Record<string, unknown>;
+    const tuning: Tuning = {
+      maxOutputTokens: typeof t.maxOutputTokens === 'number' ? Math.min(8192, Math.max(200, t.maxOutputTokens)) : undefined,
+      thinkingBudget: typeof t.thinkingBudget === 'number' ? Math.max(0, t.thinkingBudget) : undefined,
+    };
+
     const contents = buildContents(buildSystemTurn({ context, dataAnswer, tz }), messages);
-    const { text, model, usage } = await generate(contents, db, debug);
+    const { text, model, usage } = await generate(contents, db, debug, tuning);
 
     // One-round data protocol. With dataAnswer already supplied we never
     // ask again — any stray request block is stripped and the text returned.
