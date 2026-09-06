@@ -115,9 +115,16 @@ async function sendCodeEmail(to: string, code: string): Promise<void> {
   if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY || !EMAILJS_PRIVATE_KEY) {
     throw new HttpError(503, 'Email sign-in is not configured on the server yet. Please use Google sign-in.');
   }
+  // EmailJS rejects requests that don't look like they come from a browser
+  // unless "Allow EmailJS API for non-browser applications" is enabled on
+  // the account (403 "API access from non-browser environments is currently
+  // disabled"). Identify as the app's own origin so the account setting
+  // isn't a hard dependency; the private key is still sent, and OUR rate
+  // limits are what actually protect the quota.
+  const origin = process.env.EMAILJS_ORIGIN || 'https://zenith-fitness-18e2a.web.app';
   const r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: origin, Referer: `${origin}/` },
     body: JSON.stringify({
       service_id: EMAILJS_SERVICE_ID,
       template_id: EMAILJS_TEMPLATE_ID,
