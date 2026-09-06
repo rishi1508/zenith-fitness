@@ -2,7 +2,6 @@
 // Keep this file at /firebase-messaging-sw.js (root of the web host)
 // so firebase.js can find it automatically.
 
-/* eslint-disable no-undef */
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 

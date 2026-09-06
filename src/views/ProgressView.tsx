@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Dumbbell, Search, TrendingUp, Trophy, Scale } from 'lucide-react';
 import type { Workout } from '../types';
 import * as storage from '../storage';
@@ -18,10 +18,7 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleSessions, setVisibleSessions] = useState(5);
 
-  // Reset visible sessions when exercise changes
-  useEffect(() => {
-    setVisibleSessions(5);
-  }, [selectedExercise]);
+  const selectExercise = (id: string | null) => { setSelectedExercise(id); setVisibleSessions(5); };
   const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
   
   // Get ALL exercises from library, with session counts
@@ -125,7 +122,7 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
     return (
       <div className="space-y-4 animate-fadeIn">
         <div className="flex items-center gap-4">
-          <button onClick={() => setSelectedExercise(null)} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+          <button onClick={() => selectExercise(null)} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
             <ChevronLeft className="w-6 h-6" />
           </button>
           <h1 className="text-lg font-bold truncate">{exerciseName}</h1>
@@ -311,7 +308,7 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
               .map(exercise => (
               <button
                 key={exercise.id}
-                onClick={() => setSelectedExercise(exercise.id)}
+                onClick={() => selectExercise(exercise.id)}
                 className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-50'}`}
               >
                 <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center shrink-0">

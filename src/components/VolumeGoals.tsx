@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Target, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import type { VolumeGoal, WeeklyVolumeProgress, MuscleGroup } from '../types';
 import * as storage from '../storage';
@@ -33,16 +33,14 @@ const MUSCLE_SHORT: Record<MuscleGroup, string> = {
 
 export function VolumeGoals({ isDark }: VolumeGoalsProps) {
   const [goals, setGoals] = useState<VolumeGoal[]>(() => storage.getVolumeGoals());
-  const [progress, setProgress] = useState<WeeklyVolumeProgress[]>(() => storage.getWeeklyVolumeProgress());
+  // storage.getWeeklyVolumeProgress() reads the goals we just saved, so key the memo on their enabled set.
+  const goalsKey = goals.map((g) => `${g.muscleGroup}:${g.enabled ? 1 : 0}:${g.targetSets ?? ''}`).join('|');
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- goalsKey is the dependency that matters
+  const progress = useMemo<WeeklyVolumeProgress[]>(() => storage.getWeeklyVolumeProgress(), [goalsKey]);
   const [expanded, setExpanded] = useState(false);
   
   const enabledGoals = goals.filter(g => g.enabled);
   const hasGoals = enabledGoals.length > 0;
-  
-  // Refresh progress
-  useEffect(() => {
-    setProgress(storage.getWeeklyVolumeProgress());
-  }, [goals]);
   
   const toggleGoal = (muscleGroup: MuscleGroup) => {
     const updatedGoals = goals.map(g => 

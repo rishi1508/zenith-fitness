@@ -53,8 +53,6 @@ export function OfflineGate({ state, onProceedOffline, onRetry }: OfflineGatePro
         </p>
         <div className="space-y-2">
           <RetryButton onRetry={onRetry} />
-          {/* Loader2 is imported for the in-button spinner. */}
-          {false && <Loader2 className="hidden" />}
           <button
             onClick={onProceedOffline}
             className="w-full py-2.5 rounded-lg text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"

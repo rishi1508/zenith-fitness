@@ -109,7 +109,7 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
   // --- Tooltip state ---
   const containerRef = useRef<HTMLDivElement>(null);
   const [tip, setTip] = useState<
-    | { x: number; y: number; cell: NonNullable<Cell> }
+    | { x: number; y: number; cell: NonNullable<Cell>; maxLeft: number }
     | null
   >(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,7 +118,7 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
   const showTipAt = (clientX: number, clientY: number, cell: NonNullable<Cell>) => {
     const bounds = containerRef.current?.getBoundingClientRect();
     if (!bounds) return;
-    setTip({ x: clientX - bounds.left, y: clientY - bounds.top, cell });
+    setTip({ x: clientX - bounds.left, y: clientY - bounds.top, cell, maxLeft: (containerRef.current?.clientWidth || 240) - 140 });
   };
   const hideTip = () => setTip(null);
 
@@ -225,7 +225,7 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
                 : 'bg-white text-gray-900 border-gray-200'
             }`}
             style={{
-              left: Math.max(8, Math.min((containerRef.current?.clientWidth || 240) - 140, tip.x - 60)),
+              left: Math.max(8, Math.min(tip.maxLeft, tip.x - 60)),
               // Negative offset keeps the card clear of the fingertip.
               // If the row is near the top, flip below the finger instead
               // (via max(8, …)) so it stays on-screen.

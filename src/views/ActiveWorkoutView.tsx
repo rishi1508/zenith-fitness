@@ -161,22 +161,21 @@ export function ActiveWorkoutView({
 
   useEffect(() => {
     if (restTimer === null) return;
-    
-    if (restTimeLeft <= 0) {
-      setRestTimer(null);
-      // Play timer sound
-      playSound('timer');
-      // Strong vibration pattern when timer ends
-      hapticNotification('warning');
-      return;
-    }
-
     const interval = setInterval(() => {
-      setRestTimeLeft(t => t - 1);
+      setRestTimeLeft((t) => {
+        if (t <= 1) {
+          // Finished: clear the timer and signal from inside the tick so the
+          // effect body itself never sets state.
+          setRestTimer(null);
+          playSound('timer');
+          hapticNotification('warning');
+          return 0;
+        }
+        return t - 1;
+      });
     }, 1000);
-
     return () => clearInterval(interval);
-  }, [restTimer, restTimeLeft]);
+  }, [restTimer]);
 
   const startRestTimer = (seconds: number) => {
     setRestTimer(seconds);
@@ -751,17 +750,16 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   // Exercise Library show without requiring a full remount. Previously this
   // was useMemo'd with stale deps, which is why saved notes sometimes
   // wouldn't appear here.
-  const [exerciseData, setExerciseData] = useState<{
+  const exerciseData = useMemo<{
     notes?: string; sharedNotes?: string; videoUrl?: string;
     muscleGroup?: Exercise['muscleGroup']; isCompound?: boolean;
     equipment?: Exercise['equipment']; createdByName?: string;
-  }>({});
-  useEffect(() => {
+  }>(() => {
     const exercises = storage.getExercises();
     const nameKey = exercise.exerciseName.trim().toLowerCase();
     const ex = exercises.find(e => e.id === exercise.exerciseId)
       || exercises.find(e => e.name.trim().toLowerCase() === nameKey);
-    setExerciseData({
+    return {
       notes: ex?.notes,
       sharedNotes: ex?.sharedNotes,
       videoUrl: ex?.videoUrl,
@@ -769,7 +767,9 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
       isCompound: ex?.isCompound,
       equipment: ex?.equipment,
       createdByName: ex?.createdByName,
-    });
+    };
+    // showInfo / expanded are deliberate: re-read the library when the modal opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exercise.exerciseId, exercise.exerciseName, showInfo, expanded]);
 
   // Get PR for this exercise — match by id OR by name so session workouts

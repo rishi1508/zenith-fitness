@@ -63,6 +63,25 @@ function calculateWorkoutStats(workout: Workout): WorkoutStats {
   };
 }
 
+// Diff indicator component
+function DiffIndicator({ val1, val2, suffix = '', invert = false }: { val1: number; val2: number; suffix?: string; invert?: boolean }) {
+  if (!val1 || !val2) return null;
+  const diff = val2 - val1;
+  const pct = val1 !== 0 ? ((diff / val1) * 100).toFixed(0) : '∞';
+  const isPositive = invert ? diff < 0 : diff > 0;
+  const isNegative = invert ? diff > 0 : diff < 0;
+  
+  if (diff === 0) {
+    return <span className="text-xs text-zinc-500 flex items-center gap-1"><Minus className="w-3 h-3" /> Same</span>;
+  }
+  return (
+    <span className={`text-xs flex items-center gap-1 ${isPositive ? 'text-emerald-400' : isNegative ? 'text-red-400' : 'text-zinc-500'}`}>
+      {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+      {diff > 0 ? '+' : ''}{diff}{suffix} ({pct}%)
+    </span>
+  );
+}
+
 export function ComparisonView({ workouts, isDark, onBack }: ComparisonViewProps) {
   const [workout1Id, setWorkout1Id] = useState<string | null>(null);
   const [workout2Id, setWorkout2Id] = useState<string | null>(null);
@@ -82,24 +101,6 @@ export function ComparisonView({ workouts, isDark, onBack }: ComparisonViewProps
   const stats1 = workout1 ? calculateWorkoutStats(workout1) : null;
   const stats2 = workout2 ? calculateWorkoutStats(workout2) : null;
 
-  // Diff indicator component
-  const DiffIndicator = ({ val1, val2, suffix = '', invert = false }: { val1: number; val2: number; suffix?: string; invert?: boolean }) => {
-    if (!val1 || !val2) return null;
-    const diff = val2 - val1;
-    const pct = val1 !== 0 ? ((diff / val1) * 100).toFixed(0) : '∞';
-    const isPositive = invert ? diff < 0 : diff > 0;
-    const isNegative = invert ? diff > 0 : diff < 0;
-    
-    if (diff === 0) {
-      return <span className="text-xs text-zinc-500 flex items-center gap-1"><Minus className="w-3 h-3" /> Same</span>;
-    }
-    return (
-      <span className={`text-xs flex items-center gap-1 ${isPositive ? 'text-emerald-400' : isNegative ? 'text-red-400' : 'text-zinc-500'}`}>
-        {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-        {diff > 0 ? '+' : ''}{diff}{suffix} ({pct}%)
-      </span>
-    );
-  };
 
   // Workout selector modal
   if (selectingFor !== null) {

@@ -106,6 +106,7 @@ export function StartSessionModal({
       );
       // Expose a one-tap Continue action via a flag
       pendingSidRef.current = sid;
+      setPendingSid(sid);
       setStarting(false);
     }
   };
@@ -119,6 +120,7 @@ export function StartSessionModal({
     }
   };
   const pendingSidRef = useRef<string | null>(null);
+  const [pendingSid, setPendingSid] = useState<string | null>(null);
 
   // Theme-aware surface classes. Defaults match the prior dark-only
   // styling so callers that haven't been migrated still look correct.
@@ -266,7 +268,7 @@ export function StartSessionModal({
               {error}
             </div>
           )}
-          {pendingSidRef.current && (
+          {pendingSid && (
             <button
               onClick={() => {
                 const sid = pendingSidRef.current;

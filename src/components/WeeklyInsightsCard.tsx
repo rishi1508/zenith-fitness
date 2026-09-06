@@ -18,14 +18,17 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
   const lastWeekStart = new Date(weekStart);
   lastWeekStart.setDate(lastWeekStart.getDate() - 7);
 
+  const weekStartMs = weekStart.getTime();
+  const lastWeekStartMs = lastWeekStart.getTime();
+
   const thisWeekWorkouts = useMemo(() => workouts.filter(w =>
-    w.completed && w.type !== 'rest' && new Date(w.date) >= weekStart
-  ), [workouts]);
+    w.completed && w.type !== 'rest' && new Date(w.date).getTime() >= weekStartMs
+  ), [workouts, weekStartMs]);
 
   const lastWeekWorkouts = useMemo(() => workouts.filter(w => {
-    const d = new Date(w.date);
-    return w.completed && w.type !== 'rest' && d >= lastWeekStart && d < weekStart;
-  }), [workouts]);
+    const d = new Date(w.date).getTime();
+    return w.completed && w.type !== 'rest' && d >= lastWeekStartMs && d < weekStartMs;
+  }), [workouts, lastWeekStartMs, weekStartMs]);
 
   const calculateVolume = (ws: Workout[]) => ws.reduce((total, w) =>
     total + w.exercises.reduce((et, e) =>
@@ -52,7 +55,7 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
 
     // Build historical maxes (before this week)
     workouts
-      .filter(w => w.completed && new Date(w.date) < weekStart)
+      .filter(w => w.completed && new Date(w.date) < new Date(weekStartMs))
       .forEach(w => {
         w.exercises.forEach(e => {
           const maxWeight = Math.max(...e.sets.filter(s => s.completed).map(s => s.weight), 0);
@@ -74,7 +77,7 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
     });
 
     return prCount;
-  }, [workouts, thisWeekWorkouts]);
+  }, [workouts, thisWeekWorkouts, weekStartMs]);
   
   // Weekly goal = the days/week the user committed to for their streak.
   const weeklyGoal = commitment;

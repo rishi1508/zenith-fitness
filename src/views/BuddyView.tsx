@@ -140,9 +140,9 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
     try {
       await buddyService.acceptBuddyRequest(request.id);
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Buddy] acceptBuddyRequest failed:', err);
-      alert(err.message || 'Failed to accept request');
+      alert(err instanceof Error && err.message ? err.message : 'Failed to accept request');
     } finally {
       setActionLoading(null);
     }
@@ -153,9 +153,9 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
     try {
       await buddyService.declineBuddyRequest(request.id);
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
-    } catch (err: any) {
+    } catch (err) {
       console.error('[Buddy] declineBuddyRequest failed:', err);
-      alert(err.message || 'Failed to decline request');
+      alert(err instanceof Error && err.message ? err.message : 'Failed to decline request');
     } finally {
       setActionLoading(null);
     }

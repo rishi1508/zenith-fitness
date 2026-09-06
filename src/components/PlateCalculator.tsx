@@ -18,7 +18,7 @@ interface PlateResult {
 
 function calculatePlates(targetWeight: number, barbellWeight: number = BARBELL_WEIGHT): PlateResult[] {
   // Weight to load on the bar (excluding barbell)
-  let remaining = targetWeight - barbellWeight;
+  const remaining = targetWeight - barbellWeight;
   
   if (remaining <= 0) return [];
   

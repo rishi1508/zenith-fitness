@@ -699,11 +699,11 @@ export async function importFromGoogleSheetsUrl(url: string): Promise<ImportResu
       const exerciseResponse = await fetch(exerciseDataUrl);
       if (exerciseResponse.ok) {
         const exerciseText = await exerciseResponse.text();
-        importExercisesFromSheet(exerciseText, errors);
+        importExercisesFromSheet(exerciseText);
       } else {
         errors.push('Could not fetch Exercise Data sheet');
       }
-    } catch (e) {
+    } catch {
       errors.push('Error fetching Exercise Data sheet');
     }
     
@@ -712,11 +712,11 @@ export async function importFromGoogleSheetsUrl(url: string): Promise<ImportResu
       const planResponse = await fetch(workoutPlanUrl);
       if (planResponse.ok) {
         const planText = await planResponse.text();
-        importWorkoutPlanFromSheet(planText, errors);
+        importWorkoutPlanFromSheet(planText);
       } else {
         errors.push('Could not fetch Workout Plan sheet');
       }
-    } catch (e) {
+    } catch {
       errors.push('Error fetching Workout Plan sheet');
     }
     
@@ -735,7 +735,7 @@ export async function importFromGoogleSheetsUrl(url: string): Promise<ImportResu
 }
 
 // Import exercises from Exercise Data Transpose sheet (first COLUMN contains exercise names)
-function importExercisesFromSheet(csvText: string, _errors: string[]): void {
+function importExercisesFromSheet(csvText: string): void {
   const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
   if (lines.length < 2) return;
   
@@ -768,7 +768,7 @@ function importExercisesFromSheet(csvText: string, _errors: string[]): void {
 }
 
 // Import workout template from Workout Plan sheet - creates a WeeklyPlan with separate days
-function importWorkoutPlanFromSheet(csvText: string, _errors: string[]): void {
+function importWorkoutPlanFromSheet(csvText: string): void {
   const lines = csvText.split('\n').map(line => line.trim()).filter(line => line);
   if (lines.length < 2) return;
 

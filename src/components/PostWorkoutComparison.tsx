@@ -37,13 +37,15 @@ export function PostWorkoutComparison({ session, isDark = true, onClose }: PostW
   );
 
   const [progressByUid, setProgressByUid] = useState<Map<string, SessionProgress> | null>(null);
+  // Stable key so a re-created `participants` array doesn't refetch every render.
+  const participantKey = participants.map((p) => p.uid).join(',');
   useEffect(() => {
     let cancelled = false;
     sessionService
-      .getAllProgress(session.id, participants.map((p) => p.uid))
+      .getAllProgress(session.id, participantKey ? participantKey.split(',') : [])
       .then((m) => { if (!cancelled) setProgressByUid(m); });
     return () => { cancelled = true; };
-  }, [session.id, participants.length]);
+  }, [session.id, participantKey]);
 
   // Determine winners for each session-level category
   const maxVolume = Math.max(...participants.map((p) => p.totalVolume));

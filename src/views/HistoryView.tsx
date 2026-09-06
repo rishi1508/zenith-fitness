@@ -246,7 +246,7 @@ export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewP
     
     // Create a new weekly plan from this workout
     const newPlan: WeeklyPlan = {
-      id: `custom_${Date.now()}`,
+      id: `custom_${crypto.randomUUID()}`,
       name: templateName.trim(),
       isCustom: true,
       days: [

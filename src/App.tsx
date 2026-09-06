@@ -60,7 +60,6 @@ function App() {
   const [foodNav, setFoodNav] = useState<{ date: string; meal: MealSlot }>({ date: healthToday(), meal: 'snacks' });
   const [stats, setStats] = useState<UserStats | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
-  const [_templates, _setTemplates] = useState<WorkoutTemplate[]>([]); // LEGACY - kept for backward compat
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
   const [showSplash, setShowSplash] = useState(true);
   const [missingDays, setMissingDays] = useState<string[]>([]);
@@ -263,7 +262,6 @@ function App() {
     // current max-weight-then-reps hierarchy (also heals records from older logic).
     storage.recomputePersonalRecords();
     setStats(storage.calculateStats());
-    _setTemplates(storage.getTemplates()); // LEGACY
     setWorkoutHistory(storage.getWorkouts());
     // Check for missing days after splash
     const missing = storage.getMissingDays();
@@ -362,7 +360,7 @@ function App() {
         }
       }
     }
-  }, [activeWorkout, activeSessionId]);
+  }, [activeWorkout, activeSessionId, sessionMode]);
 
   // When the host ends the session, every participant's app auto-saves their
   // in-progress workout so they don't lose what they logged.
@@ -463,7 +461,7 @@ function App() {
       }
     });
     return unsub;
-  }, [activeSessionId, activeWorkout, user]);
+  }, [activeSessionId, activeWorkout, user, completedSession]);
 
   // Listen to per-participant progress and capture each buddy's full
   // ordered list of completed sets per exercise (keyed by exercise name,
@@ -548,7 +546,7 @@ function App() {
   // Apply theme
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    try { localStorage.setItem('zenith_theme', theme); } catch {}
+    try { localStorage.setItem('zenith_theme', theme); } catch { /* storage unavailable (private mode) */ }
   }, [theme]);
 
   // Heartbeat → userProfile.lastActive every 45 s while the user is

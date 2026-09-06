@@ -5,11 +5,12 @@ import {
   Cloud, Bell, Flame, Trash2,
 } from 'lucide-react';
 import * as storage from '../storage';
+import type { Workout, Exercise, WeeklyPlan } from '../types';
 import { useAuth } from '../auth/AuthContext';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as buddyService from '../buddyService';
-import { manualCheckForUpdates } from '../UpdateChecker';
+import { manualCheckForUpdates } from '../updateCheck';
 import { enablePushNotifications, pushSupported, pushPermissionState } from '../pushService';
 import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '../healthSync';
 import { deleteMyAccount } from '../accountService';
@@ -202,7 +203,9 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
   const playTestSound = (type: 'celebration' | 'timer') => {
     try {
       // Simple beep using Web Audio API
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtor) return;
+      const audioContext = new AudioCtor();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
       
@@ -224,7 +227,7 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
         // Timer beep
         setTimeout(() => oscillator.stop(), 200);
       }
-    } catch (e) {
+    } catch {
       console.log('Audio not supported');
     }
   };
@@ -374,7 +377,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
       if (data.workouts) {
         const existing = storage.getWorkouts();
         const existingIds = new Set(existing.map(w => w.id));
-        const newWorkouts = data.workouts.filter((w: any) => !existingIds.has(w.id));
+        const newWorkouts = (data.workouts as Workout[]).filter((w) => !existingIds.has(w.id));
         if (newWorkouts.length > 0) {
           storage.saveWorkouts([...existing, ...newWorkouts]);
         }
@@ -384,7 +387,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
       if (data.exercises) {
         const existing = storage.getExercises();
         const existingIds = new Set(existing.map(e => e.id));
-        const newExercises = data.exercises.filter((e: any) => !existingIds.has(e.id));
+        const newExercises = (data.exercises as Exercise[]).filter((e) => !existingIds.has(e.id));
         if (newExercises.length > 0) {
           storage.saveExercises([...existing, ...newExercises]);
         }
@@ -394,7 +397,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
       if (data.weeklyPlans) {
         const existing = storage.getWeeklyPlans();
         const existingIds = new Set(existing.map(p => p.id));
-        const newPlans = data.weeklyPlans.filter((p: any) => !existingIds.has(p.id));
+        const newPlans = (data.weeklyPlans as WeeklyPlan[]).filter((p) => !existingIds.has(p.id));
         if (newPlans.length > 0) {
           storage.saveWeeklyPlans([...existing, ...newPlans]);
         }
