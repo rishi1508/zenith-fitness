@@ -4,7 +4,7 @@ import type { GymViewProps } from './types';
 import type { GymCheckin } from '../../types';
 import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
-import { checkinMember, verifyDailyCode, memberQrPayload, parseQrPayload, listCheckins } from '../../gymService';
+import { checkinMember, dailyCodeHashIfValid, memberQrPayload, parseQrPayload, listCheckins } from '../../gymService';
 import { localDateISO, addDaysISO } from '../../gymStats';
 import { startOfWeekISO } from '../../gymMemberHelpers';
 import { hapticNotification } from '../../haptics';
@@ -76,13 +76,13 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
     if (!gym || !user || busy) return;
     setBusy(true);
     try {
-      const ok = await verifyDailyCode(gym, value);
-      if (!ok) {
+      const codeHash = await dailyCodeHashIfValid(gym, value);
+      if (!codeHash) {
         showToast('Wrong code, or it has expired.', 'error');
         setDigits(Array(6).fill(''));
         return;
       }
-      await checkinMember(gym.id, user.uid, 'code');
+      await checkinMember(gym.id, user.uid, 'code', { codeHash });
       await afterSuccess();
       setDigits(Array(6).fill(''));
     } catch (err) {

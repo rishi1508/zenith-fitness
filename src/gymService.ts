@@ -130,6 +130,7 @@ export async function joinGymByCode(code: string): Promise<{ gym: Gym; member: G
     ? (existingSnap.data() as GymMember)
     : stripUndefined({
         uid: user.uid,
+        joinCode: normalized,
         name: user.displayName || 'Member',
         email: user.email || undefined,
         photoURL: user.photoURL || null,
@@ -479,7 +480,7 @@ export async function listPayments(gymId: string, opts?: { uid?: string; sinceIS
  *  A repeat call for the same member/day returns the existing check-in
  *  untouched instead of creating a duplicate or re-bumping the
  *  denormalised counters. */
-export async function checkinMember(gymId: string, uid: string, method: CheckinMethod): Promise<{ created: boolean; checkin: GymCheckin }> {
+export async function checkinMember(gymId: string, uid: string, method: CheckinMethod, opts?: { codeHash?: string }): Promise<{ created: boolean; checkin: GymCheckin }> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
 
@@ -500,7 +501,7 @@ export async function checkinMember(gymId: string, uid: string, method: CheckinM
     if ((err as { code?: string }).code !== 'permission-denied') throw err;
   }
 
-  const checkin: GymCheckin = { id: checkinId, uid, at: new Date().toISOString(), date, method, byUid: user.uid };
+  const checkin: GymCheckin = { id: checkinId, uid, at: new Date().toISOString(), date, method, byUid: user.uid, ...(opts?.codeHash ? { codeHash: opts.codeHash } : {}) };
   await setDoc(ref, checkin, { merge: true });
 
   try {
@@ -540,11 +541,17 @@ export async function rotateDailyCode(gymId: string): Promise<string> {
 /** Pure-ish check (async because it hashes with crypto.subtle): does
  *  `code` match today's rotated code for this gym? */
 export async function verifyDailyCode(gym: Gym, code: string): Promise<boolean> {
-  if (!gym.dailyCodeHash || !gym.dailyCodeDate) return false;
+  return (await dailyCodeHashIfValid(gym, code)) !== null;
+}
+
+/** The hash of `code` for today, or null when it is not today's code. The
+ *  member's check-in doc carries this hash so the rules can re-check it. */
+export async function dailyCodeHashIfValid(gym: Gym, code: string): Promise<string | null> {
+  if (!gym.dailyCodeHash || !gym.dailyCodeDate) return null;
   const date = localDateISO(new Date());
-  if (gym.dailyCodeDate !== date) return false;
+  if (gym.dailyCodeDate !== date) return null;
   const hash = await sha256Hex(`${code}:${date}:${gym.id}`);
-  return hash === gym.dailyCodeHash;
+  return hash === gym.dailyCodeHash ? hash : null;
 }
 
 export async function listCheckins(gymId: string, opts: { sinceISO: string; uid?: string; limit?: number }): Promise<GymCheckin[]> {

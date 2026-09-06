@@ -18,6 +18,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import { consumeLimit, HttpError } from './_limits.js';
 
 // Initialise once per cold start. Hot invocations reuse the same app.
 function getAdmin() {
@@ -62,8 +63,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Auth check — only logged-in users can trigger pushes.
-  try { await a.auth().verifyIdToken(idToken); }
-  catch (e) { res.status(401).json({ error: 'Invalid token', detail: (e as Error).message }); return; }
+  let senderUid: string;
+  try { senderUid = (await a.auth().verifyIdToken(idToken)).uid; }
+  catch { res.status(401).json({ error: 'Invalid token' }); return; }
+
+  // Shape + size limits, then a per-sender budget so a compromised or
+  // scripted account cannot blast other users (FCM is free, but each call
+  // costs Firestore reads and the recipient's attention).
+  if (typeof recipientUid !== 'string' || recipientUid.length > 128 || typeof title !== 'string' || title.length > 120
+    || (body !== undefined && (typeof body !== 'string' || body.length > 500))) {
+    res.status(400).json({ error: 'Invalid payload' }); return;
+  }
+  try {
+    await consumeLimit(a.firestore(), `push:${senderUid}`, [
+      { field: 'm', windowMs: 60_000, max: 30, message: 'Too many notifications — try again in {min} min.' },
+      { field: 'd', windowMs: 86_400_000, max: 600, message: 'Daily notification limit reached.' },
+    ]);
+  } catch (e) {
+    if (e instanceof HttpError) { res.status(e.status).json({ error: e.message }); return; }
+    throw e;
+  }
 
   // Pull the recipient's device tokens.
   const db = a.firestore();

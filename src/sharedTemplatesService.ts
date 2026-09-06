@@ -1,5 +1,5 @@
 import {
-  doc, setDoc, getDoc, getDocs, collection, query, orderBy, limit,
+  doc, setDoc, getDoc, getDocs, collection, query, orderBy, limit, updateDoc, increment,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import type { WeeklyPlan, WorkoutTemplate } from './types';
@@ -66,13 +66,8 @@ export async function getSharedTemplate(id: string): Promise<SharedTemplate | nu
 /** Increment useCount — best-effort, ignore failure. */
 export async function bumpUseCount(id: string): Promise<void> {
   try {
-    const snap = await getDoc(doc(db, 'sharedTemplates', id));
-    if (!snap.exists()) return;
-    const current = snap.data() as SharedTemplate;
-    await setDoc(doc(db, 'sharedTemplates', id), {
-      ...current,
-      useCount: (current.useCount || 0) + 1,
-    });
+    // Atomic +1 — the rules only let non-creators change useCount by exactly one.
+    await updateDoc(doc(db, 'sharedTemplates', id), { useCount: increment(1) });
   } catch (err) {
     console.warn('[SharedTemplates] bumpUseCount failed:', err);
   }

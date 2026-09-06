@@ -457,6 +457,8 @@ export interface Gym {
 
 export interface GymMember {
   uid: string;                   // real auth uid, or `demo_<n>` for seeded members
+  /** Join code presented when the member enrolled themselves (rules verify it). */
+  joinCode?: string;
   name: string;
   phone?: string;
   email?: string;
@@ -475,7 +477,7 @@ export interface GymMember {
 }
 
 export interface GymPayment { id: string; uid: string; amount: number; method: PaymentMethod; paidAt: string; months: number; planId?: string; note?: string; recordedBy: string }
-export interface GymCheckin { id: string; uid: string; at: string; date: string /* YYYY-MM-DD local */; method: CheckinMethod; byUid: string }
+export interface GymCheckin { id: string; uid: string; at: string; date: string /* YYYY-MM-DD local */; method: CheckinMethod; byUid: string; codeHash?: string /* method 'code': sha256(code:date:gymId), checked by rules */ }
 /** Per-day check-in aggregate (doc id = date), denormalised on each
  *  check-in so the dashboard can read ~30 docs instead of ~thousands of
  *  raw checkins. See docs/REVAMP_SPEC.md §7 R4. */

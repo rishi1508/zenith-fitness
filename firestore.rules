@@ -137,7 +137,11 @@ service cloud.firestore {
     // include buddy requests, chat notifications, session invites, etc.).
     match /notifications/{uid}/items/{notifId} {
       allow read:   if signedIn() && request.auth.uid == uid;
-      allow create: if signedIn();
+      // The sender must be who they say they are; keeps the in-app toast
+      // and the push title honest and stops third parties spamming a user.
+      allow create: if signedIn()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.message is string && request.resource.data.message.size() <= 500;
       allow update: if signedIn() && request.auth.uid == uid;
       allow delete: if signedIn() && request.auth.uid == uid;
     }
@@ -207,12 +211,16 @@ service cloud.firestore {
     }
 
     // ---------- shared templates library ----------
-    // Any authenticated user can browse + publish a template. Updates are
-    // allowed so useCount can be incremented by any importer.
+    // Any authenticated user can browse + publish a template. The creator
+    // may edit; anyone else may only bump useCount by exactly one.
     match /sharedTemplates/{templateId} {
       allow read:   if signedIn();
       allow create: if signedIn() && request.auth.uid == request.resource.data.creatorUid;
-      allow update: if signedIn();
+      allow update: if signedIn() && (
+        request.auth.uid == resource.data.creatorUid ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['useCount'])
+          && request.resource.data.useCount == resource.data.useCount + 1)
+      );
       allow delete: if signedIn() && request.auth.uid == resource.data.creatorUid;
     }
 
@@ -222,7 +230,12 @@ service cloud.firestore {
     // owner); only that gym's owner or an admin can rotate/remove it.
     match /gymJoinCodes/{code} {
       allow get:    if signedIn();
-      allow create: if signedIn() && request.resource.data.gymId is string;
+      // Only the owner of the gym the code points at (getAfter: the gym may
+      // be created in the same batch) or an admin may mint a code.
+      allow create: if signedIn() && request.resource.data.gymId is string && (
+        isAdmin() ||
+        getAfter(/databases/$(database)/documents/gyms/$(request.resource.data.gymId)).data.ownerUid == request.auth.uid
+      );
       allow update, delete: if isGymOwner(resource.data.gymId) || isAdmin();
     }
 
@@ -236,8 +249,15 @@ service cloud.firestore {
 
       match /members/{uid} {
         allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == uid;
-        // joining: a signed-in user creates their own member doc with role 'member'
-        allow create: if isGymManager(gymId) || isAdmin() || (signedIn() && request.auth.uid == uid && request.resource.data.role == 'member');
+        // joining: a signed-in user creates their own member doc with role
+        // 'member' — but only with a join code that really belongs to this
+        // gym (the code is the invitation; without this check anyone who
+        // knew a gym id could enrol themselves).
+        allow create: if isGymManager(gymId) || isAdmin() || (
+          signedIn() && request.auth.uid == uid && request.resource.data.role == 'member'
+          && request.resource.data.joinCode is string
+          && get(/databases/$(database)/documents/gymJoinCodes/$(request.resource.data.joinCode)).data.gymId == gymId
+        );
         allow update: if isGymManager(gymId) || isAdmin()
                       || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d']))
                       || (request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d', 'lastWorkoutAt', 'photoURL', 'phone']));
@@ -245,10 +265,28 @@ service cloud.firestore {
       }
       match /payments/{id}   { allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == resource.data.uid; allow create, update: if isGymManager(gymId) || isAdmin(); allow delete: if isGymOwner(gymId) || isAdmin(); }
       match /checkins/{id}   { allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == resource.data.uid;
-                               allow create: if isGymStaff(gymId) || isAdmin() || (signedIn() && request.auth.uid == request.resource.data.uid && request.resource.data.method in ['member-qr', 'code']);
+                               // Self check-in: the doc id must be `${uid}_${date}` and, for the
+                               // daily code, the hash the client presents must match today's code
+                               // on the gym doc (the code is otherwise only verified client-side).
+                               allow create: if isGymStaff(gymId) || isAdmin() || (
+                                 signedIn() && request.auth.uid == request.resource.data.uid
+                                 && id == request.auth.uid + '_' + request.resource.data.date
+                                 && (
+                                   request.resource.data.method == 'member-qr' ||
+                                   (request.resource.data.method == 'code'
+                                     && request.resource.data.codeHash == gymDoc(gymId).dailyCodeHash
+                                     && request.resource.data.date == gymDoc(gymId).dailyCodeDate)
+                                 )
+                               );
                                allow update, delete: if isGymManager(gymId) || isAdmin(); }
       match /dailyStats/{date} { allow read: if isGymStaff(gymId) || isAdmin();
-                               allow create, update: if isGymStaff(gymId) || isAdmin() || (isGymMember(gymId) && request.resource.data.keys().hasOnly(['date', 'count', 'hours'])); }
+                               // Members may only bump the counter by one (their own check-in).
+                               allow create: if isGymStaff(gymId) || isAdmin() || (isGymMember(gymId)
+                                 && request.resource.data.keys().hasOnly(['date', 'count', 'hours'])
+                                 && request.resource.data.date == date && request.resource.data.count == 1);
+                               allow update: if isGymStaff(gymId) || isAdmin() || (isGymMember(gymId)
+                                 && request.resource.data.keys().hasOnly(['date', 'count', 'hours'])
+                                 && request.resource.data.date == date && request.resource.data.count == resource.data.count + 1); }
       match /classes/{id}    { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow write: if isGymManager(gymId) || isAdmin();
         match /sessions/{date} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
                                  // Staff/admin: anything. Member: may CREATE the session doc as the first
