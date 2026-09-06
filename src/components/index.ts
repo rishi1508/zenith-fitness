@@ -28,3 +28,5 @@ export { ExerciseForm } from './ExerciseForm';
 export { InteractiveLineChart } from './InteractiveLineChart';
 export type { ChartPoint } from './InteractiveLineChart';
 export { ChartSettingsBar } from './ChartSettingsBar';
+export { QrCode } from './gym/QrCode';
+export { QrScanner } from './gym/QrScanner';

@@ -202,7 +202,13 @@ service cloud.firestore {
 
     // ---------- Gym OS lite (Tier A) ----------
     // See docs/GYM_TIER_A_SPEC.md §3-4.
-    match /gymJoinCodes/{code} { allow get: if signedIn(); allow write: if false; }   // written by admin/owner via gymService using a batch that also creates the gym
+    // Join-code → gymId lookup. Created in the same batch as the gym (by its
+    // owner); only that gym's owner or an admin can rotate/remove it.
+    match /gymJoinCodes/{code} {
+      allow get:    if signedIn();
+      allow create: if signedIn() && request.resource.data.gymId is string;
+      allow update, delete: if isGymOwner(resource.data.gymId) || isAdmin();
+    }
 
     match /gyms/{gymId} {
       allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
@@ -227,8 +233,13 @@ service cloud.firestore {
                                allow update, delete: if isGymManager(gymId) || isAdmin(); }
       match /classes/{id}    { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow write: if isGymManager(gymId) || isAdmin();
         match /sessions/{date} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
-                                 allow create, update: if isGymStaff(gymId) || isAdmin()
-                                   || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolled']));   // member enrol/unenrol
+                                 // Staff/admin: anything. Member: may CREATE the session doc as the first
+                                 // enrollee (only themselves enrolled, nobody attended) and may UPDATE only
+                                 // the enrolled array (enrol / unenrol).
+                                 allow create: if isGymStaff(gymId) || isAdmin()
+                                   || (isGymMember(gymId) && request.resource.data.enrolled.hasOnly([request.auth.uid]) && request.resource.data.attended.size() == 0);
+                                 allow update: if isGymStaff(gymId) || isAdmin()
+                                   || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolled']));
                                  allow delete: if false; } }
       match /announcements/{id} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow create: if isGymStaff(gymId) || isAdmin(); allow update, delete: if isGymManager(gymId) || isAdmin(); }
     }
