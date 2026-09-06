@@ -30,9 +30,9 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      <Card onClick={onOpenNutrition} className="text-left">
+      <Card>
         <SectionHeader caption="Today" trailing={{ label: 'Log food', onClick: onOpenNutrition }} />
-        <div className="mt-2 flex justify-center"><NutritionRing size={132} /></div>
+        <div className="mt-2 flex justify-center"><NutritionRing size={132} onClick={onOpenNutrition} /></div>
       </Card>
 
       <ZenCard onAskZen={onOpenZen} />
