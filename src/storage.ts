@@ -1588,6 +1588,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   streak: {
     commitment: null,
   },
+  ui: {},
 };
 
 export function getAppSettings(): AppSettings {
@@ -1595,6 +1596,7 @@ export function getAppSettings(): AppSettings {
   return {
     chart: { ...DEFAULT_APP_SETTINGS.chart, ...(stored.chart ?? {}) },
     streak: { ...DEFAULT_APP_SETTINGS.streak, ...(stored.streak ?? {}) },
+    ui: { ...DEFAULT_APP_SETTINGS.ui, ...(stored.ui ?? {}) },
   };
 }
 

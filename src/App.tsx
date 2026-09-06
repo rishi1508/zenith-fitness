@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  Dumbbell, Calendar,
-  Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon, Trophy, TimerOff, X,
-  Building2,
-} from 'lucide-react';
+import { Calendar, PartyPopper, Trophy, TimerOff, X } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
 import { UpdateChecker } from './UpdateChecker';
@@ -15,14 +11,19 @@ import {
   ACTIVITY_THROTTLE_MS, AUTO_FINISH_CHECK_MS, buildAutoFinishedWorkout, formatEndedAt,
   isIdlePastThreshold, lastActivityMs, participantIsActive,
 } from './autoFinish';
-import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt, AskCoachBubble } from './components';
+import { SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, PushPermissionPrompt, AskCoachBubble } from './components';
 import { hasLLMConfig } from './llm';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import {
-  HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView, CoachChatView,
+  HistoryView, ProgressView, SettingsView, ExerciseManagerView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, BodyWeightView, CommonTemplatesView, BodyMeasurementsView, CoachView, CoachChatView,
   JoinGymView, GymHomeView, CheckinView, ClassesView, ClassDetailView, AnnouncementsView, MembershipView, GymDashboardView, MembersView, MemberDetailView, CheckinConsoleView, ClassesManageView, GymSettingsView, CreateGymView,
 } from './views';
 import type { GymView, GymNavParams } from './views';
+import { HomeTabView, TrainTabView, HealthTabView, YouTabView } from './views/tabs';
+import { AppShell } from './shell/AppShell';
+import { tabRoot } from './shell/tabs';
+import type { Tab } from './shell/tabs';
+import { isAdmin } from './admin';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { templateFromWorkout, templatesEqual, reconcileWorkoutWithTemplate } from './sessionTemplateReconcile';
@@ -34,12 +35,12 @@ import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 import { useGym } from './gym/GymContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile' | 'coach' | 'coach-chat' | GymView;
-type Theme = 'dark' | 'light';
+export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'coach' | 'coach-chat' | GymView;
+export type Theme = 'dark' | 'light';
 
 function App() {
   const { user, loading: authLoading, isGuest } = useAuth();
-  const { gym } = useGym();
+  const { gym, role: gymRole } = useGym();
   const [view, setView] = useState<View>('home');
   // Nav params for the gym screens (which class / which member) — the
   // gym itself comes from useGym(), not from this state. See
@@ -161,6 +162,16 @@ function App() {
     setGymNav(params ?? {});
     navigateTo(target);
   }, [navigateTo]);
+
+  // Tab tap → navigate to its root view and reset the history stack
+  // (docs/REVAMP_SPEC.md §3), same pattern as the post-workout /
+  // session-cancel resets elsewhere in this file.
+  const navigateToTab = useCallback((tab: Tab) => {
+    const root = tabRoot[tab];
+    navigationHistory.current = [root];
+    setView(root);
+    try { window.history.pushState({ zenith: 1 }, ''); } catch { /* ignore */ }
+  }, []);
 
   // Go back in navigation history
   const goBack = useCallback(() => {
@@ -591,8 +602,6 @@ function App() {
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
   }, []);
-
-  const toggleTheme = useCallback(() => setTheme(t => t === 'dark' ? 'light' : 'dark'), []);
 
   // Keep a ref to the latest goBack so the Capacitor back-button handler
   // (registered only once, async) always uses the current closure instead of
@@ -1258,124 +1267,101 @@ function App() {
         </div>
       )}
       
-      {/* Header */}
-      <header className={`flex-none backdrop-blur-sm border-b px-4 z-10 transition-colors duration-300 ${isDark ? 'bg-[#0f0f0f]/95 border-[#2e2e2e]' : 'bg-white/95 border-gray-200'}`} style={{ paddingTop: 'max(env(safe-area-inset-top), 12px)', paddingBottom: '12px' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {/* In-app icon = the app drawer icon from /public/icon.svg so
-                they stay visually identical. */}
-            <img src="/icon.svg" alt="" className="w-8 h-8 rounded-lg" />
-            <span className="font-bold text-lg">Zenith Fitness</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {view === 'active' && activeWorkout?.startedAt && (
-              <WorkoutTimer startTime={activeWorkout.startedAt} />
-            )}
-            {view !== 'active' && (
-              <>
-                {/* Gym pill — tap to open the gym home screen. */}
-                {gym && (
-                  <button
-                    onClick={() => navigateToGym('gym-home')}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] hover:border-orange-500/40' : 'bg-white border-gray-200 hover:border-orange-400'}`}
-                    title={gym.name}
-                  >
-                    {gym.logoUrl ? (
-                      <img src={gym.logoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
-                    ) : (
-                      <Building2 className="w-3.5 h-3.5" style={{ color: 'var(--accent, currentColor)' }} />
-                    )}
-                    {/* Name only from sm: up — with it, the header wraps onto two lines on phones. */}
-                    <span className="hidden sm:inline max-w-[6rem] truncate">{gym.name}</span>
-                  </button>
-                )}
-                {/* Duolingo-style streak pill — tap to open calendar + freeze state */}
-                {stats && (
-                  <StreakButton
-                    streakCount={stats.currentStreak}
-                    level={stats.streakLevel ?? 1}
-                    active={stats.thisWeekWorkouts > 0}
-                    isDark={isDark}
-                  />
-                )}
-                <button
-                  onClick={toggleTheme}
-                  className={`p-2 transition-colors ${isDark ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
-                  title={isDark ? 'Light mode' : 'Dark mode'}
-                >
-                  {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                </button>
-                <button
-                  onClick={() => navigateTo('settings')}
-                  className={`p-2 transition-colors ${isDark ? 'text-zinc-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
-                >
-                  <Settings className="w-5 h-5" />
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
-
-      {/* Pinned group-session reminder — shown on every view EXCEPT the
-          session's own active workout (where GroupSessionBar is rendered
-          inline below) and personal workouts (where we hide it so it
-          doesn't bleed into an unrelated session). */}
-      {activeSessionId && view !== 'session-lobby' && !(view === 'active' && activeWorkout?.sessionId === activeSessionId) && !(view === 'active' && activeWorkout && activeWorkout.sessionId !== activeSessionId) && (
-        <div className="px-4 pt-3">
-          <GroupSessionBar
-            sessionId={activeSessionId}
-            isDark={isDark}
-            showContinue
-            onContinue={() => {
-              if (activeWorkout?.sessionId === activeSessionId) {
-                navigateTo('active');
-              } else {
-                navigateTo('session-lobby');
-              }
-            }}
+      {view === 'active' && activeWorkout ? (
+        <>
+          {activeSessionId && activeWorkout.sessionId === activeSessionId && (
+            <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
+          )}
+          <ActiveWorkoutView
+            workout={activeWorkout}
+            onUpdate={saveActiveWorkout}
+            onFinish={() => finishWorkout({ endSession: sessionMode === 'host' })}
+            onPause={pauseWorkout}
+            onDiscard={discardWorkout}
+            sessionMode={activeWorkout.sessionId === activeSessionId ? sessionMode : null}
+            buddyProgress={activeWorkout.sessionId === activeSessionId ? buddyProgress : undefined}
           />
-        </div>
-      )}
-
-      {/* Content */}
-      <main
-        className={`flex-1 overflow-y-auto overflow-x-hidden ${
-          // The chat view lays itself out full-height with its own internal
-          // scroll + padding. Any main padding would stretch chat past main
-          // and re-introduce the "scroll up to find the header" bug, so we
-          // drop it when that view is active.
-          view === 'buddy-chat' || view === 'coach-chat' ? 'p-0' : 'px-4 py-4 pb-24'
-        }`}
-        style={{ overscrollBehavior: 'none' }}
+        </>
+      ) : (
+      <AppShell
+        view={view}
+        onTabChange={navigateToTab}
+        hasGym={!!gym}
+        gymName={gym?.name}
+        isGymOwner={gymRole === 'owner'}
+        firstName={user?.displayName?.split(' ')[0] || 'Champ'}
+        stats={stats}
+        isDark={isDark}
+        showBuddiesIcon={!isGuest}
+        buddyAlertCount={buddyAlertCount}
+        onOpenBuddies={() => navigateTo('buddies')}
+        onOpenSettings={() => navigateTo('settings')}
+        onOpenGymSettings={() => navigateToGym('gym-settings')}
+        userName={user?.displayName || 'Anonymous'}
+        userSub={user?.email ?? undefined}
+        userAvatar={user?.photoURL ? <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" /> : undefined}
+        onOpenProfile={() => navigateToTab('you')}
+        banner={activeSessionId && view !== 'session-lobby' ? (
+          <div className="px-5 pt-2">
+            <GroupSessionBar
+              sessionId={activeSessionId}
+              isDark={isDark}
+              showContinue
+              onContinue={() => {
+                if (activeWorkout?.sessionId === activeSessionId) {
+                  navigateTo('active');
+                } else {
+                  navigateTo('session-lobby');
+                }
+              }}
+            />
+          </div>
+        ) : undefined}
       >
         {view === 'home' && (
-          <HomeView
+          <HomeTabView
+            theme={theme}
             workouts={workoutHistory}
-            isDark={isDark}
-            onStartWorkout={startWorkout}
-            onViewHistory={() => navigateTo('history')}
-            onManagePlans={() => navigateTo('templates')}
             activeWorkout={activeWorkout}
+            showBuddies={!isGuest}
+            onStartWorkout={startWorkout}
             onResumeWorkout={() => navigateTo('active')}
             onDiscardWorkout={discardWorkout}
+            onOpenGymCheckin={() => navigateToGym('gym-checkin')}
+            onOpenGymJoin={() => navigateToGym('gym-join')}
+            onOpenBuddies={() => navigateTo('buddies')}
           />
         )}
-        {view === 'active' && activeWorkout && (
-          <>
-            {activeSessionId && activeWorkout.sessionId === activeSessionId && (
-              <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
-            )}
-            <ActiveWorkoutView
-              workout={activeWorkout}
-              onUpdate={saveActiveWorkout}
-              onFinish={() => finishWorkout({ endSession: sessionMode === 'host' })}
-              onPause={pauseWorkout}
-              onDiscard={discardWorkout}
-              sessionMode={activeWorkout.sessionId === activeSessionId ? sessionMode : null}
-              buddyProgress={activeWorkout.sessionId === activeSessionId ? buddyProgress : undefined}
-            />
-          </>
+        {view === 'train' && (
+          <TrainTabView
+            theme={theme}
+            onStartWorkout={startWorkout}
+            onOpenWeeklyPlans={() => navigateTo('templates')}
+            onOpenExercises={() => navigateTo('exercises')}
+            onOpenCommonTemplates={() => navigateTo('common-templates')}
+            onOpenHistory={() => navigateTo('history')}
+            onOpenProgress={() => navigateTo('progress')}
+          />
+        )}
+        {view === 'health' && (
+          <HealthTabView
+            onOpenZen={() => navigateTo('coach-chat')}
+            onOpenBodyWeight={() => navigateTo('body-weight')}
+            onOpenBodyMeasurements={() => navigateTo('body-measurements')}
+            onOpenInsights={() => navigateTo('coach')}
+          />
+        )}
+        {view === 'you' && (
+          <YouTabView
+            stats={stats}
+            workouts={workoutHistory}
+            isAdmin={isAdmin(user?.uid)}
+            onOpenProgress={() => navigateTo('progress')}
+            onOpenAnalysis={() => navigateTo('analysis')}
+            onOpenHistory={() => navigateTo('history')}
+            onOpenBuddies={() => navigateTo('buddies')}
+            onOpenSettings={() => navigateTo('settings')}
+          />
         )}
         {view === 'history' && (
           <HistoryView 
@@ -1471,20 +1457,6 @@ function App() {
             onExercisesChange={loadData}
           />
         )}
-        {view === 'services' && (
-          <ServicesView
-            isDark={isDark}
-            onBack={() => goBack()}
-            onOpenCoach={() => navigateTo('coach')}
-            onOpenExerciseLibrary={() => navigateTo('exercises')}
-            onOpenCommonTemplates={() => navigateTo('common-templates')}
-            onOpenBodyWeight={() => navigateTo('body-weight')}
-            onOpenBodyMeasurements={() => navigateTo('body-measurements')}
-            hasGym={!!gym}
-            onOpenGym={() => navigateToGym(gym ? 'gym-home' : 'gym-join')}
-          />
-        )}
-
         {/* Gym OS lite (Tier A) — placeholder routes, see docs/GYM_TIER_A_SPEC.md §6. */}
         {view === 'gym-join' && (
           <JoinGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
@@ -1511,7 +1483,7 @@ function App() {
           <GymDashboardView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
         )}
         {view === 'gym-members' && (
-          <MembersView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <MembersView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} membersFilter={gymNav.membersFilter} />
         )}
         {view === 'gym-member' && (
           <MemberDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} memberUid={gymNav.memberUid} />
@@ -1546,16 +1518,6 @@ function App() {
         )}
         {view === 'common-templates' && (
           <CommonTemplatesView isDark={isDark} onBack={() => goBack()} />
-        )}
-        {view === 'profile' && (
-          <ProfileLanding
-            isDark={isDark}
-            onViewAnalysis={() => navigateTo('analysis')}
-            onViewProgress={() => navigateTo('progress')}
-            onViewHistory={() => navigateTo('history')}
-            stats={stats}
-            workouts={workoutHistory}
-          />
         )}
         {view === 'buddies' && (
           <BuddyView
@@ -1632,7 +1594,8 @@ function App() {
             }}
           />
         )}
-      </main>
+      </AppShell>
+      )}
 
       {/* Post-Workout Group Comparison Modal */}
       {completedSession && (
@@ -1656,47 +1619,6 @@ function App() {
           navHidden={view === 'active'}
           onClick={() => navigateTo('coach-chat')}
         />
-      )}
-
-      {/* Bottom Navigation */}
-      {view !== 'active' && (
-        <nav className={`fixed bottom-0 left-0 right-0 border-t px-4 py-2 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
-          <div className="flex justify-around">
-            <NavButton
-              icon={<Dumbbell />}
-              label="Workout"
-              active={view === 'home'}
-              onClick={() => { navigationHistory.current = ['home']; setView('home'); }}
-            />
-            <NavButton
-              icon={<ClipboardList />}
-              label="History"
-              active={view === 'history'}
-              onClick={() => navigateTo('history')}
-            />
-            <NavButton
-              icon={<Layers />}
-              label="Services"
-              active={view === 'services' || view === 'body-weight' || view === 'body-measurements' || view === 'common-templates' || view === 'exercises' || view === 'coach' || view === 'coach-chat'}
-              onClick={() => navigateTo('services')}
-            />
-            {!isGuest && (
-              <NavButton
-                icon={<Users />}
-                label="Buddies"
-                active={view === 'buddies' || view === 'buddy-profile' || view === 'buddy-chat' || view === 'buddy-compare'}
-                onClick={() => navigateTo('buddies')}
-                badge={buddyAlertCount}
-              />
-            )}
-            <NavButton
-              icon={<UserIcon />}
-              label="Profile"
-              active={view === 'profile' || view === 'analysis' || view === 'progress'}
-              onClick={() => navigateTo('profile')}
-            />
-          </div>
-        </nav>
       )}
     </div>
   );

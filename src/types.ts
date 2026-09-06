@@ -400,11 +400,18 @@ export interface StreakSettings {
   commitment: number | null;
 }
 
+/** Misc UI preferences that don't warrant their own section. */
+export interface UiSettings {
+  /** "Get the app" web banner (src/shell/GetAppBanner.tsx) dismissed. */
+  getAppBannerDismissed?: boolean;
+}
+
 /** Single persisted settings object. New preferences go here rather than
  *  in yet another top-level localStorage key. */
 export interface AppSettings {
   chart: ChartSettings;
   streak: StreakSettings;
+  ui: UiSettings;
 }
 
 // ============ GYM OS LITE (Tier A) ============
