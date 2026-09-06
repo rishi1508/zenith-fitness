@@ -5,6 +5,7 @@
  */
 export const ADMIN_UIDS: readonly string[] = [
   'BXedteurc3bPydsehvPIdVWPTbM2', // Rishi
+  'upLvcTSoE5SS7lOmhYBKHFWSV0r1', // QA admin (demo) — remove after launch
 ];
 
 export function isAdmin(uid: string | null | undefined): boolean {

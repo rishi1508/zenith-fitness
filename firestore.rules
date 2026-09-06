@@ -27,7 +27,10 @@ service cloud.firestore {
 
     // Accounts allowed to edit any shared exercise. Mirrors src/admin.ts.
     function isAdmin() {
-      return signedIn() && request.auth.uid in ['BXedteurc3bPydsehvPIdVWPTbM2'];
+      return signedIn() && request.auth.uid in [
+        'BXedteurc3bPydsehvPIdVWPTbM2',
+        'upLvcTSoE5SS7lOmhYBKHFWSV0r1' // QA admin (demo) — remove after launch
+      ];
     }
 
     // ---------- Gym OS lite (Tier A) helpers ----------
@@ -53,7 +56,8 @@ service cloud.firestore {
       // staff adds/links a member by email (addMember in gymService.ts).
       allow update: if signedIn() && (
         request.auth.uid == uid ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gym']) && isGymManager(request.resource.data.gym.gymId))
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gym']) && isGymManager(request.resource.data.gym.gymId)) ||
+        isAdmin()
       );
       allow delete: if false;
 
@@ -214,7 +218,7 @@ service cloud.firestore {
 
     match /gyms/{gymId} {
       allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid && request.resource.data.staff[request.auth.uid] == 'owner';
+      allow create: if signedIn() && ((request.resource.data.ownerUid == request.auth.uid && request.resource.data.staff[request.auth.uid] == 'owner') || isAdmin());
       allow update: if isGymOwner(gymId) || isAdmin()
                     || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dailyCodeHash', 'dailyCodeDate']))
                     || (isGymManager(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'plans']));

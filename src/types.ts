@@ -451,6 +451,8 @@ export interface Gym {
   createdAt: string;
   subscriptionStatus: 'pilot' | 'active' | 'lapsed';
   pilotEndsAt?: string;
+  /** Internal admin note (AdminGymsView) — never shown to gym members. */
+  notes?: string;
 }
 
 export interface GymMember {
