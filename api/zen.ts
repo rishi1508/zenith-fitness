@@ -123,7 +123,7 @@ async function consumeLimit(db: admin.firestore.Firestore, key: string, windows:
  *  instead of the platform killing the function silently at maxDuration. */
 function withTimeout<T>(p: Promise<T>, ms: number, stage: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new HttpError(504, `Zen is slow right now (${stage}). Please try again.`, { reason: 'busy', stage })), ms);
+    const t = setTimeout(() => reject(new HttpError(504, 'Zen is slow right now. Please try again in a moment.', { reason: 'busy', stage })), ms);
     p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
   });
 }
