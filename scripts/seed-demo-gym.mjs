@@ -32,7 +32,7 @@ const OWNER_TEST_EMAIL = 'demo.owner@zenith-fitness.test';
 const MEMBER_TEST_EMAIL = 'demo.member@zenith-fitness.test';
 
 const MEMBER_COUNT = 250;
-const CHECKIN_HISTORY_DAYS = 90;
+const CHECKIN_HISTORY_DAYS = 45; // dashboard reads 30d; 45 keeps the seed under ~6k writes (Spark: 20k/day)
 const CLASS_SESSION_PAST_DAYS = 14;
 const CLASS_SESSION_FUTURE_DAYS = 7;
 
