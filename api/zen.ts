@@ -50,7 +50,7 @@ import {
 export const config = { maxDuration: 120 };
 
 const DEFAULT_MODEL = 'gemma-4-31b-it';
-const DEFAULT_FALLBACK_MODEL = 'gemma-4-27b-it';
+const DEFAULT_FALLBACK_MODEL = 'gemma-4-26b-a4b-it'; // the only other Gemma 4 model on the key (verified via the models listing)
 const GEMINI_TIMEOUT_MS = 100_000; // Gemma 4 thinks for 20–60 s; a timeout is final (no second model attempt)
 const MINUTE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
