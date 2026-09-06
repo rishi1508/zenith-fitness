@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { Sparkles } from 'lucide-react';
 import { getZenDailyNote } from '../../zen';
-import { Card, Pill, CAPTION } from '../../ui';
+import { Card, CAPTION } from '../../ui';
+import { PremiumBadge } from '../../premium';
 
 interface ZenCardProps {
   /** Opens Zen chat, optionally pre-filling the composer with the daily
@@ -26,8 +26,7 @@ export function ZenCard({ onAskZen, compact }: ZenCardProps) {
       {!compact && (
         <div className="flex items-center justify-between mb-1">
           <span className={CAPTION}>Zen</span>
-          {/* TODO(integrate): swap for PremiumBadge */}
-          <Pill tone="accent" icon={Sparkles}>Premium</Pill>
+          <PremiumBadge />
         </div>
       )}
       <p className={`text-sm text-text mb-2 ${compact ? 'line-clamp-1' : 'line-clamp-2'}`}>

@@ -7,7 +7,8 @@ import {
   getChatHistory, setChatHistory, clearChatHistory, toZenMessages, quickPrompts,
 } from '../../zen';
 import type { ChatEntry, ZenErrorKind, ZenRequest } from '../../zen';
-import { AppBar, IconButton, Pill, Button, H2, CAPTION } from '../../ui';
+import { AppBar, IconButton, Button, H2, CAPTION } from '../../ui';
+import { PremiumBadge } from '../../premium';
 import { renderZenMarkdown } from './zenMarkdown';
 
 interface ZenChatViewProps {
@@ -144,8 +145,7 @@ export function ZenChatView({ onBack, initialPrompt, onConsumePrompt }: ZenChatV
           <div className="flex items-center gap-2 min-w-0">
             <IconButton icon={ArrowLeft} label="Back" size="sm" onClick={onBack} />
             <h1 className={`${H2} truncate`}>Zen</h1>
-            {/* TODO(integrate): swap for PremiumBadge */}
-            <Pill tone="accent">Premium</Pill>
+            <PremiumBadge />
           </div>
         }
         right={history.length > 0 ? <IconButton icon={Trash2} label="Clear chat" size="sm" onClick={clearAll} /> : undefined}
