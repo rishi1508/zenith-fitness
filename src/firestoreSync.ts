@@ -153,7 +153,7 @@ export async function migrateLocalStorageToFirestore(userId: string): Promise<bo
       if (raw !== null) {
         const value = JSON.parse(raw);
         const docRef = doc(db, 'users', userId, 'data', firestoreDoc);
-        batch.set(docRef, { value, updatedAt: Date.now() });
+        batch.set(docRef, { value, updatedAt: new Date().toISOString() });
       }
     } catch {
       // Skip unparseable values

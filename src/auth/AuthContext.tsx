@@ -17,11 +17,24 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '../firebase';
-import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners } from '../firestoreSync';
+import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, flushPendingWrites } from '../firestoreSync';
 import { startSharedExerciseSync, stopSharedExerciseSync } from '../sharedExercises';
 import * as otpService from '../otpService';
 
 const GUEST_MODE_KEY = 'zenith_guest_mode';
+const LAST_UID_KEY = 'zenith_last_uid';
+// Device-level preferences that survive a sign-out / account switch. Everything
+// else under `zenith_*` is one user's data and must not leak into the next
+// account on a shared phone or gym tablet.
+const DEVICE_KEYS = new Set([GUEST_MODE_KEY, LAST_UID_KEY, 'zenith_theme']);
+
+function clearLocalUserData(): void {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('zenith_') && !DEVICE_KEYS.has(key)) localStorage.removeItem(key);
+    }
+  } catch { /* storage unavailable */ }
+}
 
 interface AuthContextType {
   user: User | null;
@@ -100,6 +113,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        // A different account than the last one on this device: wipe the
+        // previous user's local data BEFORE migrate/pull, otherwise their
+        // workouts would be uploaded into this account (first login) or
+        // out-vote this account's cloud copy (the "local is longer" guard).
+        // A guest session (no last uid) is meant to carry into the new
+        // account, so it is left alone.
+        try {
+          const lastUid = localStorage.getItem(LAST_UID_KEY);
+          if (lastUid && lastUid !== firebaseUser.uid) clearLocalUserData();
+          localStorage.setItem(LAST_UID_KEY, firebaseUser.uid);
+        } catch { /* ignore */ }
         setUser(firebaseUser);
         setIsGuest(false);
         setLoading(false);
@@ -251,9 +275,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    // Push the last debounced edits before the listeners go away, then
+    // remove this user's data from the device.
+    try { await flushPendingWrites(); } catch { /* best-effort */ }
     teardownFirestoreListeners();
     stopSharedExerciseSync();
     await firebaseSignOut(auth);
+    clearLocalUserData();
+    try { localStorage.removeItem(LAST_UID_KEY); } catch { /* ignore */ }
     setUser(null);
   }, []);
 
