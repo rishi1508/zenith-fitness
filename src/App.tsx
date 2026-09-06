@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { Calendar, PartyPopper, Trophy, TimerOff, X } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
@@ -13,21 +13,69 @@ import {
 } from './autoFinish';
 import { SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, PushPermissionPrompt } from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import {
-  HistoryView, ProgressView, SettingsView, ExerciseManagerView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, BodyWeightView, CommonTemplatesView, BodyMeasurementsView,
-  JoinGymView, GymHomeView, CheckinView, ClassesView, ClassDetailView, AnnouncementsView, MembershipView, GymDashboardView, MembersView, MemberDetailView, CheckinConsoleView, ClassesManageView, GymSettingsView, CreateGymView,
-} from './views';
+import { ActiveWorkoutView, LoginView } from './views';
 import type { GymView, GymNavParams } from './views';
 import { HomeTabView, TrainTabView, HealthTabView, YouTabView } from './views/tabs';
-import { ZenChatView, InsightsView } from './views/zen';
-import { NutritionTodayView, FoodSearchView, TargetsView } from './views/nutrition';
-import { PhaseView } from './views/phase';
-import { ActivityView } from './views/activity';
-import { FoodScanView } from './views/nutrition/scan';
 import { localDateISO as healthToday } from './health';
 import type { MealSlot } from './types';
-import { AdminGymsView, AdminUsersView, AdminLibraryView } from './views/admin';
 import { AppShell } from './shell/AppShell';
+import { lazyNamed } from './lazyView';
+import { Skeleton } from './ui';
+
+// Lazy route chunks (docs: AUDIT 2026-09-07 batch 5). Tab roots, the active
+// workout and login stay eager; everything below loads on first visit.
+const HistoryView = lazyNamed(() => import('./views/HistoryView'), 'HistoryView');
+const ProgressView = lazyNamed(() => import('./views/ProgressView'), 'ProgressView');
+const SettingsView = lazyNamed(() => import('./views/SettingsView'), 'SettingsView');
+const ExerciseManagerView = lazyNamed(() => import('./views/ExerciseManagerView'), 'ExerciseManagerView');
+const WeeklyPlansView = lazyNamed(() => import('./views/WeeklyPlansView'), 'WeeklyPlansView');
+const WeeklyOverviewView = lazyNamed(() => import('./views/WeeklyOverviewView'), 'WeeklyOverviewView');
+const AnalysisView = lazyNamed(() => import('./views/AnalysisView'), 'AnalysisView');
+const ComparisonView = lazyNamed(() => import('./views/ComparisonView'), 'ComparisonView');
+const BuddyView = lazyNamed(() => import('./views/BuddyView'), 'BuddyView');
+const BuddyProfileView = lazyNamed(() => import('./views/BuddyProfileView'), 'BuddyProfileView');
+const BuddyChatView = lazyNamed(() => import('./views/BuddyChatView'), 'BuddyChatView');
+const SessionLobbyView = lazyNamed(() => import('./views/SessionLobbyView'), 'SessionLobbyView');
+const BuddyComparisonView = lazyNamed(() => import('./views/BuddyComparisonView'), 'BuddyComparisonView');
+const BodyWeightView = lazyNamed(() => import('./views/BodyWeightView'), 'BodyWeightView');
+const CommonTemplatesView = lazyNamed(() => import('./views/CommonTemplatesView'), 'CommonTemplatesView');
+const BodyMeasurementsView = lazyNamed(() => import('./views/BodyMeasurementsView'), 'BodyMeasurementsView');
+const JoinGymView = lazyNamed(() => import('./views/gym'), 'JoinGymView');
+const GymHomeView = lazyNamed(() => import('./views/gym'), 'GymHomeView');
+const CheckinView = lazyNamed(() => import('./views/gym'), 'CheckinView');
+const ClassesView = lazyNamed(() => import('./views/gym'), 'ClassesView');
+const ClassDetailView = lazyNamed(() => import('./views/gym'), 'ClassDetailView');
+const AnnouncementsView = lazyNamed(() => import('./views/gym'), 'AnnouncementsView');
+const MembershipView = lazyNamed(() => import('./views/gym'), 'MembershipView');
+const GymDashboardView = lazyNamed(() => import('./views/gym'), 'GymDashboardView');
+const MembersView = lazyNamed(() => import('./views/gym'), 'MembersView');
+const MemberDetailView = lazyNamed(() => import('./views/gym'), 'MemberDetailView');
+const CheckinConsoleView = lazyNamed(() => import('./views/gym'), 'CheckinConsoleView');
+const ClassesManageView = lazyNamed(() => import('./views/gym'), 'ClassesManageView');
+const GymSettingsView = lazyNamed(() => import('./views/gym'), 'GymSettingsView');
+const CreateGymView = lazyNamed(() => import('./views/gym'), 'CreateGymView');
+const ZenChatView = lazyNamed(() => import('./views/zen'), 'ZenChatView');
+const InsightsView = lazyNamed(() => import('./views/zen'), 'InsightsView');
+const NutritionTodayView = lazyNamed(() => import('./views/nutrition'), 'NutritionTodayView');
+const FoodSearchView = lazyNamed(() => import('./views/nutrition'), 'FoodSearchView');
+const TargetsView = lazyNamed(() => import('./views/nutrition'), 'TargetsView');
+const FoodScanView = lazyNamed(() => import('./views/nutrition/scan'), 'FoodScanView');
+const PhaseView = lazyNamed(() => import('./views/phase'), 'PhaseView');
+const ActivityView = lazyNamed(() => import('./views/activity'), 'ActivityView');
+const AdminGymsView = lazyNamed(() => import('./views/admin'), 'AdminGymsView');
+const AdminUsersView = lazyNamed(() => import('./views/admin'), 'AdminUsersView');
+const AdminLibraryView = lazyNamed(() => import('./views/admin'), 'AdminLibraryView');
+
+function ViewFallback() {
+  return (
+    <div className="space-y-3 animate-fadeIn" aria-busy="true">
+      <Skeleton className="h-8 w-40" />
+      <Skeleton className="h-28 w-full" />
+      <Skeleton className="h-20 w-full" />
+      <Skeleton className="h-20 w-full" />
+    </div>
+  );
+}
 import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
 import { isAdmin } from './admin';
@@ -1339,6 +1387,7 @@ function App() {
           </div>
         ) : undefined}
       >
+        <Suspense fallback={<ViewFallback />}>
         {view === 'home' && (
           <HomeTabView
             theme={theme}
@@ -1655,6 +1704,7 @@ function App() {
             }}
           />
         )}
+        </Suspense>
       </AppShell>
       )}
 

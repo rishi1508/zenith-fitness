@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Camera, CameraOff } from 'lucide-react';
-import { BrowserMultiFormatReader } from '@zxing/browser';
 import type { IScannerControls } from '@zxing/browser';
-import { BarcodeFormat, DecodeHintType } from '@zxing/library';
 import { OFF_ATTRIBUTION } from '../../nutrition';
 import { Button, IconButton, H2 } from '../../ui';
 
@@ -16,12 +14,8 @@ export interface BarcodeScanViewProps {
   onEnterCode?: (code: string) => void;
 }
 
-const FORMATS = [
-  BarcodeFormat.EAN_13,
-  BarcodeFormat.EAN_8,
-  BarcodeFormat.UPC_A,
-  BarcodeFormat.UPC_E,
-];
+// Retail 1-D formats only — declared inside the effect once @zxing is loaded.
+const FORMAT_NAMES = ['EAN_13', 'EAN_8', 'UPC_A', 'UPC_E'] as const;
 
 /**
  * Packaged-food barcode scanner (docs/HEALTH_SPEC.md §3). Uses
@@ -45,13 +39,17 @@ export function BarcodeScanView({ onResult, onBack, active = true, onEnterCode }
     const video = videoRef.current;
     if (!video || !active) return;
 
-    const hints = new Map<DecodeHintType, unknown>([[DecodeHintType.POSSIBLE_FORMATS, FORMATS]]);
-    const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 200 });
     let controls: IScannerControls | null = null;
     let cancelled = false;
 
-    reader
-      .decodeFromConstraints(
+    // The scanner library is ~350 KB; fetch it only when the camera view opens.
+    Promise.all([import('@zxing/browser'), import('@zxing/library')])
+      .then(([{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }]) => {
+        if (cancelled) return null;
+        const formats = FORMAT_NAMES.map((n) => BarcodeFormat[n]);
+        const hints = new Map<import('@zxing/library').DecodeHintType, unknown>([[DecodeHintType.POSSIBLE_FORMATS, formats]]);
+        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 200 });
+        return reader.decodeFromConstraints(
         { video: { facingMode: { ideal: 'environment' } } },
         video,
         (result) => {
@@ -62,8 +60,10 @@ export function BarcodeScanView({ onResult, onBack, active = true, onEnterCode }
           lastRef.current = { code, at: now };
           resultRef.current(code);
         },
-      )
+      );
+      })
       .then((c) => {
+        if (!c) return;
         controls = c;
         if (cancelled) c.stop();
         else setReady(true);

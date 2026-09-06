@@ -21,7 +21,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
-          'vendor-html2canvas': ['html2canvas'],
         }
       }
     }
