@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Zenith Fitness — Health data privacy</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        padding: 24px 20px 48px;
+        font: 16px/1.6 -apple-system, "Segoe UI", Roboto, system-ui, sans-serif;
+        max-width: 42rem;
+        color: #111;
+        background: #fff;
+      }
+      @media (prefers-color-scheme: dark) {
+        body { color: #ededed; background: #0f0f0f; }
+        code { background: #232323; }
+      }
+      h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+      h2 { font-size: 1.05rem; margin: 2rem 0 0.5rem; }
+      p, li { margin: 0.5rem 0; }
+      .updated { color: #777; font-size: 0.85rem; margin-top: 0; }
+      code { background: #f1f1f1; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.9em; }
+    </style>
+  </head>
+  <body>
+    <h1>Health data in Zenith Fitness</h1>
+    <p class="updated">Last updated: 7 September 2026</p>
+
+    <p>
+      Zenith Fitness is a personal workout tracker. This page explains exactly what it does with the health
+      data you allow it to read through Health Connect, and what it does not do.
+    </p>
+
+    <h2>What we read</h2>
+    <p>Only if you grant permission, and only for the days shown in the Activity screen (the last 7 days):</p>
+    <ul>
+      <li><strong>Steps</strong> — daily totals.</li>
+      <li><strong>Active calories</strong> and <strong>total calories burned</strong> — daily totals.</li>
+      <li><strong>Heart rate</strong> — the daily average.</li>
+      <li><strong>Resting heart rate</strong> — the daily average.</li>
+      <li><strong>Sleep</strong> — the duration of each sleep session.</li>
+      <li><strong>Exercise sessions</strong> — type, start time, duration and calories, so your workouts from other apps appear alongside the ones you log here.</li>
+      <li><strong>Body weight</strong> — so your weight trend stays in step with your other apps.</li>
+    </ul>
+
+    <h2>What we write</h2>
+    <p>
+      Body weight only, and only weigh-ins you type into Zenith yourself. Nothing else is written to Health
+      Connect. Workouts you finish in Zenith are stored inside Zenith, not pushed into Health Connect.
+    </p>
+
+    <h2>Where it goes</h2>
+    <ul>
+      <li>Health data is stored on your phone and in <strong>your own account</strong> in Zenith's database (Google Firebase, Firestore), so it survives a reinstall and shows on your other devices.</li>
+      <li>Nobody else can read it. Your gym, your training buddies and other Zenith users see only what you explicitly share with them (workouts and streaks) — never steps, sleep, heart rate or weight.</li>
+      <li>It is <strong>never sold</strong>, never used for advertising, and never shared with third parties or analytics services.</li>
+      <li>It is not used to train any AI model. If you ask Zen (the in-app coach) a question, only the summary numbers needed to answer it are sent to the model provider for that one request.</li>
+    </ul>
+
+    <h2>How to stop it</h2>
+    <ul>
+      <li>Turn the permissions off any time in <strong>Health Connect &rarr; App permissions &rarr; Zenith Fitness</strong>. Zenith falls back to manual entry immediately.</li>
+      <li>Turn off <strong>Settings &rarr; Health sync</strong> inside Zenith to stop recording finished workouts as activity sessions.</li>
+      <li>Deleting your Zenith account (<strong>Settings &rarr; Account &rarr; Delete account</strong>) removes the stored health data with it.</li>
+      <li>Uninstalling the app removes the copy held on your phone.</li>
+    </ul>
+
+    <h2>Contact</h2>
+    <p>Zenith Fitness is built and run by one person. Questions: <code>rishimishra1508@gmail.com</code>.</p>
+  </body>
+</html>

@@ -839,11 +839,11 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
 function HealthSyncSection({ isDark }: { isDark: boolean }) {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [enabled, setEnabled] = useState(() => isHealthSyncEnabled());
-  // Distinguish "running in a browser" (user can fix by installing the
-  // APK) from "running in the APK but the native plugin isn't bundled
-  // yet" (user can't fix; we just promise it's coming). Earlier the
-  // section showed the same "install the APK" copy in BOTH cases, which
-  // the user reported as confusing because they HAD installed the APK.
+  // `available` is now the real Health Connect probe (native Android +
+  // @capgo/capacitor-health + Health Connect installed), so the two
+  // unavailable cases are "you're in a browser" (install the APK) and
+  // "you're in the APK but Health Connect isn't set up" (install it from
+  // the Play Store) — both actionable, unlike the old "coming soon" copy.
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
@@ -864,14 +864,15 @@ function HealthSyncSection({ isDark }: { isDark: boolean }) {
       {available === false ? (
         <p className="text-xs text-zinc-500">
           {isNative
-            ? 'Health Connect / Apple Health integration is coming in a future update — the native plugin is not bundled in this build yet.'
-            : 'Install the Android / iOS build to sync workouts to Apple Health or Google Health Connect. Not available in the browser.'}
+            ? 'Health Connect is not set up on this phone. Install "Health Connect by Android" from the Play Store (Android 14+ has it built in), then reopen Zenith.'
+            : 'Install the Android app to read steps, sleep and heart rate from Health Connect. Not available in the browser.'}
         </p>
       ) : (
         <>
           <p className="text-xs text-zinc-500">
-            When enabled, every finished workout is pushed to your phone's
-            Health app with duration and an approximate calorie estimate.
+            When enabled, every finished workout is recorded as a session on
+            that day's Activity screen, with duration and an approximate
+            calorie estimate.
           </p>
           <label className="flex items-center justify-between gap-3 pt-1">
             <span className="text-sm">Sync completed workouts</span>
