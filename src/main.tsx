@@ -5,6 +5,7 @@ import App from './App.tsx'
 import { AuthProvider } from './auth/AuthContext'
 import { GymProvider } from './gym/GymContext'
 import { ToastProvider, ConfirmProvider } from './ui'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
@@ -17,6 +18,7 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <ErrorBoundary>
     <AuthProvider>
       <GymProvider>
         <ToastProvider>
@@ -26,5 +28,6 @@ createRoot(document.getElementById('root')!).render(
         </ToastProvider>
       </GymProvider>
     </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

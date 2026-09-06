@@ -52,6 +52,11 @@ async function writeToFirestore(localStorageKey: string, value: unknown): Promis
   if (!firestoreDoc) return false;
   try {
     const docRef = doc(db, 'users', currentUserId, 'data', firestoreDoc);
+    // Each key is ONE Firestore document (1 MiB hard limit). Workouts are
+    // ~1 KB each, so a daily lifter crosses it after ~950 sessions; warn well
+    // before the write starts failing so the sharding follow-up gets done.
+    const bytes = JSON.stringify(value).length;
+    if (bytes > 700_000) console.warn(`[FirestoreSync] ${firestoreDoc} is ${Math.round(bytes / 1024)} KB — approaching the 1 MiB document limit`);
     await setDoc(docRef, { value, updatedAt: new Date().toISOString() });
     return true;
   } catch (err) {

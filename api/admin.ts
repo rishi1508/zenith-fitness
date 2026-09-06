@@ -124,6 +124,9 @@ async function handleSetDisabled(a: typeof admin, uid: unknown, disabled: unknow
 
 async function handleDeleteUser(a: typeof admin, db: admin.firestore.Firestore, uid: unknown): Promise<{ ok: true }> {
   if (typeof uid !== 'string' || !uid) throw new HttpError(400, 'uid is required.');
+  // Admin accounts (including the caller) cannot be wiped from the console —
+  // a slip here would lock everyone out of the admin tools.
+  if (adminUids().includes(uid)) throw new HttpError(403, 'Admin accounts cannot be deleted from the console.');
   await wipeUserData(a.auth(), db, uid);
   return { ok: true };
 }
