@@ -1,5 +1,32 @@
 @import "tailwindcss";
 
+/* Design tokens (docs/REVAMP_SPEC.md §1). Tailwind v4 turns these into
+   utilities: bg-bg bg-surface bg-surface-2 border-border text-text
+   text-muted text-subtle text-accent bg-accent bg-accent-soft
+   font-display font-sans rounded-control rounded-card. The light theme
+   below re-points the same variables, so one class works in both themes. */
+@theme {
+  --color-bg: #0f0f0f;
+  --color-surface: #17171a;
+  --color-surface-2: #1f1f23;
+  --color-border: #2a2a2f;
+  --color-text: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-subtle: #71717a;
+  /* GymContext sets --accent on <html>; a gym's colour flows into every
+     accent utility through this indirection. */
+  --color-accent: var(--accent, #f97316);
+  --color-accent-soft: color-mix(in srgb, var(--accent, #f97316) 14%, transparent);
+  --color-ok: #22c55e;
+  --color-warn: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #38bdf8;
+  --font-display: "Sora", "Manrope", system-ui, sans-serif;
+  --font-sans: "Manrope", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --radius-control: 12px;
+  --radius-card: 16px;
+}
+
 /* Theme CSS Variables */
 :root {
   color-scheme: dark;
@@ -9,11 +36,13 @@
 /* Light mode */
 [data-theme="light"] {
   color-scheme: light;
-}
-
-[data-theme="light"] html,
-[data-theme="light"] body {
-  background-color: #f9fafb;
+  --color-bg: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f1f3;
+  --color-border: #e6e6ea;
+  --color-text: #111114;
+  --color-muted: #6b6b75;
+  --color-subtle: #9a9aa3;
 }
 
 /* Light-mode overrides for components that use hard-coded dark hex
@@ -43,7 +72,7 @@
 /* In the scoped dark surfaces above, `text-white` / `text-zinc-*` need to
    flip to readable light-mode equivalents. We only touch the explicit
    utility classes so intentionally light-on-orange buttons still work. */
-[data-theme="light"] .text-white:not(.bg-gradient-to-r):not(.bg-gradient-to-br):not(.bg-emerald-500):not(.bg-emerald-600):not(.bg-orange-500):not(.bg-orange-600):not(.bg-red-500):not(.bg-red-600):not(.bg-blue-500):not(.bg-blue-600):not(.bg-purple-500):not(.bg-purple-600):not(.bg-cyan-500):not(.bg-yellow-500):not(.bg-indigo-500) {
+[data-theme="light"] .text-white:not(.bg-accent):not(.bg-danger):not(.bg-gradient-to-r):not(.bg-gradient-to-br):not(.bg-emerald-500):not(.bg-emerald-600):not(.bg-orange-500):not(.bg-orange-600):not(.bg-red-500):not(.bg-red-600):not(.bg-blue-500):not(.bg-blue-600):not(.bg-purple-500):not(.bg-purple-600):not(.bg-cyan-500):not(.bg-yellow-500):not(.bg-indigo-500) {
   color: #111827 !important;
 }
 [data-theme="light"] .text-zinc-100 { color: #111827 !important; }
@@ -62,8 +91,11 @@
 /* Nav bottom bar uses the same dark tokens — already covered above. */
 
 body {
-  @apply bg-[#0f0f0f] text-white min-h-screen;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  @apply min-h-screen;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   transition: background-color 0.3s ease, color 0.3s ease;
   /* Lock the app to native-feeling scroll: no rubber-band, no
@@ -75,7 +107,7 @@ body {
 /* Safe area handling for mobile (PWA & Capacitor) */
 html {
   padding: 0;
-  background-color: #0f0f0f;
+  background-color: var(--color-bg);
   transition: background-color 0.3s ease;
   overscroll-behavior: none;
   /* Android Chrome ignores overscroll-behavior on <body> in some modes;
