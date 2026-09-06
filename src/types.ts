@@ -257,6 +257,13 @@ export interface UserProfile {
    *  mirrored from gyms/{gymId}/members/{uid}. null once they leave.
    *  See GymContext in the Gym OS lite section below. */
   gym?: GymContext | null;
+  /** Premium scaffolding (docs/REVAMP_SPEC.md §5) — no billing yet.
+   *  'premium' here is what `resolveTier` treats as "paid". */
+  subscriptionTier?: 'free' | 'premium';
+  subscriptionSource?: 'purchase' | 'admin-grant';
+  /** Set by the admin console's Grant/Revoke premium action alongside
+   *  subscriptionTier/subscriptionSource. */
+  premiumGrant?: boolean;
 }
 
 /** Buddy request between two users */
