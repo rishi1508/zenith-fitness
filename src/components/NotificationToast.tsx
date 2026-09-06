@@ -135,8 +135,8 @@ export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToa
           <div
             key={toast.id}
             onClick={isClickable ? () => handleToastClick(toast) : undefined}
-            className={`pointer-events-auto animate-fadeIn bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl p-3 shadow-lg shadow-black/30 flex items-center gap-3 ${
-              isClickable ? 'cursor-pointer hover:border-orange-500/50 transition-colors' : ''
+            className={`pointer-events-auto animate-fadeIn bg-surface border border-border rounded-card p-3 shadow-lg shadow-black/30 flex items-center gap-3 ${
+              isClickable ? 'cursor-pointer hover:border-accent/50 transition-colors' : ''
             }`}
           >
             <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -146,7 +146,7 @@ export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToa
                   ? 'bg-blue-500/20 text-blue-400'
                   : toast.type === 'chat_message'
                     ? 'bg-purple-500/20 text-purple-400'
-                    : 'bg-orange-500/20 text-orange-400'
+                    : 'bg-accent-soft text-accent'
             }`}>
               {toast.type === 'workout_started' || toast.type === 'workout_invite' || toast.type === 'session_invite' ? (
                 <Dumbbell className="w-4 h-4" />
@@ -164,21 +164,21 @@ export function NotificationToast({ onOpenSession, onOpenChat }: NotificationToa
                   to and avoids the "Name\nName: text" duplication. */}
               {(toast.type === 'chat_message' || toast.type === 'workout_invite') && toast.fromName ? (
                 <>
-                  <p className="text-sm font-semibold text-white truncate">{toast.fromName}</p>
-                  <p className="text-xs text-zinc-300 truncate mt-0.5">{toast.message}</p>
+                  <p className="text-sm font-semibold text-text truncate">{toast.fromName}</p>
+                  <p className="text-xs text-muted truncate mt-0.5">{toast.message}</p>
                 </>
               ) : (
-                <p className="text-sm text-white truncate">{toast.message}</p>
+                <p className="text-sm text-text truncate">{toast.message}</p>
               )}
               {isClickable && (
-                <p className="text-[11px] text-orange-400 mt-0.5">
+                <p className="text-[11px] text-accent mt-0.5">
                   {toast.type === 'chat_message' ? 'Tap to reply' : 'Tap to join session'}
                 </p>
               )}
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); removeToast(toast.id); }}
-              className="p-1 text-zinc-500 hover:text-zinc-300 flex-shrink-0"
+              className="p-1 text-subtle hover:text-muted flex-shrink-0"
             >
               <X className="w-4 h-4" />
             </button>

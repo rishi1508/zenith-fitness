@@ -14,8 +14,11 @@ interface Props {
 
 /**
  * Small pill in the app header showing the current N★ streak. A filled
- * flame (orange) = trained this week, a dimmed outlined flame = not yet.
+ * flame (accent) = trained this week, a dimmed outlined flame = not yet.
  * Tapping opens the full streak modal with calendar + freeze details.
+ * Restyled onto the token palette (docs/REVAMP_SPEC.md §3); `isDark` is
+ * kept only to forward into `StreakModal`, which isn't part of this
+ * pass.
  */
 export function StreakButton({ streakCount, level, active, isDark }: Props) {
   const [open, setOpen] = useState(false);
@@ -25,12 +28,8 @@ export function StreakButton({ streakCount, level, active, isDark }: Props) {
       <button
         onClick={() => setOpen(true)}
         title={`${streakCount} week streak${showStar ? ` at ${level} days/week` : ''}`}
-        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold transition-colors ${
-          active
-            ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white'
-            : isDark
-              ? 'bg-zinc-800 text-zinc-500 hover:text-zinc-300'
-              : 'bg-gray-100 text-gray-500 hover:text-gray-700'
+        className={`flex items-center gap-1 h-8 px-2.5 rounded-full text-xs font-bold transition-colors ${
+          active ? 'bg-accent text-white' : 'bg-surface-2 text-subtle hover:text-muted'
         }`}
       >
         <Flame className={`w-3.5 h-3.5 ${active ? '' : 'opacity-60'}`} fill={active ? 'currentColor' : 'none'} />
