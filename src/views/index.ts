@@ -17,8 +17,6 @@ export { BuddyComparisonView } from './BuddyComparisonView';
 export { BodyWeightView } from './BodyWeightView';
 export { CommonTemplatesView } from './CommonTemplatesView';
 export { BodyMeasurementsView } from './BodyMeasurementsView';
-export { CoachView } from './CoachView';
-export { CoachChatView } from './CoachChatView';
 
 // Gym OS lite (Tier A) — placeholder routes, see docs/GYM_TIER_A_SPEC.md §6.
 export { JoinGymView } from './gym/JoinGymView';

@@ -11,15 +11,15 @@ import {
   ACTIVITY_THROTTLE_MS, AUTO_FINISH_CHECK_MS, buildAutoFinishedWorkout, formatEndedAt,
   isIdlePastThreshold, lastActivityMs, participantIsActive,
 } from './autoFinish';
-import { SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, PushPermissionPrompt, AskCoachBubble } from './components';
-import { hasLLMConfig } from './llm';
+import { SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, PushPermissionPrompt } from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import {
-  HistoryView, ProgressView, SettingsView, ExerciseManagerView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, BodyWeightView, CommonTemplatesView, BodyMeasurementsView, CoachView, CoachChatView,
+  HistoryView, ProgressView, SettingsView, ExerciseManagerView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, BodyWeightView, CommonTemplatesView, BodyMeasurementsView,
   JoinGymView, GymHomeView, CheckinView, ClassesView, ClassDetailView, AnnouncementsView, MembershipView, GymDashboardView, MembersView, MemberDetailView, CheckinConsoleView, ClassesManageView, GymSettingsView, CreateGymView,
 } from './views';
 import type { GymView, GymNavParams } from './views';
 import { HomeTabView, TrainTabView, HealthTabView, YouTabView } from './views/tabs';
+import { ZenChatView, InsightsView } from './views/zen';
 import { AppShell } from './shell/AppShell';
 import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
@@ -35,7 +35,7 @@ import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 import { useGym } from './gym/GymContext';
 
-export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'coach' | 'coach-chat' | GymView;
+export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView;
 export type Theme = 'dark' | 'light';
 
 function App() {
@@ -46,6 +46,9 @@ function App() {
   // gym itself comes from useGym(), not from this state. See
   // docs/GYM_TIER_A_SPEC.md §6.1.
   const [gymNav, setGymNav] = useState<GymNavParams>({});
+  // Follow-up prompt from a ZenCard daily note, consumed once by
+  // ZenChatView after seeding its composer (see openZen below).
+  const [zenPrefill, setZenPrefill] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [_templates, _setTemplates] = useState<WorkoutTemplate[]>([]); // LEGACY - kept for backward compat
@@ -161,6 +164,13 @@ function App() {
   const navigateToGym = useCallback((target: GymView, params?: GymNavParams) => {
     setGymNav(params ?? {});
     navigateTo(target);
+  }, [navigateTo]);
+
+  // Open Zen, optionally pre-filling the composer with a follow-up
+  // prompt from a ZenCard daily note (src/views/zen/ZenChatView.tsx).
+  const openZen = useCallback((prompt?: string) => {
+    if (prompt) setZenPrefill(prompt);
+    navigateTo('zen');
   }, [navigateTo]);
 
   // Tab tap → navigate to its root view and reset the history stack
@@ -1330,6 +1340,7 @@ function App() {
             onOpenGymCheckin={() => navigateToGym('gym-checkin')}
             onOpenGymJoin={() => navigateToGym('gym-join')}
             onOpenBuddies={() => navigateTo('buddies')}
+            onOpenZen={openZen}
           />
         )}
         {view === 'train' && (
@@ -1345,10 +1356,10 @@ function App() {
         )}
         {view === 'health' && (
           <HealthTabView
-            onOpenZen={() => navigateTo('coach-chat')}
+            onOpenZen={openZen}
             onOpenBodyWeight={() => navigateTo('body-weight')}
             onOpenBodyMeasurements={() => navigateTo('body-measurements')}
-            onOpenInsights={() => navigateTo('coach')}
+            onOpenInsights={() => navigateTo('insights')}
           />
         )}
         {view === 'you' && (
@@ -1500,15 +1511,15 @@ function App() {
         {view === 'gym-create' && (
           <CreateGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} />
         )}
-        {view === 'coach' && (
-          <CoachView
-            isDark={isDark}
-            onBack={() => goBack()}
-            onOpenChat={() => navigateTo('coach-chat')}
-          />
+        {view === 'insights' && (
+          <InsightsView isDark={isDark} onBack={() => goBack()} />
         )}
-        {view === 'coach-chat' && (
-          <CoachChatView isDark={isDark} onBack={() => goBack()} />
+        {view === 'zen' && (
+          <ZenChatView
+            onBack={() => goBack()}
+            initialPrompt={zenPrefill}
+            onConsumePrompt={() => setZenPrefill(null)}
+          />
         )}
         {view === 'body-weight' && (
           <BodyWeightView isDark={isDark} onBack={() => goBack()} />
@@ -1606,18 +1617,6 @@ function App() {
             setCompletedSession(null);
             setActiveSessionId(null);
           }}
-        />
-      )}
-
-      {/* Floating "Ask Coach" bubble — global FAB once BYOK is set up.
-          Hidden inside the chat view (already there) and on the
-          session lobby (chat would crowd the lobby UI). Sits above the
-          bottom nav; drops to bottom-4 when nav is hidden. */}
-      {hasLLMConfig() && view !== 'coach-chat' && view !== 'session-lobby' && (
-        <AskCoachBubble
-          isDark={isDark}
-          navHidden={view === 'active'}
-          onClick={() => navigateTo('coach-chat')}
         />
       )}
     </div>
