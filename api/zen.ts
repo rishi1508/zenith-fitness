@@ -140,24 +140,33 @@ async function assertPremium(db: admin.firestore.Firestore, uid: string): Promis
 // ----- Gemini ---------------------------------------------------------------
 
 interface GeminiResponse {
-  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> }; finishReason?: string }>;
   promptFeedback?: { blockReason?: string };
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
   error?: { message?: string; status?: string };
 }
 
-async function callGemini(model: string, contents: GeminiContent[], apiKey: string): Promise<{ status: number; body: GeminiResponse }> {
+async function callGemini(model: string, contents: GeminiContent[], apiKey: string, allowThinkingConfig = true): Promise<{ status: number; body: GeminiResponse }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), GEMINI_TIMEOUT_MS);
+  // Gemma 4 is a thinking model: without this it spends ~20 s reasoning and
+  // may echo that reasoning into the text. Ask for no thinking budget; if a
+  // model rejects the field (400 mentioning thinking) retry once without it.
+  const generationConfig: Record<string, unknown> = { temperature: 0.6, maxOutputTokens: 700 };
+  if (allowThinkingConfig) generationConfig.thinkingConfig = { thinkingBudget: 0 };
   try {
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents, generationConfig: { temperature: 0.6, maxOutputTokens: 700 } }),
+      body: JSON.stringify({ contents, generationConfig }),
       signal: ctrl.signal,
     });
     const body = (await r.json().catch(() => ({}))) as GeminiResponse;
+    if (r.status === 400 && allowThinkingConfig && /think/i.test(body.error?.message ?? '')) {
+      clearTimeout(timer);
+      return callGemini(model, contents, apiKey, false);
+    }
     return { status: r.status, body };
   } catch (err) {
     const aborted = (err as Error).name === 'AbortError';
@@ -170,7 +179,8 @@ async function callGemini(model: string, contents: GeminiContent[], apiKey: stri
 
 function extractText(body: GeminiResponse): string {
   const parts = body.candidates?.[0]?.content?.parts ?? [];
-  return parts.map((p) => p.text ?? '').join('').trim();
+  // Thought parts are the model's private reasoning — never show them.
+  return parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('').trim();
 }
 
 async function readModelPreference(db: admin.firestore.Firestore): Promise<{ preferredModel?: string; until?: number }> {
