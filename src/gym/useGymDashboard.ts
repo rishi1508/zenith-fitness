@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { GymMember, DashboardStats } from '../types';
-import { listMembers, listCheckins, listPayments, listClasses, computeDashboard } from '../gymService';
+import { listMembers, listDailyStats, listPayments, listClasses, computeDashboard } from '../gymService';
 import { listSessions } from '../gymStaffHelpers';
 import { localDateISO, addDaysISO } from '../gymStats';
 
@@ -17,7 +17,7 @@ interface GymDashboardState {
  * Owner/manager dashboard data loading — extracted from GymDashboardView
  * (docs/REVAMP_SPEC.md §4) so GymHomeView's Manage segment can show the
  * same aggregates without a second, divergent copy of the fetch +
- * gymStats.computeDashboard wiring. Loads members/checkins/payments/
+ * gymStats.computeDashboard wiring. Loads members/dailyStats/payments/
  * classes/sessions once per `gymId` (and on `refresh()`), aggregates
  * client-side. `enabled` gates the fetch (e.g. staff-only, or only while
  * the Manage segment is showing).
@@ -37,18 +37,18 @@ export function useGymDashboard(gymId: string | undefined, enabled: boolean): Gy
       setError(null);
       try {
         const now = new Date();
-        const checkinsSinceISO = new Date(now.getTime() - 30 * 86_400_000).toISOString();
+        const dailyStatsSinceDate = addDaysISO(localDateISO(now), -29);
         const paymentsSinceISO = new Date(now.getTime() - 90 * 86_400_000).toISOString();
         const sessionsSinceDate = addDaysISO(localDateISO(now), -6);
 
-        const [membersList, checkins30d, payments90d, classes] = await Promise.all([
+        const [membersList, dailyStats, payments90d, classes] = await Promise.all([
           listMembers(gymId, { limit: 600 }),
-          listCheckins(gymId, { sinceISO: checkinsSinceISO, limit: 5000 }),
+          listDailyStats(gymId, dailyStatsSinceDate),
           listPayments(gymId, { sinceISO: paymentsSinceISO }),
           listClasses(gymId),
         ]);
         const sessions7d = await listSessions(gymId, classes, sessionsSinceDate);
-        const computed = computeDashboard({ members: membersList, checkins30d, payments90d, classes, sessions7d, now });
+        const computed = computeDashboard({ members: membersList, dailyStats, payments90d, classes, sessions7d, now });
         if (!cancelled) { setMembers(membersList); setStats(computed); }
       } catch (err) {
         console.warn('[GymDashboard] load failed:', err);

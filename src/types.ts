@@ -467,6 +467,10 @@ export interface GymMember {
 
 export interface GymPayment { id: string; uid: string; amount: number; method: PaymentMethod; paidAt: string; months: number; planId?: string; note?: string; recordedBy: string }
 export interface GymCheckin { id: string; uid: string; at: string; date: string /* YYYY-MM-DD local */; method: CheckinMethod; byUid: string }
+/** Per-day check-in aggregate (doc id = date), denormalised on each
+ *  check-in so the dashboard can read ~30 docs instead of ~thousands of
+ *  raw checkins. See docs/REVAMP_SPEC.md §7 R4. */
+export interface GymDailyStat { date: string; count: number; hours: Record<string, number> }
 export interface GymClass { id: string; name: string; weekday: number /* 0=Sun..6 */; startTime: string /* HH:mm */; durationMin: number; trainerUid?: string; capacity?: number /* undefined = uncapped */; active: boolean }
 export interface GymClassSession { id: string /* `${classId}_${YYYY-MM-DD}` */; classId: string; date: string; enrolled: string[]; attended: string[] }
 export interface GymAnnouncement { id: string; text: string; audience: 'all' | { classId: string }; byUid: string; byName: string; at: string }

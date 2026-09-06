@@ -1,4 +1,4 @@
-import type { GymMember, GymClass, GymCheckin, GymPayment, GymClassSession, MembershipStatus, DashboardStats } from './types';
+import type { GymMember, GymClass, GymDailyStat, GymPayment, GymClassSession, MembershipStatus, DashboardStats } from './types';
 
 /**
  * Pure Gym OS lite logic — membership status, class scheduling, QR
@@ -137,7 +137,7 @@ function latestOf(...isoDates: Array<string | undefined>): string | undefined {
 
 export function computeDashboard(input: {
   members: GymMember[];
-  checkins30d: GymCheckin[];
+  dailyStats: GymDailyStat[];
   payments90d: GymPayment[];
   classes: GymClass[];
   sessions7d: GymClassSession[];
@@ -145,7 +145,8 @@ export function computeDashboard(input: {
 }): DashboardStats {
   const now = input.now ?? new Date();
   const today = localDateISO(now);
-  const { members, checkins30d, payments90d, classes, sessions7d } = input;
+  const { members, dailyStats, payments90d, classes, sessions7d } = input;
+  const statsByDate = new Map(dailyStats.map((s) => [s.date, s]));
 
   let activeMembers = 0;
   let expiringIn7 = 0;
@@ -171,46 +172,40 @@ export function computeDashboard(input: {
     }
   }
 
-  const checkinsToday = checkins30d.filter((c) => c.date === today).length;
+  const checkinsToday = statsByDate.get(today)?.count ?? 0;
 
   const checkinsPerDay: Array<{ date: string; count: number }> = [];
   for (let i = 29; i >= 0; i--) {
     const date = addDaysISO(today, -i);
-    checkinsPerDay.push({ date, count: checkins30d.filter((c) => c.date === date).length });
+    checkinsPerDay.push({ date, count: statsByDate.get(date)?.count ?? 0 });
   }
 
   const checkinsPerHour = new Array<number>(24).fill(0);
-  for (const c of checkins30d) {
-    const hour = new Date(c.at).getHours();
-    if (hour >= 0 && hour < 24) checkinsPerHour[hour]++;
-  }
-
-  const activeThisWeekUids = new Set<string>();
-  for (const c of checkins30d) {
-    const d = daysBetween(c.date, today);
-    if (d >= 0 && d <= 7) activeThisWeekUids.add(c.uid);
-  }
-  for (const m of members) {
-    if (m.lastWorkoutAt) {
-      const d = daysBetween(dateOnly(m.lastWorkoutAt), today);
-      if (d >= 0 && d <= 7) activeThisWeekUids.add(m.uid);
+  for (const s of dailyStats) {
+    for (const [hourStr, count] of Object.entries(s.hours)) {
+      const hour = Number(hourStr);
+      if (hour >= 0 && hour < 24) checkinsPerHour[hour] += count;
     }
   }
 
-  // Latest check-in per member from the fetched window — the denormalised
-  // lastCheckinAt is only updated best-effort, so don't rely on it alone.
-  const lastCheckinByUid = new Map<string, string>();
-  for (const c of checkins30d) {
-    const prev = lastCheckinByUid.get(c.uid);
-    if (!prev || c.date > prev) lastCheckinByUid.set(c.uid, c.date);
+  // Recency now comes only from the per-member denormalised fields
+  // (dailyStats has no per-uid breakdown) — checkinMember keeps
+  // lastCheckinAt current on every check-in, so this loses nothing.
+  const activeThisWeekUids = new Set<string>();
+  for (const m of members) {
+    const lastSeen = latestOf(m.lastCheckinAt, m.lastWorkoutAt);
+    if (!lastSeen) continue;
+    const d = daysBetween(dateOnly(lastSeen), today);
+    if (d >= 0 && d <= 7) activeThisWeekUids.add(m.uid);
   }
+
   const atRisk = members.filter((m) => {
     if (m.role !== 'member') return false; // staff aren't retention targets
     const status = membershipStatus(m, now);
     if (status === 'expired' || status === 'frozen') return false;
     const tenureDays = daysBetween(dateOnly(m.joinedAt), today);
     if (tenureDays <= AT_RISK_MIN_TENURE_DAYS) return false;
-    const lastSeen = latestOf(m.lastCheckinAt, m.lastWorkoutAt, lastCheckinByUid.get(m.uid));
+    const lastSeen = latestOf(m.lastCheckinAt, m.lastWorkoutAt);
     if (!lastSeen) return true;
     return daysBetween(dateOnly(lastSeen), today) >= AT_RISK_INACTIVE_DAYS;
   });
@@ -227,9 +222,7 @@ export function computeDashboard(input: {
     const d = daysBetween(dateOnly(m.joinedAt), today);
     return d >= 0 && d <= 30;
   });
-  const checkinCountByUid = new Map<string, number>();
-  for (const c of checkins30d) checkinCountByUid.set(c.uid, (checkinCountByUid.get(c.uid) ?? 0) + 1);
-  const newActiveMembers = newMembers.filter((m) => (checkinCountByUid.get(m.uid) ?? 0) >= 2);
+  const newActiveMembers = newMembers.filter((m) => (m.checkinCount30d ?? 0) >= 2);
   const signupToActive = newMembers.length ? newActiveMembers.length / newMembers.length : 0;
 
   const classFill = classes.map((cls) => {

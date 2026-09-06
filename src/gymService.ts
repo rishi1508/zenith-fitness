@@ -8,7 +8,7 @@ import { auth, db } from './firebase';
 import { deliverPush } from './pushService';
 import { membershipStatus, localDateISO, addMonthsISO } from './gymStats';
 import type {
-  Gym, GymPlan, GymMember, GymPayment, GymCheckin, GymClass, GymClassSession, GymAnnouncement,
+  Gym, GymPlan, GymMember, GymPayment, GymCheckin, GymDailyStat, GymClass, GymClassSession, GymAnnouncement,
   GymContext, GymRole, CheckinMethod, PaymentMethod, MembershipStatus,
 } from './types';
 
@@ -453,6 +453,17 @@ export async function checkinMember(gymId: string, uid: string, method: CheckinM
     console.warn('[Gym] checkinMember: member denorm update failed:', err);
   }
 
+  try {
+    const hour = new Date(checkin.at).getHours();
+    await setDoc(doc(db, 'gyms', gymId, 'dailyStats', date), {
+      date,
+      count: increment(1),
+      hours: { [String(hour)]: increment(1) },
+    }, { merge: true });
+  } catch (err) {
+    console.warn('[Gym] checkinMember: dailyStats denorm update failed:', err);
+  }
+
   return { created: true, checkin };
 }
 
@@ -490,6 +501,16 @@ export async function listCheckins(gymId: string, opts: { sinceISO: string; uid?
   }
   const snap = await getDocs(query(col, where('at', '>=', opts.sinceISO), orderBy('at', 'desc'), fsLimit(limit)));
   return snap.docs.map((d) => d.data() as GymCheckin);
+}
+
+/** Per-day check-in aggregates since `sinceDate` (YYYY-MM-DD) — the
+ *  dashboard's replacement for `listCheckins` over a 30-day window: ~31
+ *  reads instead of one per check-in. Doc ids are the dates, so this is
+ *  a single-field range on `documentId()` (no composite index needed). */
+export async function listDailyStats(gymId: string, sinceDate: string): Promise<GymDailyStat[]> {
+  const col = collection(db, 'gyms', gymId, 'dailyStats');
+  const snap = await getDocs(query(col, where(documentId(), '>=', sinceDate), orderBy(documentId()), fsLimit(40)));
+  return snap.docs.map((d) => d.data() as GymDailyStat);
 }
 
 // ============ CLASSES ============

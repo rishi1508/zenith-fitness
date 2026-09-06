@@ -58,6 +58,13 @@ function localDateISO(d) {
 function addDays(base, n) { const d = new Date(base); d.setDate(d.getDate() + n); return d; }
 function addMonths(base, n) { const d = new Date(base); d.setMonth(d.getMonth() + n); return d; }
 function atHour(base, hour, minute = 0) { const d = new Date(base); d.setHours(hour, minute, randInt(0, 59), 0); return d; }
+// Hour-of-day in Asia/Kolkata, for dailyStats bucketing — same helper as
+// scripts/backfill-gym-daily-stats.mjs.
+const HOUR_FORMATTER_IST = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false });
+function hourOfIST(iso) {
+  const h = Number(HOUR_FORMATTER_IST.format(new Date(iso)));
+  return h === 24 ? 0 : h;
+}
 
 const NOW = new Date();
 
@@ -204,6 +211,20 @@ function buildPlan() {
     }
   }
 
+  // dailyStats: gyms/{gymId}/dailyStats/{date} aggregates the dashboard
+  // reads instead of scanning raw checkins (R4, docs/REVAMP_SPEC.md §7).
+  // Same aggregation as scripts/backfill-gym-daily-stats.mjs: count +
+  // hour-of-day buckets, bucketed in Asia/Kolkata to match the client.
+  const dailyStatsByDate = new Map();
+  for (const c of checkins) {
+    let entry = dailyStatsByDate.get(c.date);
+    if (!entry) { entry = { count: 0, hours: {} }; dailyStatsByDate.set(c.date, entry); }
+    entry.count += 1;
+    const hour = String(hourOfIST(c.at));
+    entry.hours[hour] = (entry.hours[hour] ?? 0) + 1;
+  }
+  const dailyStats = [...dailyStatsByDate.entries()].map(([date, { count, hours }]) => ({ date, count, hours }));
+
   // Classes + sessions (last 14 days .. next 7 days).
   const classes = CLASS_DEFS.map((c, i) => ({
     id: `demo_class_${i + 1}`,
@@ -228,11 +249,11 @@ function buildPlan() {
     }
   }
 
-  return { trainers, members, checkins, classes, sessions };
+  return { trainers, members, checkins, classes, sessions, dailyStats };
 }
 
 function printSummary(plan) {
-  const { trainers, members, checkins, classes, sessions } = plan;
+  const { trainers, members, checkins, classes, sessions, dailyStats } = plan;
   const expired = members.filter((m) => m.planEnd < localDateISO(NOW) && !m.frozen).length;
   const frozen = members.filter((m) => m.frozen).length;
   const expiringSoon = members.filter((m) => !m.frozen && m.planEnd >= localDateISO(NOW) && m.planEnd <= localDateISO(addDays(NOW, 7))).length;
@@ -245,6 +266,7 @@ function printSummary(plan) {
   console.log(`  trainers:   ${trainers.length} (${trainers.map((t) => t.name).join(', ')})`);
   console.log(`  members:    ${members.length} total — ${expired} expired, ${expiringSoon} expiring ≤7d, ${frozen} frozen`);
   console.log(`  check-ins:  ${checkins.length} over the last ${CHECKIN_HISTORY_DAYS} days`);
+  console.log(`  dailyStats: ${dailyStats.length} day-docs aggregated from check-ins`);
   console.log(`  classes:    ${classes.length} (${classes.map((c) => `${c.name} d${c.weekday} ${c.startTime}`).join(', ')})`);
   console.log(`  sessions:   ${sessions.length} (last ${CLASS_SESSION_PAST_DAYS}d + next ${CLASS_SESSION_FUTURE_DAYS}d)`);
   console.log(`  sample member: ${JSON.stringify(members[1], null, 2)}`);
@@ -356,6 +378,14 @@ async function applyPlan(plan) {
     options: { merge: true },
   }));
   await commitInChunks(checkinOps);
+
+  console.log('Writing daily stats…');
+  const dailyStatsOps = plan.dailyStats.map((s) => ({
+    type: 'set',
+    ref: db.collection('gyms').doc(GYM_ID).collection('dailyStats').doc(s.date),
+    data: s,
+  }));
+  await commitInChunks(dailyStatsOps);
 
   console.log('Writing classes + sessions…');
   const classOps = plan.classes.map((c) => ({ type: 'set', ref: db.collection('gyms').doc(GYM_ID).collection('classes').doc(c.id), data: c }));

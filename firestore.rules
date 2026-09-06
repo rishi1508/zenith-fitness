@@ -233,6 +233,8 @@ service cloud.firestore {
       match /checkins/{id}   { allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == resource.data.uid;
                                allow create: if isGymStaff(gymId) || isAdmin() || (signedIn() && request.auth.uid == request.resource.data.uid && request.resource.data.method in ['member-qr', 'code']);
                                allow update, delete: if isGymManager(gymId) || isAdmin(); }
+      match /dailyStats/{date} { allow read: if isGymStaff(gymId) || isAdmin();
+                               allow create, update: if isGymStaff(gymId) || isAdmin() || (isGymMember(gymId) && request.resource.data.keys().hasOnly(['date', 'count', 'hours'])); }
       match /classes/{id}    { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow write: if isGymManager(gymId) || isAdmin();
         match /sessions/{date} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
                                  // Staff/admin: anything. Member: may CREATE the session doc as the first
