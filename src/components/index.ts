@@ -30,3 +30,8 @@ export type { ChartPoint } from './InteractiveLineChart';
 export { ChartSettingsBar } from './ChartSettingsBar';
 export { QrCode } from './gym/QrCode';
 export { QrScanner } from './gym/QrScanner';
+export { MemberToast, useMemberToast } from './gym/MemberToast';
+export type { MemberToastState } from './gym/MemberToast';
+export { MemberCodeInput } from './gym/MemberCodeInput';
+export { MembershipCard } from './gym/MembershipCard';
+export { ClassSessionRow } from './gym/ClassSessionRow';
