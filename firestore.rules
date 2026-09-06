@@ -188,6 +188,16 @@ service cloud.firestore {
       allow delete: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
 
+    // ---------- shared food library (docs/HEALTH_SPEC.md) ----------
+    // Same creator model as sharedExercises: anyone signed in can read,
+    // creators own their docs, admins can moderate.
+    match /sharedFoods/{foodId} {
+      allow read:   if signedIn();
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+      allow delete: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
     // ---------- LEGACY shared exercise library ----------
     // The old single array document. Kept readable because older clients
     // still pull it and useOnlineStatus uses it as a connectivity probe;

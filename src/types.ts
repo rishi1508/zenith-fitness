@@ -515,3 +515,118 @@ export interface DashboardStats {
   signupToActive: number;
   classFill: Array<{ cls: GymClass; avgEnrolled: number; avgAttended: number; capacity?: number }>;
 }
+
+// ===== Health management (docs/HEALTH_SPEC.md) =====
+
+/** Nutrients per serving or per 100 g. kcal + macros in grams; sodium in mg. */
+export interface Macros {
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  sugar?: number;
+  sodium?: number;
+}
+
+/** ifct = IFCT 2017 (NIN), usda = USDA FoodData Central, dish = curated Indian dish
+ *  (approximate), off = Open Food Facts barcode, user = created in-app (sharedFoods). */
+export type FoodSource = 'ifct' | 'usda' | 'dish' | 'off' | 'user';
+
+/** A household measure for a food: `{ label: 'katori', grams: 150 }`. Grams is always implicit. */
+export interface FoodUnit {
+  label: string;
+  grams: number;
+}
+
+export interface FoodItem {
+  id: string;
+  name: string;
+  aliases?: string[];
+  source: FoodSource;
+  group?: string;
+  brand?: string;
+  barcode?: string;
+  per100g: Macros;
+  units: FoodUnit[];
+  /** Curated dish or scan estimate — shown with an "approx." tag. */
+  approx?: boolean;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt?: string;
+}
+
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
+
+export interface FoodEntry {
+  id: string;
+  foodId: string;
+  name: string;
+  source: FoodSource;
+  meal: MealSlot;
+  qty: number;
+  unit: string;
+  grams: number;
+  macros: Macros;
+  at: string; // ISO timestamp
+  approx?: boolean;
+}
+
+/** One document per user per local day: users/{uid}/nutrition/{YYYY-MM-DD}. */
+export interface NutritionDay {
+  date: string; // YYYY-MM-DD local
+  entries: FoodEntry[];
+  waterMl: number;
+  updatedAt: string;
+}
+
+export interface NutritionTargets {
+  kcal: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  waterMl: number;
+  mode: 'auto' | 'manual';
+  updatedAt: string;
+}
+
+export interface ActivitySession {
+  id: string;
+  type: string;
+  startAt: string;
+  durationMin: number;
+  kcal?: number;
+  source: string;
+}
+
+/** One document per user per local day: users/{uid}/activity/{YYYY-MM-DD}. */
+export interface ActivityDay {
+  date: string;
+  steps?: number;
+  activeKcal?: number;
+  totalKcal?: number;
+  restingHr?: number;
+  avgHr?: number;
+  sleepMin?: number;
+  sessions?: ActivitySession[];
+  source: 'health-connect' | 'manual' | 'mixed';
+  updatedAt: string;
+}
+
+export type PhaseGoal = 'bulk' | 'cut' | 'maintain';
+export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very-active';
+
+export interface HealthProfile {
+  sex?: 'male' | 'female';
+  heightCm?: number;
+  birthYear?: number;
+  activityLevel?: ActivityLevel;
+}
+
+export interface PhaseSettings {
+  goal: PhaseGoal;
+  /** Signed for bulk (+), cut (−); e.g. 0.25 = +0.25 % body weight per week. */
+  targetRatePctPerWeek: number;
+  startDate: string; // YYYY-MM-DD
+  startWeightKg?: number;
+}
