@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dumbbell, Calendar,
   Settings, ClipboardList, Sun, Moon, PartyPopper, Users, Layers, User as UserIcon, Trophy, TimerOff, X,
+  Building2,
 } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
@@ -17,7 +18,11 @@ import {
 import { SplashScreen, NavButton, WorkoutTimer, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, StreakButton, PushPermissionPrompt, AskCoachBubble } from './components';
 import { hasLLMConfig } from './llm';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import { HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView, CoachChatView } from './views';
+import {
+  HistoryView, ProgressView, SettingsView, ExerciseManagerView, HomeView, ActiveWorkoutView, WeeklyPlansView, WeeklyOverviewView, ComparisonView, LoginView, AnalysisView, BuddyView, BuddyProfileView, BuddyChatView, SessionLobbyView, BuddyComparisonView, ServicesView, BodyWeightView, CommonTemplatesView, ProfileLanding, BodyMeasurementsView, CoachView, CoachChatView,
+  JoinGymView, GymHomeView, CheckinView, ClassesView, ClassDetailView, AnnouncementsView, MembershipView, GymDashboardView, MembersView, MemberDetailView, CheckinConsoleView, ClassesManageView, GymSettingsView, CreateGymView,
+} from './views';
+import type { GymView, GymNavParams } from './views';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { templateFromWorkout, templatesEqual, reconcileWorkoutWithTemplate } from './sessionTemplateReconcile';
@@ -27,13 +32,19 @@ import { autoRegisterPushIfNeeded, attachPushTapHandler } from './pushService';
 import { consumeBack } from './backHandlerRegistry';
 import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
+import { useGym } from './gym/GymContext';
 
-type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile' | 'coach' | 'coach-chat';
+type View = 'home' | 'workout' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'services' | 'body-weight' | 'body-measurements' | 'common-templates' | 'profile' | 'coach' | 'coach-chat' | GymView;
 type Theme = 'dark' | 'light';
 
 function App() {
   const { user, loading: authLoading, isGuest } = useAuth();
+  const { gym } = useGym();
   const [view, setView] = useState<View>('home');
+  // Nav params for the gym screens (which class / which member) — the
+  // gym itself comes from useGym(), not from this state. See
+  // docs/GYM_TIER_A_SPEC.md §6.1.
+  const [gymNav, setGymNav] = useState<GymNavParams>({});
   const [stats, setStats] = useState<UserStats | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [_templates, _setTemplates] = useState<WorkoutTemplate[]>([]); // LEGACY - kept for backward compat
@@ -142,6 +153,14 @@ function App() {
       try { window.history.pushState({ zenith: navigationHistory.current.length }, ''); } catch { /* ignore */ }
     }
   }, [view]);
+
+  // Navigate to a gym screen, stashing which class/member it's about
+  // (the gym itself always comes from useGym()). Passed to every gym
+  // view as `onNavigate`.
+  const navigateToGym = useCallback((target: GymView, params?: GymNavParams) => {
+    setGymNav(params ?? {});
+    navigateTo(target);
+  }, [navigateTo]);
 
   // Go back in navigation history
   const goBack = useCallback(() => {
@@ -1254,6 +1273,21 @@ function App() {
             )}
             {view !== 'active' && (
               <>
+                {/* Gym pill — tap to open the gym home screen. */}
+                {gym && (
+                  <button
+                    onClick={() => navigateToGym('gym-home')}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] hover:border-orange-500/40' : 'bg-white border-gray-200 hover:border-orange-400'}`}
+                    title={gym.name}
+                  >
+                    {gym.logoUrl ? (
+                      <img src={gym.logoUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
+                    ) : (
+                      <Building2 className="w-3.5 h-3.5" />
+                    )}
+                    <span className="max-w-[6rem] truncate">{gym.name}</span>
+                  </button>
+                )}
                 {/* Duolingo-style streak pill — tap to open calendar + freeze state */}
                 {stats && (
                   <StreakButton
@@ -1445,7 +1479,53 @@ function App() {
             onOpenCommonTemplates={() => navigateTo('common-templates')}
             onOpenBodyWeight={() => navigateTo('body-weight')}
             onOpenBodyMeasurements={() => navigateTo('body-measurements')}
+            hasGym={!!gym}
+            onOpenGym={() => navigateToGym(gym ? 'gym-home' : 'gym-join')}
           />
+        )}
+
+        {/* Gym OS lite (Tier A) — placeholder routes, see docs/GYM_TIER_A_SPEC.md §6. */}
+        {view === 'gym-join' && (
+          <JoinGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-home' && (
+          <GymHomeView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-checkin' && (
+          <CheckinView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-classes' && (
+          <ClassesView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-class' && (
+          <ClassDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} classId={gymNav.classId} />
+        )}
+        {view === 'gym-announcements' && (
+          <AnnouncementsView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-membership' && (
+          <MembershipView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-dashboard' && (
+          <GymDashboardView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-members' && (
+          <MembersView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-member' && (
+          <MemberDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} memberUid={gymNav.memberUid} />
+        )}
+        {view === 'gym-console' && (
+          <CheckinConsoleView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-classes-manage' && (
+          <ClassesManageView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-settings' && (
+          <GymSettingsView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+        )}
+        {view === 'gym-create' && (
+          <CreateGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} />
         )}
         {view === 'coach' && (
           <CoachView

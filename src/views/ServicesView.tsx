@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  ArrowLeft, Dumbbell, ChevronRight, Calculator, Trophy, Scale, Layers, Ruler, Sparkles,
+  ArrowLeft, Dumbbell, ChevronRight, Calculator, Trophy, Scale, Layers, Ruler, Sparkles, Building2,
 } from 'lucide-react';
 import { PlateCalculator, OneRMCalculator } from '../components';
 
@@ -12,10 +12,15 @@ interface ServicesViewProps {
   onOpenCommonTemplates: () => void;
   onOpenBodyWeight: () => void;
   onOpenBodyMeasurements: () => void;
+  /** True when the signed-in user already belongs to a gym. Flips the
+   *  entry's label/hint between "My Gym" and "Join a gym". */
+  hasGym: boolean;
+  onOpenGym: () => void;
 }
 
 export function ServicesView({
   isDark, onBack, onOpenCoach, onOpenExerciseLibrary, onOpenCommonTemplates, onOpenBodyWeight, onOpenBodyMeasurements,
+  hasGym, onOpenGym,
 }: ServicesViewProps) {
   const [showPlateCalc, setShowPlateCalc] = useState(false);
   const [showOneRM, setShowOneRM] = useState(false);
@@ -33,6 +38,14 @@ export function ServicesView({
     onClick: () => void;
   };
   const items: Item[] = [
+    {
+      label: hasGym ? 'My Gym' : 'Join a gym',
+      hint: hasGym ? 'Membership, check-in, classes and announcements' : 'Enter a join code to link your gym membership',
+      icon: <Building2 className="w-5 h-5" />,
+      color: 'text-orange-400',
+      bg: isDark ? 'bg-orange-500/15' : 'bg-orange-100',
+      onClick: onOpenGym,
+    },
     {
       label: 'Coach',
       hint: 'Personalized insights from your training data',

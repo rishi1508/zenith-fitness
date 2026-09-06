@@ -22,3 +22,20 @@ export { ProfileLanding } from './ProfileView';
 export { BodyMeasurementsView } from './BodyMeasurementsView';
 export { CoachView } from './CoachView';
 export { CoachChatView } from './CoachChatView';
+
+// Gym OS lite (Tier A) — placeholder routes, see docs/GYM_TIER_A_SPEC.md §6.
+export { JoinGymView } from './gym/JoinGymView';
+export { GymHomeView } from './gym/GymHomeView';
+export { CheckinView } from './gym/CheckinView';
+export { ClassesView } from './gym/ClassesView';
+export { ClassDetailView } from './gym/ClassDetailView';
+export { AnnouncementsView } from './gym/AnnouncementsView';
+export { MembershipView } from './gym/MembershipView';
+export { GymDashboardView } from './gym/GymDashboardView';
+export { MembersView } from './gym/MembersView';
+export { MemberDetailView } from './gym/MemberDetailView';
+export { CheckinConsoleView } from './gym/CheckinConsoleView';
+export { ClassesManageView } from './gym/ClassesManageView';
+export { GymSettingsView } from './gym/GymSettingsView';
+export { CreateGymView } from './gym/CreateGymView';
+export type { GymView, GymNavParams, GymViewProps } from './gym/types';

@@ -12,6 +12,8 @@ rules_version = '2';
 //   workoutSessions/{id}         — group workout sessions + subcollections
 //   sharedExercises/{id}         — shared exercise library, one doc per exercise
 //   shared/{document}            — LEGACY single-doc exercise library (read-only)
+//   gymJoinCodes/{code}          — join-code → gymId lookup (Gym OS lite, Tier A)
+//   gyms/{gymId}                 — gym + members/payments/checkins/classes/announcements
 //
 // The read rule on userProfiles intentionally allows any signed-in user to
 // read any profile so search + buddy comparison work across accounts.
@@ -28,13 +30,29 @@ service cloud.firestore {
       return signedIn() && request.auth.uid in ['BXedteurc3bPydsehvPIdVWPTbM2'];
     }
 
+    // ---------- Gym OS lite (Tier A) helpers ----------
+    // See docs/GYM_TIER_A_SPEC.md §4. Rules trust the gym doc's `staff`
+    // map / `ownerUid`, not the mirrored `gymRole` on userProfiles.
+    function gymDoc(gymId) { return get(/databases/$(database)/documents/gyms/$(gymId)).data; }
+    function isGymStaff(gymId) { return signedIn() && request.auth.uid in gymDoc(gymId).staff; }
+    function gymStaffRole(gymId) { return gymDoc(gymId).staff[request.auth.uid]; }
+    function isGymManager(gymId) { return isGymStaff(gymId) && gymStaffRole(gymId) in ['manager', 'owner']; }
+    function isGymOwner(gymId) { return signedIn() && request.auth.uid == gymDoc(gymId).ownerUid; }
+    function isGymMember(gymId) { return signedIn() && exists(/databases/$(database)/documents/gyms/$(gymId)/members/$(request.auth.uid)); }
+
     // ---------- userProfiles ----------
     // Publicly readable by authenticated users (for search + comparison).
     // Only the owner can write their own profile.
     match /userProfiles/{uid} {
       allow read:   if signedIn();
       allow create: if signedIn() && request.auth.uid == uid;
-      allow update: if signedIn() && request.auth.uid == uid;
+      // The owner can write anything on their own profile. A manager of
+      // the member's gym may ALSO set just the `gym` pointer — used when
+      // staff adds/links a member by email (addMember in gymService.ts).
+      allow update: if signedIn() && (
+        request.auth.uid == uid ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gym']) && isGymManager(request.resource.data.gym.gymId))
+      );
       allow delete: if false;
 
       // FCM push-notification tokens. Only the owner can see / manage
@@ -180,6 +198,39 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == request.resource.data.creatorUid;
       allow update: if signedIn();
       allow delete: if signedIn() && request.auth.uid == resource.data.creatorUid;
+    }
+
+    // ---------- Gym OS lite (Tier A) ----------
+    // See docs/GYM_TIER_A_SPEC.md §3-4.
+    match /gymJoinCodes/{code} { allow get: if signedIn(); allow write: if false; }   // written by admin/owner via gymService using a batch that also creates the gym
+
+    match /gyms/{gymId} {
+      allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid && request.resource.data.staff[request.auth.uid] == 'owner';
+      allow update: if isGymOwner(gymId) || isAdmin()
+                    || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dailyCodeHash', 'dailyCodeDate']))
+                    || (isGymManager(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'plans']));
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == uid;
+        // joining: a signed-in user creates their own member doc with role 'member'
+        allow create: if isGymManager(gymId) || isAdmin() || (signedIn() && request.auth.uid == uid && request.resource.data.role == 'member');
+        allow update: if isGymManager(gymId) || isAdmin()
+                      || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d']))
+                      || (request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d', 'lastWorkoutAt', 'photoURL', 'phone']));
+        allow delete: if isGymManager(gymId) || isAdmin();
+      }
+      match /payments/{id}   { allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == resource.data.uid; allow create, update: if isGymManager(gymId) || isAdmin(); allow delete: if isGymOwner(gymId) || isAdmin(); }
+      match /checkins/{id}   { allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == resource.data.uid;
+                               allow create: if isGymStaff(gymId) || isAdmin() || (signedIn() && request.auth.uid == request.resource.data.uid && request.resource.data.method in ['member-qr', 'code']);
+                               allow update, delete: if isGymManager(gymId) || isAdmin(); }
+      match /classes/{id}    { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow write: if isGymManager(gymId) || isAdmin();
+        match /sessions/{date} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+                                 allow create, update: if isGymStaff(gymId) || isAdmin()
+                                   || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolled']));   // member enrol/unenrol
+                                 allow delete: if false; } }
+      match /announcements/{id} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow create: if isGymStaff(gymId) || isAdmin(); allow update, delete: if isGymManager(gymId) || isAdmin(); }
     }
   }
 }

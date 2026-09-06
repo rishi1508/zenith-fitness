@@ -50,6 +50,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- QR scanning for gym check-in (qr-scanner via getUserMedia). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!--
       POST_NOTIFICATIONS (Android 13 / API 33+) — REQUIRED for push to
       work. Without this declared, the Capacitor plugin's

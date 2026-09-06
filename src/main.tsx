@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './auth/AuthContext'
+import { GymProvider } from './gym/GymContext'
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
@@ -16,7 +17,9 @@ if ('serviceWorker' in navigator) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthProvider>
-      <App />
+      <GymProvider>
+        <App />
+      </GymProvider>
     </AuthProvider>
   </StrictMode>,
 )

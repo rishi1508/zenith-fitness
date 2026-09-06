@@ -71,6 +71,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // DEV-only headless QA sign-in: ?__devToken=<Firebase custom token> lets
+  // an autopilot QA agent sign in without the interactive login flow.
+  // Guarded by import.meta.env.DEV, which Vite inlines at build time, so
+  // this branch is dead code (and the param is ignored) in production
+  // builds. The param is stripped from the URL immediately so a reload
+  // or a shared link doesn't replay the token.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('__devToken');
+    if (!token) return;
+    params.delete('__devToken');
+    const nextSearch = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (nextSearch ? `?${nextSearch}` : '') + window.location.hash);
+    signInWithCustomToken(auth, token).catch((err) => {
+      console.error('[Auth] DEV token sign-in failed:', err);
+    });
+  }, []);
+
   // Listen for auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
