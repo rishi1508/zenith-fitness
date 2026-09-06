@@ -136,15 +136,8 @@ export function BodyWeightView({ isDark, onBack }: BodyWeightViewProps) {
         </div>
       )}
 
-      {/* Chart */}
-      {entries.length >= 2 && (
-        <div className={`rounded-xl border p-4 ${cardBg} ${cardBorder}`}>
-          <div className="text-xs font-semibold uppercase tracking-wider mb-3">
-            <span className={subtle}>Trend (last 30 entries)</span>
-          </div>
-          <BodyWeightChart entries={entries.slice(0, 30)} isDark={isDark} />
-        </div>
-      )}
+      {/* Chart — renders its own card and header; zoom handles density, so pass every entry */}
+      {entries.length >= 2 && <BodyWeightChart entries={entries} isDark={isDark} />}
 
       {/* History */}
       {entries.length > 0 && (

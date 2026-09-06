@@ -25,3 +25,6 @@ export { InsightCard } from './InsightCard';
 export { BYOKSetup } from './BYOKSetup';
 export { AskCoachBubble } from './AskCoachBubble';
 export { ExerciseForm } from './ExerciseForm';
+export { InteractiveLineChart } from './InteractiveLineChart';
+export type { ChartPoint } from './InteractiveLineChart';
+export { ChartSettingsBar } from './ChartSettingsBar';
