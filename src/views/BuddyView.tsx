@@ -10,6 +10,7 @@ import * as buddyService from '../buddyService';
 import { StartSessionModal } from '../components';
 import { buddyStreakFromProfile, formatStreak } from '../streakService';
 
+import { useToast } from '../ui';
 interface BuddyViewProps {
   isDark: boolean;
   onBack: () => void;
@@ -116,6 +117,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
     return () => clearTimeout(timer);
   }, [searchQuery, showSearch]);
 
+  const { showToast } = useToast();
   const handleSendRequest = async (profile: UserProfile) => {
     setActionLoading(profile.uid);
     try {
@@ -128,7 +130,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       if (msg.includes('already sent') || msg.includes('Already')) {
         setSentRequests((prev) => new Set(prev).add(profile.uid));
       } else {
-        alert(msg);
+        showToast(msg, 'error');
       }
     } finally {
       setActionLoading(null);
@@ -142,7 +144,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
     } catch (err) {
       console.error('[Buddy] acceptBuddyRequest failed:', err);
-      alert(err instanceof Error && err.message ? err.message : 'Failed to accept request');
+      showToast(err instanceof Error && err.message ? err.message : 'Failed to accept request', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -155,7 +157,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
     } catch (err) {
       console.error('[Buddy] declineBuddyRequest failed:', err);
-      alert(err instanceof Error && err.message ? err.message : 'Failed to decline request');
+      showToast(err instanceof Error && err.message ? err.message : 'Failed to decline request', 'error');
     } finally {
       setActionLoading(null);
     }

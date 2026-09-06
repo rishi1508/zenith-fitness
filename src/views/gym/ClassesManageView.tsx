@@ -7,7 +7,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { listenToClasses, listenToMembers, saveClass, deleteClass, listenToSession, markAttendance } from '../../gymService';
 import { localDateISO } from '../../gymStats';
-import { useToast } from '../../ui';
+import { useToast, useConfirm } from '../../ui';
 
 const WEEKDAYS = [
   { id: 1, label: 'Mon' }, { id: 2, label: 'Tue' }, { id: 3, label: 'Wed' },
@@ -55,9 +55,10 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
     return map;
   }, [classes]);
 
+  const { confirm: confirmDialog } = useConfirm();
   const handleDelete = async (cls: GymClass) => {
     if (!gym) return;
-    if (!confirm(`Delete "${cls.name}" (${WEEKDAY_LABEL[cls.weekday]})? This can't be undone.`)) return;
+    if (!(await confirmDialog({ title: 'Delete class?', message: `Delete "${cls.name}" (${WEEKDAY_LABEL[cls.weekday]})? This can't be undone.`, confirmLabel: 'Delete', tone: 'danger' }))) return;
     try {
       await deleteClass(gym.id, cls.id);
       showToast('Class deleted');

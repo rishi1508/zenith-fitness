@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Dumbbell, Trash2 } from 'lucide-react';
 import type { SharedExerciseDoc } from '../../sharedExercises';
 import { deleteSharedExerciseById, listAllSharedExercises } from '../../sharedExercises';
-import { Card, EmptyState, IconButton, ListRow, Skeleton, useToast, H1 } from '../../ui';
+import { Card, EmptyState, IconButton, ListRow, Skeleton, useToast, H1, useConfirm } from '../../ui';
 
 const INPUT_CLS = 'w-full rounded-control px-3 h-11 text-sm bg-surface-2 border border-border text-text placeholder-subtle focus:outline-none focus:border-accent';
 
@@ -25,8 +25,9 @@ export function AdminLibraryView({ onBack }: { onBack: () => void }) {
 
   useEffect(() => { (async () => { load(); })(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const { confirm: confirmDialog } = useConfirm();
   const handleDelete = async (ex: SharedExerciseDoc) => {
-    if (!confirm(`Remove "${ex.name}" from the shared library? Existing local copies are unaffected.`)) return;
+    if (!(await confirmDialog({ title: 'Remove from shared library?', message: `Remove "${ex.name}"? Existing local copies are unaffected.`, confirmLabel: 'Remove', tone: 'danger' }))) return;
     try {
       await deleteSharedExerciseById(ex.id);
       showToast('Removed from the shared library.');

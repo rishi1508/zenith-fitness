@@ -3,6 +3,7 @@ import { X, Share2, Download, Dumbbell, Clock, Flame, Trophy } from 'lucide-reac
 import html2canvas from 'html2canvas';
 import type { Workout } from '../types';
 
+import { useToast } from '../ui';
 interface ShareWorkoutProps {
   workout: Workout;
   onClose: () => void;
@@ -24,6 +25,7 @@ export function ShareWorkout({ workout, onClose, isDark }: ShareWorkoutProps) {
   
   const exerciseCount = workout.exercises.length;
 
+  const { showToast } = useToast();
   const generateImage = async () => {
     if (!cardRef.current) return;
     
@@ -39,7 +41,7 @@ export function ShareWorkout({ workout, onClose, isDark }: ShareWorkoutProps) {
       setImageUrl(url);
     } catch (e) {
       console.error('Failed to generate image:', e);
-      alert('Failed to generate image');
+      showToast('Could not generate the image', 'error');
     } finally {
       setGenerating(false);
     }

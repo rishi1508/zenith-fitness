@@ -7,6 +7,7 @@ import type { Workout, WeeklyPlan } from '../types';
 import * as storage from '../storage';
 import { ShareWorkout } from '../components';
 
+import { useConfirm } from '../ui';
 interface HistoryWorkoutCardProps {
   workout: Workout;
   isDark: boolean;
@@ -17,6 +18,7 @@ interface HistoryWorkoutCardProps {
 }
 
 function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onShare, onSave }: HistoryWorkoutCardProps) {
+  const { confirm: confirmDialog } = useConfirm();
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editWorkout, setEditWorkout] = useState<Workout>(workout);
@@ -136,9 +138,9 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
               </button>
             )}
             <button
-              onClick={(e) => {
+              onClick={async (e) => {
                 e.stopPropagation();
-                if (confirm('Delete this workout?')) {
+                if (await confirmDialog({ title: 'Delete workout?', message: 'This workout will be removed from your history.', confirmLabel: 'Delete', tone: 'danger' })) {
                   onDelete();
                 }
               }}
@@ -238,10 +240,11 @@ export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewP
   const [toastMessage, setToastMessage] = useState('');
   const [workoutToShare, setWorkoutToShare] = useState<Workout | null>(null);
   
-  const handleSaveAsTemplate = (workout: Workout) => {
+  const { promptText } = useConfirm();
+  const handleSaveAsTemplate = async (workout: Workout) => {
     if (workout.exercises.length === 0) return;
     
-    const templateName = prompt('Enter a name for this template:', workout.name.replace(/\s-\s\d{4}-\d{2}-\d{2}.*/, ''));
+    const templateName = await promptText({ title: 'Save as template', label: 'Template name', initial: workout.name.replace(/\s-\s\d{4}-\d{2}-\d{2}.*/, ''), confirmLabel: 'Save' });
     if (!templateName) return;
     
     // Create a new weekly plan from this workout

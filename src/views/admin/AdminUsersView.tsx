@@ -3,7 +3,7 @@ import { ArrowLeft, ChevronRight, UserCog } from 'lucide-react';
 import type { AdminUserRow } from '../../adminService';
 import { deleteUser, listUsers, setPremiumGrant, setUserDisabled } from '../../adminService';
 import { isAdmin } from '../../admin';
-import { Button, Card, EmptyState, IconButton, ListRow, Pill, Sheet, Skeleton, useToast, H1 } from '../../ui';
+import { Button, Card, EmptyState, IconButton, ListRow, Pill, Sheet, Skeleton, useToast, H1, useConfirm } from '../../ui';
 import type { PillTone } from '../../ui';
 
 const INPUT_CLS = 'w-full rounded-control px-3 h-11 text-sm bg-surface-2 border border-border text-text placeholder-subtle focus:outline-none focus:border-accent';
@@ -50,9 +50,10 @@ function UserDetailSheet({ row, onClose, onChanged }: { row: AdminUserRow | null
     }
   };
 
+  const { confirm: confirmDialog } = useConfirm();
   const handleDelete = async () => {
     if (!row || busy) return;
-    if (!confirm(`Delete ${row.displayName || row.email || row.uid}? This permanently removes their account and data.`)) return;
+    if (!(await confirmDialog({ title: 'Delete account?', message: `Delete ${row.displayName || row.email || row.uid}? This permanently removes their account and data.`, confirmLabel: 'Delete', tone: 'danger' }))) return;
     setBusy(true);
     try {
       await deleteUser(row.uid);

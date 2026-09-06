@@ -8,6 +8,7 @@ import * as storage from '../storage';
 import { ExerciseForm } from '../components/ExerciseForm';
 import { createAndPublishExercise } from '../sharedExercises';
 
+import { useToast, useConfirm } from '../ui';
 // Day Exercise Editor - Edit exercises for a single day (internal component)
 function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
   day: DayPlan;
@@ -56,9 +57,10 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
   // Available superset groups
   const supersetGroups = ['A', 'B', 'C', 'D'];
   
+  const { showToast } = useToast();
   const handleSave = () => {
     if (!dayName.trim()) {
-      alert('Please enter a day name');
+      showToast('Please enter a day name', 'error');
       return;
     }
     
@@ -319,9 +321,10 @@ function EditWeeklyPlanView({ plan, isNew, isDark, onSave, onCancel }: {
     setDays([...days, newDay]);
   };
   
+  const { showToast } = useToast();
   const removeDay = (index: number) => {
     if (days.length <= 1) {
-      alert('Plan must have at least one day');
+      showToast('Plan must have at least one day', 'error');
       return;
     }
     const updated = days.filter((_, i) => i !== index);
@@ -350,11 +353,11 @@ function EditWeeklyPlanView({ plan, isNew, isDark, onSave, onCancel }: {
   
   const handleSave = () => {
     if (!name.trim()) {
-      alert('Please enter a plan name');
+      showToast('Please enter a plan name', 'error');
       return;
     }
     if (days.length === 0) {
-      alert('Plan must have at least one day');
+      showToast('Plan must have at least one day', 'error');
       return;
     }
     
@@ -509,12 +512,14 @@ export function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
   const [editingPlan, setEditingPlan] = useState<WeeklyPlan | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   
-  const handleDelete = (plan: WeeklyPlan) => {
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
+  const handleDelete = async (plan: WeeklyPlan) => {
     if (plan.id === 'default_plan') {
-      alert('Cannot delete default plan');
+      showToast('The default plan cannot be deleted', 'error');
       return;
     }
-    if (confirm(`Delete "${plan.name}"?\n\nThis will permanently remove this weekly plan.`)) {
+    if (await confirmDialog({ title: 'Delete plan?', message: `Delete "${plan.name}"? This permanently removes the weekly plan.`, confirmLabel: 'Delete', tone: 'danger' })) {
       storage.deleteWeeklyPlan(plan.id);
       setPlans(storage.getWeeklyPlans());
       onPlansChange();

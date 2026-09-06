@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { WorkoutSession, SessionParticipant, SessionReaction } from '../types';
 import * as sessionService from '../workoutSessionService';
 
+import { useToast, useConfirm } from '../ui';
 const { REACTION_EMOJIS } = sessionService;
 
 interface GroupSessionBarProps {
@@ -49,6 +50,9 @@ export function GroupSessionBar({ sessionId, showContinue, isDark = true, onCont
     return unsub;
   }, [sessionId, user]);
 
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
+
   if (!session || session.status !== 'active') return null;
 
   const isHost = session.hostUid === user?.uid;
@@ -59,11 +63,11 @@ export function GroupSessionBar({ sessionId, showContinue, isDark = true, onCont
   const buddyName = others[0]?.name || 'your buddy';
 
   const handleEndSession = async () => {
-    if (!confirm('End the session for everyone? Each participant\'s progress will be saved.')) return;
+    if (!(await confirmDialog({ title: 'End session for everyone?', message: "Each participant's progress will be saved.", confirmLabel: 'End session', tone: 'danger' }))) return;
     try {
       await sessionService.finishSessionForAll(sessionId);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to end session');
+      showToast(err instanceof Error ? err.message : 'Failed to end session', 'error');
     }
   };
 

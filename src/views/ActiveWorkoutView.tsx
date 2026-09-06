@@ -13,6 +13,7 @@ import { labelize } from '../exerciseUtils';
 import type { ExerciseFormValues } from '../components/ExerciseForm';
 import { createAndPublishExercise } from '../sharedExercises';
 
+import { useToast, useConfirm } from '../ui';
 /** Shared by both pickers: create the exercise locally + in the shared
  *  library, and broadcast it to the group session (if any) so buddies get
  *  the SAME id instead of re-creating it with a different one. */
@@ -215,15 +216,17 @@ export function ActiveWorkoutView({
     setAddSearchQuery('');
   };
 
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
   // Delete exercise from current workout
-  const deleteExercise = (exerciseIndex: number) => {
+  const deleteExercise = async (exerciseIndex: number) => {
     if (workout.exercises.length <= 1) {
-      alert('Cannot delete the last exercise. Use the trash button to discard the entire workout.');
+      showToast('You cannot remove the last exercise — discard the workout instead.', 'error');
       return;
     }
     
     const exerciseName = workout.exercises[exerciseIndex].exerciseName;
-    if (confirm(`Remove "${exerciseName}" from this session?`)) {
+    if (await confirmDialog({ title: 'Remove exercise?', message: `Remove "${exerciseName}" from this session?`, confirmLabel: 'Remove', tone: 'danger' })) {
       const newWorkout = { ...workout };
       newWorkout.exercises = workout.exercises.filter((_, i) => i !== exerciseIndex);
       onUpdate(newWorkout);

@@ -8,6 +8,7 @@ import type { ExerciseFormValues } from '../components/ExerciseForm';
 import { canEditShared, createAndPublishExercise, publishExercise, deleteSharedExercise } from '../sharedExercises';
 import { useAuth } from '../auth/AuthContext';
 
+import { useConfirm } from '../ui';
 export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   isDark: boolean;
   onBack: () => void;
@@ -49,6 +50,7 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
 
   const favoriteCount = exercises.filter(e => e.isFavorite).length;
 
+  const { confirm: confirmDialog } = useConfirm();
   const handleCreate = (values: ExerciseFormValues) => {
     createAndPublishExercise({
       name: values.name,
@@ -86,9 +88,9 @@ export function ExerciseManagerView({ isDark, onBack, onExercisesChange }: {
   };
 
   const handleDelete = async (exercise: Exercise) => {
-    if (!confirm(`Delete "${exercise.name}" from your library?\n\nWarning: templates and workouts using it keep the name but lose the link.`)) return;
+    if (!(await confirmDialog({ title: 'Delete exercise?', message: `Delete "${exercise.name}" from your library? Templates and workouts using it keep the name but lose the link.`, confirmLabel: 'Delete', tone: 'danger' }))) return;
     if (exercise.createdBy && canEditShared(exercise, uid)) {
-      if (confirm('Also remove it from the shared library for everyone?')) {
+      if (await confirmDialog({ title: 'Remove for everyone?', message: 'Also remove it from the shared library for everyone?', confirmLabel: 'Remove for everyone', tone: 'danger' })) {
         await deleteSharedExercise(exercise);
       }
     }

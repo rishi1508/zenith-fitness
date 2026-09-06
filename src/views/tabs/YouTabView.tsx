@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../../firebase';
 import * as buddyService from '../../buddyService';
-import { Card, StatTile, ListRow, Pill, SectionHeader } from '../../ui';
+import { Card, StatTile, ListRow, Pill, SectionHeader, useToast } from '../../ui';
 import type { PillTone } from '../../ui';
 import { usePremium, PremiumBadge } from '../../premium';
 import type { Tier } from '../../premium';
@@ -56,6 +56,7 @@ export function YouTabView({
   const [uploading, setUploading] = useState(false);
   const [photoURL, setPhotoURL] = useState(user?.photoURL || null);
 
+  const { showToast } = useToast();
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !auth.currentUser) return;
@@ -67,7 +68,7 @@ export function YouTabView({
       await buddyService.upsertUserProfile();
     } catch (err) {
       console.error('[You] photo upload failed:', err);
-      alert('Photo upload failed: ' + (err instanceof Error ? err.message : 'unknown'));
+      showToast('Photo upload failed: ' + (err instanceof Error ? err.message : 'unknown'), 'error');
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';

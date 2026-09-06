@@ -8,7 +8,7 @@ import { isAdmin } from '../../admin';
 import { updateGym, setStaffRole, listenToMembers } from '../../gymService';
 import { addStaffByEmail, clearGymAccentColor, regenerateJoinCode } from '../../gymStaffHelpers';
 import { QrCode } from '../../components';
-import { useToast } from '../../ui';
+import { useToast, useConfirm } from '../../ui';
 
 const ACCENT_PRESETS = [
   '#f97316', '#ef4444', '#f59e0b', '#10b981', '#14b8a6', '#3b82f6', '#6366f1', '#a855f7',
@@ -126,8 +126,9 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       showToast(err instanceof Error ? err.message : 'Failed to update role', 'error');
     }
   };
+  const { confirm: confirmDialog } = useConfirm();
   const handleRemoveStaff = async (uid: string) => {
-    if (!confirm('Remove this person from staff?')) return;
+    if (!(await confirmDialog({ title: 'Remove staff?', message: 'This person will lose staff access to the gym.', confirmLabel: 'Remove', tone: 'danger' }))) return;
     try {
       await setStaffRole(gym.id, uid, null);
       showToast('Staff removed');
@@ -158,7 +159,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
     }
   };
   const handleRegenerate = async () => {
-    if (!confirm('Generate a new join code? The old code will stop working.')) return;
+    if (!(await confirmDialog({ title: 'New join code?', message: 'The old code will stop working immediately.', confirmLabel: 'Generate' }))) return;
     setRegenerating(true);
     try {
       await regenerateJoinCode(gym.id, gym.joinCode);

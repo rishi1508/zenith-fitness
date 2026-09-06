@@ -8,6 +8,7 @@ import * as storage from '../storage';
 import * as sharedTemplates from '../sharedTemplatesService';
 import type { SharedTemplate } from '../sharedTemplatesService';
 
+import { useToast, useConfirm } from '../ui';
 interface CommonTemplatesViewProps {
   isDark: boolean;
   onBack: () => void;
@@ -60,6 +61,8 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
     );
   }, [list, search]);
 
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
   const handleImport = async (tpl: SharedTemplate) => {
     setBusyId(tpl.id);
     try {
@@ -80,16 +83,16 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
       refreshImportedMap();
       sharedTemplates.bumpUseCount(tpl.id);
     } catch (err) {
-      alert('Import failed: ' + (err instanceof Error ? err.message : 'unknown'));
+      showToast('Import failed: ' + (err instanceof Error ? err.message : 'unknown'), 'error');
     } finally {
       setBusyId(null);
     }
   };
 
-  const handleRemove = (tpl: SharedTemplate) => {
+  const handleRemove = async (tpl: SharedTemplate) => {
     const planIds = importedMap.get(tpl.id) || [];
     if (planIds.length === 0) return;
-    if (!confirm(`Remove ${planIds.length === 1 ? 'this imported plan' : `${planIds.length} imported plans`} from your library?`)) return;
+    if (!(await confirmDialog({ title: 'Remove from library?', message: `Remove ${planIds.length === 1 ? 'this imported plan' : `${planIds.length} imported plans`} from your library?`, confirmLabel: 'Remove', tone: 'danger' }))) return;
     setBusyId(tpl.id);
     try {
       const remaining = storage.getWeeklyPlans().filter(p => !planIds.includes(p.id));
@@ -114,7 +117,7 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
       setShowPublish(false);
       setSelectedPlanId('');
     } catch (err) {
-      alert('Publish failed: ' + (err instanceof Error ? err.message : 'unknown'));
+      showToast('Publish failed: ' + (err instanceof Error ? err.message : 'unknown'), 'error');
     } finally {
       setPublishing(false);
     }

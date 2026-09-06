@@ -42,6 +42,7 @@ import { syncWorkoutToHealth } from './healthSync';
 import { useAuth } from './auth/AuthContext';
 import { useGym } from './gym/GymContext';
 
+import { useToast, useConfirm } from './ui';
 export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'phase';
 export type Theme = 'dark' | 'light';
 
@@ -56,6 +57,8 @@ function App() {
   // Follow-up prompt from a ZenCard daily note, consumed once by
   // ZenChatView after seeding its composer (see openZen below).
   const [zenPrefill, setZenPrefill] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
   // Which day/meal the food search or plate scan adds to (docs/HEALTH_SPEC.md §7).
   const [foodNav, setFoodNav] = useState<{ date: string; meal: MealSlot }>({ date: healthToday(), meal: 'snacks' });
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -457,11 +460,11 @@ function App() {
         }
         navigationHistory.current = ['home'];
         setView('home');
-        alert('The host cancelled this workout session.');
+        showToast('The host cancelled this workout session.', 'info');
       }
     });
     return unsub;
-  }, [activeSessionId, activeWorkout, user, completedSession]);
+  }, [activeSessionId, activeWorkout, user, completedSession, showToast]);
 
   // Listen to per-participant progress and capture each buddy's full
   // ordered list of completed sets per exercise (keyed by exercise name,
@@ -675,10 +678,10 @@ function App() {
     };
   }, []);
 
-  const startWorkout = (template: WorkoutTemplate, sessionId?: string) => {
+  const startWorkout = async (template: WorkoutTemplate, sessionId?: string) => {
     // If there's already an active (paused) workout, ask to discard it first
     if (activeWorkout) {
-      if (!confirm('You have an active workout in progress. Discard it and start a new one?')) {
+      if (!(await confirmDialog({ title: 'Discard current workout?', message: 'You have an active workout in progress. Discard it and start a new one?', confirmLabel: 'Discard', tone: 'danger' }))) {
         return;
       }
       // Clear the paused workout
@@ -794,7 +797,7 @@ function App() {
           !ex.sets.some(s => s.reps > 0)
         );
         if (exercisesWithNoReps.length > 0) {
-          alert(`Please log at least one set for: ${exercisesWithNoReps.map(e => e.exerciseName).join(', ')}`);
+          showToast(`Log at least one set for: ${exercisesWithNoReps.map(e => e.exerciseName).join(', ')}`, 'error');
           return;
         }
       }
@@ -1083,7 +1086,8 @@ function App() {
     const prompt = isSessionWorkout && sessionMode === 'host'
       ? 'Cancel the group session? Everyone\'s progress will be discarded — this can\'t be undone.'
       : 'Discard this workout? All progress will be lost.';
-    if (!confirm(prompt)) return;
+    const isHostCancel = isSessionWorkout && sessionMode === 'host';
+    if (!(await confirmDialog({ title: isHostCancel ? 'Cancel group session?' : 'Discard workout?', message: prompt, confirmLabel: isHostCancel ? 'Cancel session' : 'Discard', tone: 'danger' }))) return;
 
     if (isSessionWorkout && sessionMode === 'host') {
       // Host-only path: tear down the shared session so every
@@ -1092,7 +1096,7 @@ function App() {
         await sessionService.cancelSession(tiedSessionId!);
       } catch (err) {
         console.error('[Session] cancel failed:', err);
-        alert(`Couldn't cancel the session: ${err instanceof Error ? err.message : 'unknown error'}`);
+        showToast(`Couldn't cancel the session: ${err instanceof Error ? err.message : 'unknown error'}`, 'error');
         return;
       }
       setActiveSessionId(null);
@@ -1106,7 +1110,7 @@ function App() {
     navigationHistory.current = ['home'];
     setView('home');
     loadData();
-  }, [activeWorkout, activeSessionId, sessionMode, user, loadData]);
+  }, [activeWorkout, activeSessionId, sessionMode, user, loadData, confirmDialog, showToast]);
 
   const handleBackfillRestDays = () => {
     storage.backfillRestDays(missingDays);

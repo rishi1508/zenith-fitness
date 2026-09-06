@@ -15,7 +15,7 @@ import { enablePushNotifications, pushSupported, pushPermissionState } from '../
 import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '../healthSync';
 import { deleteMyAccount } from '../accountService';
 import { Capacitor } from '@capacitor/core';
-import { Sheet, Button, useToast } from '../ui';
+import { Sheet, Button, useToast, useConfirm } from '../ui';
 
 declare const __APP_VERSION__: string;
 
@@ -316,6 +316,8 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
 
 // Data Backup Section (JSON Export/Import)
 function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataChange: () => void }) {
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -360,13 +362,12 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
       }
       
       // Confirm overwrite
-      const confirmed = confirm(
+      const confirmed = await confirmDialog({ title: 'Import backup?', confirmLabel: 'Import', message:
         `This will import:\n` +
         `• ${data.workouts?.length || 0} workouts\n` +
         `• ${data.exercises?.length || 0} exercises\n` +
         `• ${data.weeklyPlans?.length || 0} weekly plans\n\n` +
-        `This will MERGE with existing data. Continue?`
-      );
+        `This will MERGE with existing data. Continue?` });
       
       if (!confirmed) {
         setImporting(false);
@@ -418,10 +419,10 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
         storage.savePersonalRecords(merged);
       }
       
-      alert('Import successful! Data merged.');
+      showToast('Import successful — data merged.');
       onDataChange();
     } catch (err) {
-      alert(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      showToast(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -480,21 +481,22 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
 
 // Rest Timer Presets Section
 function RestTimerPresetsSection({ isDark }: { isDark: boolean }) {
+  const { showToast } = useToast();
   const [presets, setPresets] = useState(() => storage.getRestTimerPresets());
   const [newPreset, setNewPreset] = useState('');
   
   const addPreset = () => {
     const seconds = parseInt(newPreset);
     if (isNaN(seconds) || seconds < 10 || seconds > 600) {
-      alert('Enter a value between 10 and 600 seconds');
+      showToast('Enter a value between 10 and 600 seconds', 'error');
       return;
     }
     if (presets.includes(seconds)) {
-      alert('This preset already exists');
+      showToast('This preset already exists', 'error');
       return;
     }
     if (presets.length >= 6) {
-      alert('Maximum 6 presets allowed');
+      showToast('Maximum 6 presets allowed', 'error');
       return;
     }
     const updated = [...presets, seconds].sort((a, b) => a - b);
@@ -505,7 +507,7 @@ function RestTimerPresetsSection({ isDark }: { isDark: boolean }) {
   
   const removePreset = (seconds: number) => {
     if (presets.length <= 2) {
-      alert('Minimum 2 presets required');
+      showToast('Minimum 2 presets required', 'error');
       return;
     }
     const updated = presets.filter(p => p !== seconds);
@@ -685,6 +687,7 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
   onThemeChange: (theme: 'dark' | 'light') => void;
   isDark: boolean;
 }) {
+  const { confirm: confirmDialog } = useConfirm();
   const [exportCsv, setExportCsv] = useState('');
   const [copied, setCopied] = useState(false);
   
@@ -748,7 +751,7 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
               <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Data synced to cloud</span>
             </div>
             <button
-              onClick={() => { if (confirm('Sign out? Your data is safely stored in the cloud.')) signOut(); }}
+              onClick={async () => { if (await confirmDialog({ title: 'Sign out?', message: 'Your data is safely stored in the cloud.', confirmLabel: 'Sign out' })) signOut(); }}
               className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                 isDark ? 'bg-[#252525] hover:bg-[#303030] text-zinc-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
               }`}
@@ -900,6 +903,7 @@ function HealthSyncSection({ isDark }: { isDark: boolean }) {
 }
 
 function PushNotificationsSection({ isDark }: { isDark: boolean }) {
+  const { showToast } = useToast();
   // `perm` drives the three render branches. We kick off an async probe
   // on mount rather than reading Notification.permission synchronously —
   // the Capacitor Android WebView does NOT expose the Notification API,
@@ -929,7 +933,7 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
       const state = await pushPermissionState();
       setPerm(state);
       if (!token) {
-        alert('Push notifications could not be enabled. Check browser/device settings, or re-try from Settings.');
+        showToast('Push notifications could not be enabled. Check device settings and try again.', 'error');
       }
     } finally {
       setBusy(false);
@@ -967,7 +971,7 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
                 // If not, the user will see console logs starting with
                 // [Notif][TEST] indicating where the break is.
               } catch (err) {
-                alert('Test notification FAILED: ' + (err as Error).message);
+                showToast('Test notification failed: ' + (err as Error).message, 'error');
               }
             }}
             className="w-full py-1.5 rounded-lg text-[11px] font-medium border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 transition-colors"

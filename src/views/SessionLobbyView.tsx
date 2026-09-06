@@ -9,6 +9,7 @@ import type { WorkoutSession, BuddyRelationship } from '../types';
 import * as sessionService from '../workoutSessionService';
 import * as buddyService from '../buddyService';
 
+import { useToast } from '../ui';
 interface SessionLobbyViewProps {
   sessionId: string;
   isDark: boolean;
@@ -64,12 +65,13 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
     loadBuddies();
   }, [user]);
 
+  const { showToast } = useToast();
   const handleInvite = async (buddyUid: string, buddyName: string, buddyPhotoURL: string | null) => {
     setInviting(buddyUid);
     try {
       await sessionService.inviteToSession(sessionId, buddyUid, buddyName, buddyPhotoURL);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to invite');
+      showToast(err instanceof Error ? err.message : 'Failed to invite', 'error');
     } finally {
       setInviting(null);
     }
@@ -80,7 +82,7 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
     try {
       await sessionService.startSession(sessionId);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to start');
+      showToast(err instanceof Error ? err.message : 'Failed to start', 'error');
       setStarting(false);
     }
   };
@@ -89,7 +91,7 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
     try {
       await sessionService.joinSession(sessionId);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to join');
+      showToast(err instanceof Error ? err.message : 'Failed to join', 'error');
     }
   };
 

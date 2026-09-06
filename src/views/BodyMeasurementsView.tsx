@@ -3,6 +3,7 @@ import { ArrowLeft, Ruler, Plus, Trash2 } from 'lucide-react';
 import type { BodyMeasurementEntry, BodyMeasurementField } from '../types';
 import * as storage from '../storage';
 
+import { useToast, useConfirm } from '../ui';
 interface Props {
   isDark: boolean;
   onBack: () => void;
@@ -38,6 +39,8 @@ export function BodyMeasurementsView({ isDark, onBack }: Props) {
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
   const subtle = isDark ? 'text-zinc-500' : 'text-gray-500';
 
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
   const handleAdd = () => {
     const parsed: Partial<Record<BodyMeasurementField, number>> = {};
     for (const [k, v] of Object.entries(form)) {
@@ -46,7 +49,7 @@ export function BodyMeasurementsView({ isDark, onBack }: Props) {
       if (!isNaN(n) && n > 0) parsed[k as BodyMeasurementField] = n;
     }
     if (Object.keys(parsed).length === 0) {
-      alert('Enter at least one measurement.');
+      showToast('Enter at least one measurement.', 'error');
       return;
     }
     storage.addBodyMeasurementEntry(parsed, notes.trim() || undefined);
@@ -56,8 +59,8 @@ export function BodyMeasurementsView({ isDark, onBack }: Props) {
     setAdding(false);
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Delete this entry?')) return;
+  const handleDelete = async (id: string) => {
+    if (!(await confirmDialog({ title: 'Delete entry?', message: 'This measurement entry will be removed.', confirmLabel: 'Delete', tone: 'danger' }))) return;
     storage.deleteBodyMeasurementEntry(id);
     setEntries(storage.getBodyMeasurements());
   };

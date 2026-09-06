@@ -9,6 +9,7 @@ import * as buddyService from '../buddyService';
 import * as storage from '../storage';
 import { StartSessionModal } from '../components';
 
+import { useToast, useConfirm } from '../ui';
 interface BuddyChatViewProps {
   chatId: string;
   buddyUid: string;
@@ -94,6 +95,8 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
     buddyService.setTypingActive(chatId);
   };
 
+  const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
   const handleSend = async () => {
     const text = input.trim();
     if (!text || sending) return;
@@ -178,13 +181,13 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
     if (selectedMessages.length === 0) return;
     const myOwn = selectedMessages.filter((m) => m.senderId === user?.uid);
     if (myOwn.length === 0) {
-      alert("You can only delete your own messages.");
+      showToast('You can only delete your own messages.', 'error');
       return;
     }
     const msg = myOwn.length === selectedMessages.length
       ? `Delete ${myOwn.length} message${myOwn.length === 1 ? '' : 's'}?`
       : `Delete your ${myOwn.length} message${myOwn.length === 1 ? '' : 's'}? (${selectedMessages.length - myOwn.length} not yours will be kept.)`;
-    if (!confirm(msg)) return;
+    if (!(await confirmDialog({ title: 'Delete messages?', message: msg, confirmLabel: 'Delete', tone: 'danger' }))) return;
     await Promise.all(myOwn.map((m) => buddyService.deleteMessage(chatId, m.id)));
     clearSelection();
   };

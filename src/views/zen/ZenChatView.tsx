@@ -7,7 +7,7 @@ import {
   getChatHistory, setChatHistory, clearChatHistory, toZenMessages, quickPrompts,
 } from '../../zen';
 import type { ChatEntry, ZenErrorKind, ZenRequest } from '../../zen';
-import { AppBar, IconButton, Button, H2, CAPTION } from '../../ui';
+import { AppBar, IconButton, Button, H2, CAPTION, useConfirm } from '../../ui';
 import { PremiumBadge } from '../../premium';
 import { renderZenMarkdown } from './zenMarkdown';
 
@@ -129,9 +129,10 @@ export function ZenChatView({ onBack, initialPrompt, onConsumePrompt }: ZenChatV
 
   const retryLast = () => { if (lastUserMessageRef.current) send(lastUserMessageRef.current); };
 
-  const clearAll = () => {
+  const { confirm: confirmDialog } = useConfirm();
+  const clearAll = async () => {
     if (history.length === 0) return;
-    if (!confirm('Clear chat history? This cannot be undone.')) return;
+    if (!(await confirmDialog({ title: 'Clear chat?', message: 'Your conversation with Zen will be deleted. This cannot be undone.', confirmLabel: 'Clear', tone: 'danger' }))) return;
     clearChatHistory();
     setHistory([]);
   };

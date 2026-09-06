@@ -4,7 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './auth/AuthContext'
 import { GymProvider } from './gym/GymContext'
-import { ToastProvider } from './ui'
+import { ToastProvider, ConfirmProvider } from './ui'
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
@@ -20,7 +20,9 @@ createRoot(document.getElementById('root')!).render(
     <AuthProvider>
       <GymProvider>
         <ToastProvider>
-          <App />
+          <ConfirmProvider>
+            <App />
+          </ConfirmProvider>
         </ToastProvider>
       </GymProvider>
     </AuthProvider>

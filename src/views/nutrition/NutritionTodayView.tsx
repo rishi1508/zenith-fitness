@@ -7,9 +7,7 @@ import {
 } from '../../health/store';
 import { getFood } from '../../nutrition';
 import { hapticImpact } from '../../haptics';
-import {
-  Button, Card, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, SUB,
-} from '../../ui';
+import { Button, Card, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, SUB, useConfirm } from '../../ui';
 import { NutritionRing } from './NutritionRing';
 import { FoodEntrySheet } from './FoodEntrySheet';
 import {
@@ -59,9 +57,10 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
   const totals = useMemo(() => sumMacros(day), [day]);
   const yesterday = useMemo(() => getNutritionDay(addDaysISO(date, -1)), [date, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const deleteEntry = (entry: FoodEntry) => {
+  const { confirm: confirmDialog } = useConfirm();
+  const deleteEntry = async (entry: FoodEntry) => {
     void hapticImpact('light');
-    if (!confirm(`Remove ${entry.name}?`)) return;
+    if (!(await confirmDialog({ title: 'Remove entry?', message: `Remove ${entry.name} from this day?`, confirmLabel: 'Remove', tone: 'danger' }))) return;
     saveNutritionDay(removeEntry(getNutritionDay(date), entry.id));
     showToast(`${entry.name} removed.`);
   };

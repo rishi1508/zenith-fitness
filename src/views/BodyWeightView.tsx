@@ -4,6 +4,7 @@ import type { BodyWeightEntry } from '../types';
 import * as storage from '../storage';
 import { BodyWeightChart } from '../BodyWeightChart';
 
+import { useConfirm } from '../ui';
 interface BodyWeightViewProps {
   isDark: boolean;
   onBack: () => void;
@@ -19,6 +20,7 @@ export function BodyWeightView({ isDark, onBack }: BodyWeightViewProps) {
   const weekChange = storage.getBodyWeightChange(7);
   const monthChange = storage.getBodyWeightChange(30);
 
+  const { confirm: confirmDialog } = useConfirm();
   const handleAddEntry = () => {
     if (!newWeight.trim()) return;
     const weight = parseFloat(newWeight);
@@ -30,8 +32,8 @@ export function BodyWeightView({ isDark, onBack }: BodyWeightViewProps) {
     setShowAddForm(false);
   };
 
-  const handleDeleteEntry = (id: string) => {
-    if (confirm('Delete this weight entry?')) {
+  const handleDeleteEntry = async (id: string) => {
+    if (await confirmDialog({ title: 'Delete weigh-in?', message: 'This weight entry will be removed.', confirmLabel: 'Delete', tone: 'danger' })) {
       storage.deleteBodyWeightEntry(id);
       setEntries(storage.getBodyWeightEntries());
     }

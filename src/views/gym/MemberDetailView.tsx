@@ -10,7 +10,7 @@ import { localDateISO } from '../../gymStats';
 import { clearMemberTrainer } from '../../gymStaffHelpers';
 import { StatusChip } from '../../components/gym/StaffMemberRow';
 import { StaffPaymentSheet } from '../../components/gym/StaffPaymentSheet';
-import { useToast } from '../../ui';
+import { useToast, useConfirm } from '../../ui';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -42,6 +42,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
   const [planEndDraft, setPlanEndDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
+  const { confirm: confirmDialog } = useConfirm();
 
   const member = useMemo(() => members.find((m) => m.uid === memberUid) ?? null, [members, memberUid]);
   const trainers = useMemo(() => members.filter((m) => m.role === 'trainer'), [members]);
@@ -165,7 +166,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
   };
 
   const handleRemove = async () => {
-    if (!confirm(`Remove ${member.name} from the gym? This can't be undone.`)) return;
+    if (!(await confirmDialog({ title: 'Remove member?', message: `Remove ${member.name} from the gym? This can't be undone.`, confirmLabel: 'Remove', tone: 'danger' }))) return;
     setSaving(true);
     try {
       await removeMember(gym.id, member.uid);

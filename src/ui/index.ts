@@ -17,6 +17,8 @@ export { EmptyState } from './EmptyState';
 export { Skeleton } from './Skeleton';
 export { SectionHeader } from './SectionHeader';
 export { ToastProvider, useToast } from './Toast';
+export { ConfirmProvider, useConfirm } from './Confirm';
+export type { ConfirmOptions, PromptOptions } from './Confirm';
 export type { ToastTone } from './Toast';
 export { WeekDots } from './WeekDots';
 export type { WeekDotState } from './WeekDots';

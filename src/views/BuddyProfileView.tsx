@@ -8,6 +8,7 @@ import * as buddyService from '../buddyService';
 import { StartSessionModal, ActivityHeatmap } from '../components';
 import { buddyStreakFromProfile, weekStartISO } from '../streakService';
 
+import { useConfirm } from '../ui';
 interface BuddyProfileViewProps {
   buddyUid: string;
   buddyName: string;
@@ -106,9 +107,10 @@ export function BuddyProfileView({
     load();
   }, [buddyUid]);
 
+  const { confirm: confirmDialog } = useConfirm();
   const handleRemoveBuddy = async () => {
     if (!buddy) return;
-    if (!confirm(`Remove ${buddyName} as a buddy? You can always add them back later.`)) return;
+    if (!(await confirmDialog({ title: 'Remove buddy?', message: `Remove ${buddyName} as a buddy? You can always add them back later.`, confirmLabel: 'Remove', tone: 'danger' }))) return;
     await buddyService.removeBuddy(buddy.id);
     onBack();
   };
