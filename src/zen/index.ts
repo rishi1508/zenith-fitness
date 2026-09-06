@@ -13,3 +13,5 @@ export type { ChatEntry } from './history';
 
 export { getZenDailyNote } from './dailyNote';
 export type { ZenDailyNote } from './dailyNote';
+
+export { quickPrompts } from './quickPrompts';
