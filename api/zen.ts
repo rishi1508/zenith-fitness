@@ -147,7 +147,10 @@ interface GeminiResponse {
 }
 
 interface Tuning { maxOutputTokens?: number; thinkingBudget?: number; thinkingLevel?: string; model?: string }
-const DEFAULT_THINKING_LEVEL = process.env.ZEN_THINKING_LEVEL || undefined;
+// Gemma 4 accepts thinkingLevel ("minimal" verified live; "low" and thinkingBudget are
+// rejected). Unconstrained it thinks for 20–60 s and can spend the whole output cap
+// on private reasoning, so minimal is the default; ZEN_THINKING_LEVEL overrides.
+const DEFAULT_THINKING_LEVEL = process.env.ZEN_THINKING_LEVEL || 'minimal';
 const DEFAULT_MAX_OUTPUT_TOKENS = Number(process.env.ZEN_MAX_OUTPUT_TOKENS) || 1500;
 const DEFAULT_THINKING_BUDGET = process.env.ZEN_THINKING_BUDGET ? Number(process.env.ZEN_THINKING_BUDGET) : undefined;
 
@@ -295,6 +298,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Admins may ask for raw-shape diagnostics (never user data) with debug: true.
     const adminUids = (process.env.ADMIN_UIDS || 'BXedteurc3bPydsehvPIdVWPTbM2,upLvcTSoE5SS7lOmhYBKHFWSV0r1').split(',');
     const debug: ZenDebug[] | null = body.debug === true && adminUids.includes(uid) ? [] : null;
+
+    // Admin-only: list the models this key can use (to pick fallbacks).
+    if (debug && body.action === 'models') {
+      const key = process.env.GEMINI_API_KEY || '';
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=200`);
+      const j = (await r.json().catch(() => ({}))) as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
+      const models = (j.models ?? []).filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent')).map((m) => m.name.replace('models/', ''));
+      res.status(200).json({ models });
+      return;
+    }
 
     // Admin-only generation overrides for tuning experiments.
     const t = (debug && typeof body.tuning === 'object' && body.tuning ? body.tuning : {}) as Record<string, unknown>;
