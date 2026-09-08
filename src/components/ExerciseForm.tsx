@@ -170,7 +170,7 @@ export function ExerciseForm({
       {/* Creator notes */}
       <div className="space-y-1">
         <label className={label}>
-          {locked ? `Notes from ${creatorName || 'the creator'}` : 'Creator notes'}
+          Exercise notes
           {!locked && <span className="font-normal opacity-70"> · everyone who has this exercise sees these</span>}
         </label>
         {locked ? (

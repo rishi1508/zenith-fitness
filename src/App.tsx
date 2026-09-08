@@ -1370,20 +1370,26 @@ function App() {
       
       {view === 'active' && activeWorkout ? (
         <>
-          {activeSessionId && activeWorkout.sessionId === activeSessionId && (
-            <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
-          )}
           {/* The active workout is the one view rendered outside AppShell, so
-              it has to provide its own scroll region — the app root is
-              `h-dvh … overflow-hidden`. Without this the exercise list is
+              it has to provide what the shell normally does: the status-bar
+              inset (the same expression AppBar uses — without it the header
+              sat under the notch) and a scroll region, because the app root is
+              `h-dvh … overflow-hidden`. Without the latter the exercise list is
               clipped at the first screen and the rest of the workout is
               unreachable (reported 2026-09-08: "only shows the first
-              exercise"). Mirrors AppShell's <main>. */}
-          <main
-            className="flex-1 overflow-y-auto overflow-x-hidden px-5 pt-1"
-            style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
+              exercise"). */}
+          <div
+            className="flex-1 flex flex-col min-h-0"
+            style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 14px)' }}
           >
-            <div className="mx-auto w-full lg:max-w-[760px] lg:py-6">
+            {activeSessionId && activeWorkout.sessionId === activeSessionId && (
+              <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
+            )}
+            <main
+              className="flex-1 overflow-y-auto overflow-x-hidden px-5"
+              style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
+            >
+              <div className="mx-auto w-full lg:max-w-[760px] lg:py-6">
               <ActiveWorkoutView
                 workout={activeWorkout}
                 onUpdate={saveActiveWorkout}
@@ -1392,9 +1398,10 @@ function App() {
                 onDiscard={discardWorkout}
                 sessionMode={activeWorkout.sessionId === activeSessionId ? sessionMode : null}
                 buddyProgress={activeWorkout.sessionId === activeSessionId ? buddyProgress : undefined}
-              />
-            </div>
-          </main>
+                />
+              </div>
+            </main>
+          </div>
         </>
       ) : (
       <AppShell
