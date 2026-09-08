@@ -1373,15 +1373,28 @@ function App() {
           {activeSessionId && activeWorkout.sessionId === activeSessionId && (
             <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
           )}
-          <ActiveWorkoutView
-            workout={activeWorkout}
-            onUpdate={saveActiveWorkout}
-            onFinish={() => finishWorkout({ endSession: sessionMode === 'host' })}
-            onPause={pauseWorkout}
-            onDiscard={discardWorkout}
-            sessionMode={activeWorkout.sessionId === activeSessionId ? sessionMode : null}
-            buddyProgress={activeWorkout.sessionId === activeSessionId ? buddyProgress : undefined}
-          />
+          {/* The active workout is the one view rendered outside AppShell, so
+              it has to provide its own scroll region — the app root is
+              `h-dvh … overflow-hidden`. Without this the exercise list is
+              clipped at the first screen and the rest of the workout is
+              unreachable (reported 2026-09-08: "only shows the first
+              exercise"). Mirrors AppShell's <main>. */}
+          <main
+            className="flex-1 overflow-y-auto overflow-x-hidden px-5 pt-1"
+            style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
+          >
+            <div className="mx-auto w-full lg:max-w-[760px] lg:py-6">
+              <ActiveWorkoutView
+                workout={activeWorkout}
+                onUpdate={saveActiveWorkout}
+                onFinish={() => finishWorkout({ endSession: sessionMode === 'host' })}
+                onPause={pauseWorkout}
+                onDiscard={discardWorkout}
+                sessionMode={activeWorkout.sessionId === activeSessionId ? sessionMode : null}
+                buddyProgress={activeWorkout.sessionId === activeSessionId ? buddyProgress : undefined}
+              />
+            </div>
+          </main>
         </>
       ) : (
       <AppShell

@@ -17,6 +17,29 @@ export type ConnectionState =
  * button. Safe to call from any component; auto-refreshes on
  * online/offline window events.
  */
+/** Per-attempt budget. Generous on purpose: a cold Firestore channel on
+ *  mobile data is routinely slower than a warm one. */
+const PROBE_TIMEOUT_MS = 8000;
+const RETRY_DELAY_MS = 800;
+
+/**
+ * One reachability check. `true` means the request got an answer from
+ * Firestore — including a permission error, which proves we reached the
+ * server even though auth had not settled yet.
+ */
+async function reachable(timeoutMs: number): Promise<boolean> {
+  try {
+    await Promise.race([
+      getDoc(doc(db, 'shared', 'exerciseLibrary')),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs)),
+    ]);
+    return true;
+  } catch (err) {
+    const code = (err as { code?: string } | null)?.code;
+    return code === 'permission-denied' || code === 'unauthenticated';
+  }
+}
+
 export function useOnlineStatus() {
   const [state, setState] = useState<ConnectionState>('unknown');
 
@@ -24,28 +47,15 @@ export function useOnlineStatus() {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       return 'offline-browser';
     }
-    try {
-      // shared/exerciseLibrary is readable by any signed-in user; using
-      // it as a heartbeat avoids creating a dedicated ping doc.
-      await Promise.race([
-        getDoc(doc(db, 'shared', 'exerciseLibrary')),
-        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 4000)),
-      ]);
-      return 'online';
-    } catch (err) {
-      // permission-denied / unauthenticated means the request REACHED
-      // Firestore (so we have connectivity) but our identity wasn't
-      // accepted — typically because auth is still settling on app
-      // launch. Treat that as 'online' so the false "you look offline"
-      // modal stops firing on every login. Real network failures throw
-      // different errors (timeout, fetch abort, no .code property) and
-      // correctly fall through to 'offline-firestore'.
-      const code = (err as { code?: string } | null)?.code;
-      if (code === 'permission-denied' || code === 'unauthenticated') {
-        return 'online';
-      }
-      return 'offline-firestore';
-    }
+    // Two attempts before we ever say "offline". The first read of the app's
+    // lifetime has to open a Firestore channel and wait for the auth token, so
+    // on a cold start over mobile data it regularly took longer than the old
+    // 4 s budget — which is why the gate greeted the user on almost every
+    // launch and then vanished when they pressed Try again.
+    if (await reachable(PROBE_TIMEOUT_MS)) return 'online';
+    await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return 'offline-browser';
+    return (await reachable(PROBE_TIMEOUT_MS)) ? 'online' : 'offline-firestore';
   }, []);
 
   const retry = useCallback(async () => {
