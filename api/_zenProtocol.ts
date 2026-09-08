@@ -200,9 +200,17 @@ export function otherModel(model: string, primary: string, fallback: string): st
   return model === primary ? fallback : primary;
 }
 
-/** Statuses that mean "try the other model immediately". */
+/**
+ * Statuses that mean "try the other model immediately".
+ *
+ * 500 is in here on purpose: the API answers "Internal error encountered" for
+ * some perfectly valid prompts on one model while the peer handles the same
+ * request fine (reproduced 2026-09-08 on the second, data-carrying round of a
+ * Zen conversation). Treating it as fatal turned a working conversation into
+ * a 502 for the user.
+ */
 export function isSwitchableStatus(status: number): boolean {
-  return status === 429 || status === 404 || status === 503;
+  return status === 429 || status === 404 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
 /**
@@ -216,8 +224,12 @@ export function preferenceToWrite(opts: {
   startedWith: string;
   succeededWith: string | null;
   now: number;
+  /** Status that forced the switch. Only a rate limit (429) says anything
+   *  durable about the model; a one-off 5xx should not steer everyone else. */
+  switchedOn?: number;
 }): { preferredModel: string; until: number } | null {
   if (!opts.succeededWith || opts.succeededWith === opts.startedWith) return null;
+  if (opts.switchedOn !== undefined && opts.switchedOn !== 429) return null;
   return { preferredModel: opts.succeededWith, until: opts.now + MODEL_PREFERENCE_TTL_MS };
 }
 

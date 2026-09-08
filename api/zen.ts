@@ -192,12 +192,14 @@ async function generate(
   const start = tuning.model || pickStartModel(pref, primary, fallback, now);
 
   let model = start;
+  let switchedOn: number | undefined;
   let r = await callGemini(model, contents, apiKey, tuning);
   debug?.push(describe(model, r));
   if (isSwitchableStatus(r.status)) {
     const next = otherModel(model, primary, fallback);
     if (next !== model) {
       console.warn(`[zen] model ${model} returned ${r.status} — switching to ${next}`);
+      switchedOn = r.status;
       model = next;
       r = await callGemini(model, contents, apiKey, tuning);
       debug?.push(describe(model, r));
@@ -217,7 +219,7 @@ async function generate(
     throw new HttpError(502, "Zen couldn't answer that one. Try rephrasing.", { reason: 'empty', ...dbgExtra });
   }
 
-  const toWrite = preferenceToWrite({ startedWith: start, succeededWith: model, now });
+  const toWrite = preferenceToWrite({ startedWith: start, succeededWith: model, now, switchedOn });
   if (toWrite) await withTimeout(writeModelPreference(db, toWrite), 8_000, 'preference-write');
 
   const u = r.body.usageMetadata;

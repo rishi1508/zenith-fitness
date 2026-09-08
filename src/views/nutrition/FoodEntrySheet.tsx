@@ -73,7 +73,7 @@ function EntryForm({
       meal: slot,
       qty,
       unit: unitLabel,
-      basis: food.basis,
+      ...(food.basis ? { basis: food.basis } : {}),
       grams: Math.round(grams * 10) / 10,
       macros,
       at: entry?.at ?? new Date().toISOString(),

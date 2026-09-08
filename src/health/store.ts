@@ -127,6 +127,20 @@ function emptyActivityDay(date: string): ActivityDay {
   return { date, source: 'manual', updatedAt: new Date(0).toISOString() };
 }
 
+/** Firestore rejects `undefined` field values outright, and an optional field
+ *  that slipped through used to fail the whole day's write. Drop them. */
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((v) => stripUndefined(v)) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== undefined) out[k] = stripUndefined(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 function dayRef(kind: 'nutrition' | 'activity', date: string) {
   const uid = auth.currentUser?.uid;
   return uid ? doc(db, 'users', uid, kind, date) : null;
@@ -146,7 +160,7 @@ export function getNutritionDay(date: string): NutritionDay {
 }
 /** Cache + write-through to Firestore (fire-and-forget; offline writes are queued by the SDK). */
 export function saveNutritionDay(day: NutritionDay): void {
-  const stamped = { ...day, updatedAt: new Date().toISOString() };
+  const stamped = stripUndefined({ ...day, updatedAt: new Date().toISOString() });
   cacheDay(HEALTH_KEYS.NUTRITION_DAYS, stamped);
   const ref = dayRef('nutrition', day.date);
   if (ref) setDoc(ref, stamped).catch((e) => console.warn('[Health] nutrition write failed', e));
@@ -184,7 +198,7 @@ export function getActivityDay(date: string): ActivityDay {
   return cachedDays<ActivityDay>(HEALTH_KEYS.ACTIVITY_DAYS)[date] ?? emptyActivityDay(date);
 }
 export function saveActivityDay(day: ActivityDay): void {
-  const stamped = { ...day, updatedAt: new Date().toISOString() };
+  const stamped = stripUndefined({ ...day, updatedAt: new Date().toISOString() });
   cacheDay(HEALTH_KEYS.ACTIVITY_DAYS, stamped);
   const ref = dayRef('activity', day.date);
   if (ref) setDoc(ref, stamped).catch((e) => console.warn('[Health] activity write failed', e));
