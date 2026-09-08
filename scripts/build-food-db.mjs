@@ -371,6 +371,8 @@ function buildDishes(units) {
     return {
       id: `dish:${slug}`,
       name: d.name,
+      // Drinks are logged in millilitres: per100g then means per 100 ml.
+      ...(d.basis ? { basis: d.basis } : {}),
       aliases: d.aliases || [],
       source: 'dish',
       group: d.group,
