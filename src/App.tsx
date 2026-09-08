@@ -80,6 +80,7 @@ import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
 import { isAdmin } from './admin';
 import { levelForVolume } from './levels';
+import { recordBuddyInteraction } from './buddyAffinity';
 import { LevelUpModal } from './components/LevelUpModal';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
@@ -431,6 +432,8 @@ function App() {
   // When the host ends the session, every participant's app auto-saves their
   // in-progress workout so they don't lose what they logged.
   const finishWorkoutRef = useRef<((opts?: { skipValidation?: boolean; endSession?: boolean }) => void) | null>(null);
+  /** Session whose participants have already been credited with a shared workout. */
+  const creditedSessionsRef = useRef<string | null>(null);
   // Same ref pattern for saveActiveWorkout so the session-listener's
   // closure (which fires from inside the host-template effect) always
   // calls the latest function instead of an early-mount snapshot.
@@ -447,6 +450,14 @@ function App() {
       if (!s) {
         setSessionMode(null);
         return;
+      }
+      // Training together is the strongest "we actually interact" signal —
+      // credit every other participant once per session (src/buddyAffinity.ts).
+      if (s.status === 'active' && user && creditedSessionsRef.current !== activeSessionId) {
+        creditedSessionsRef.current = activeSessionId;
+        for (const uid of Object.keys(s.participants ?? {})) {
+          if (uid !== user.uid) recordBuddyInteraction(uid, 'session');
+        }
       }
       // Determine host vs. participant for the current user
       const iAmHost = !!user && s.hostUid === user.uid;
@@ -1423,6 +1434,11 @@ function App() {
             onOpenBuddies={() => navigateTo('buddies')}
             onOpenZen={openZen}
             onOpenNutrition={() => { setFoodNav((n) => ({ ...n, date: healthToday() })); navigateTo('nutrition'); }}
+            onOpenBuddy={(uid, name, photoURL) => {
+              recordBuddyInteraction(uid, 'profile');
+              setBuddyContext({ uid, name, photoURL });
+              navigateTo('buddy-profile');
+            }}
           />
         )}
         {view === 'train' && (
@@ -1655,10 +1671,12 @@ function App() {
             isDark={isDark}
             onBack={() => goBack()}
             onViewProfile={(uid, name, photoURL) => {
+              recordBuddyInteraction(uid, 'profile');
               setBuddyContext({ uid, name, photoURL });
               navigateTo('buddy-profile');
             }}
             onOpenChat={(uid, chatId, name, photoURL) => {
+              recordBuddyInteraction(uid, 'message');
               setBuddyContext({ uid, chatId, name, photoURL });
               navigateTo('buddy-chat');
             }}

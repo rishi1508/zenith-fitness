@@ -16,6 +16,7 @@ import { ZenCard } from '../zen';
 import { Card, Button, Chip, Sheet, SectionHeader, WeekDots, ListRow, H2, SUB, CAPTION } from '../../ui';
 import { NutritionRing } from '../nutrition';
 import { getTargets, subscribeHealth } from '../../health';
+import { rankByAffinity } from '../../buddyAffinity';
 import type { WeekDotState } from '../../ui';
 
 interface HomeTabViewProps {
@@ -31,6 +32,8 @@ interface HomeTabViewProps {
   onOpenBuddies: () => void;
   onOpenZen: (prompt?: string) => void;
   onOpenNutrition: () => void;
+  /** Opens one buddy's profile. Falls back to the buddies list when absent. */
+  onOpenBuddy?: (uid: string, name: string, photoURL?: string | null) => void;
 }
 
 function elapsedLabel(startedAt: string): string {
@@ -46,7 +49,7 @@ function elapsedLabel(startedAt: string): string {
 export function HomeTabView({
   theme, workouts, activeWorkout, showBuddies, onStartWorkout, onResumeWorkout, onDiscardWorkout,
   onOpenGymCheckin, onOpenGymJoin, onOpenBuddies, onOpenZen,
-  onOpenNutrition,
+  onOpenNutrition, onOpenBuddy,
 }: HomeTabViewProps) {
   const [hasTargets, setHasTargets] = useState(() => getTargets() != null);
   useEffect(() => subscribeHealth(() => setHasTargets(getTargets() != null)), []);
@@ -123,9 +126,14 @@ export function HomeTabView({
     let cancelled = false;
     const unsub = buddyService.listenToBuddies((rels) => {
       (async () => {
+        // Most-interacted first (src/buddyAffinity.ts), not whatever order the
+        // query happened to return.
+        const byUid = new Map(rels.map((r) => [r.users.find((u) => u !== user.uid) ?? r.users[0], r]));
+        const top = rankByAffinity([...byUid.keys()]).slice(0, 3);
         const rows = await Promise.all(
-          rels.slice(0, 2).map(async (r) => {
-            const otherUid = r.users.find((u) => u !== user.uid) ?? r.users[0];
+          top.map(async (uid) => {
+            const r = byUid.get(uid)!;
+            const otherUid = uid;
             const profile = await buddyService.getUserProfile(otherUid).catch(() => null);
             const name = profile?.displayName ?? r.userNames[otherUid] ?? 'Buddy';
             const sub = profile?.isWorkingOut
@@ -246,7 +254,7 @@ export function HomeTabView({
                 title={b.name}
                 subtitle={b.sub}
                 trailing={b.live ? <Chip on size="md">Live</Chip> : 'chevron'}
-                onClick={onOpenBuddies}
+                onClick={() => (onOpenBuddy ? onOpenBuddy(b.uid, b.name, b.photoURL) : onOpenBuddies())}
               />
             ))}
           </Card>

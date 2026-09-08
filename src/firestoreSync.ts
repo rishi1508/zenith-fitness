@@ -22,6 +22,7 @@ const STORAGE_TO_FIRESTORE: Record<string, string> = {
   zenith_custom_foods: 'customFoods',
   zenith_deload_weeks: 'deloadWeeks',
   zenith_level_seen: 'levelSeen',
+  zenith_buddy_affinity: 'buddyAffinity',
   zenith_prs: 'records',
   zenith_sound_settings: 'soundSettings',
   zenith_theme_settings: 'themeSettings',
