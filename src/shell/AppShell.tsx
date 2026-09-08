@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Settings, Users } from 'lucide-react';
 import { AppBar, TabBar, Sidebar, IconButton, TAB_BAR_HEIGHT } from '../ui';
@@ -73,6 +74,13 @@ export function AppShell({
   const items = hasGym ? TABS : TABS.filter((t) => t.id !== 'gym');
   const { title, eyebrow } = barContent(view, gymName, firstName);
 
+  // `main` is one persistent scroll container for every route, so without
+  // this a new screen inherits the previous screen's scrollTop — and with
+  // lazy chunks the browser's scroll anchoring lands you at the bottom of
+  // the page you just opened. Every navigation starts at the top.
+  const scrollRef = useRef<HTMLElement>(null);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [view]);
+
   const right =
     view === 'you' ? (
       <IconButton icon={Settings} label="Settings" onClick={onOpenSettings} />
@@ -108,8 +116,9 @@ export function AppShell({
         <GetAppBanner />
         {banner}
         <main
+          ref={scrollRef}
           className={`flex-1 overflow-y-auto overflow-x-hidden ${NO_PADDING_VIEWS.has(view) ? 'p-0' : 'px-5 pt-1'}`}
-          style={{ overscrollBehavior: 'none' }}
+          style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
         >
           {NO_PADDING_VIEWS.has(view) ? (
             children

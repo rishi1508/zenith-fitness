@@ -727,6 +727,12 @@ function App() {
   }, []);
 
   const startWorkout = async (template: WorkoutTemplate, sessionId?: string) => {
+    // Already running this session's workout — the lobby can call us again
+    // on a re-render; just show it instead of asking to discard it.
+    if (sessionId && activeWorkout?.sessionId === sessionId) {
+      navigateTo('active');
+      return;
+    }
     // If there's already an active (paused) workout, ask to discard it first
     if (activeWorkout) {
       if (!(await confirmDialog({ title: 'Discard current workout?', message: 'You have an active workout in progress. Discard it and start a new one?', confirmLabel: 'Discard', tone: 'danger' }))) {

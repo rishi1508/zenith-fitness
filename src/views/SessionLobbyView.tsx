@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, UserPlus, Play, Loader2, Dumbbell, Clock,
   Check, X, Users, Crown,
@@ -30,18 +30,31 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
   const subtleText = isDark ? 'text-zinc-400' : 'text-gray-500';
 
+  // `onSessionStart` builds the workout and navigates away, so it must fire
+  // EXACTLY once. Two things used to make it fire repeatedly: every snapshot
+  // while the session is active re-triggered it, and the parent passes a new
+  // arrow each render, which re-subscribed the listener (and an onSnapshot
+  // fires immediately on subscribe). Repeated calls landed on
+  // App.startWorkout with a workout already active, which asks "discard?" —
+  // so the session workout was never built and the user was left staring at
+  // an unrelated leftover workout.
+  const startedRef = useRef(false);
+  const onStartRef = useRef(onSessionStart);
+  useEffect(() => { onStartRef.current = onSessionStart; }, [onSessionStart]);
+
   // Listen to session in real-time
   useEffect(() => {
+    startedRef.current = false;
     const unsub = sessionService.listenToSession(sessionId, (s) => {
       setSession(s);
       setLoading(false);
-      // If session became active, notify parent
-      if (s && s.status === 'active') {
-        onSessionStart(s);
+      if (s && s.status === 'active' && !startedRef.current) {
+        startedRef.current = true;
+        onStartRef.current(s);
       }
     });
     return unsub;
-  }, [sessionId, onSessionStart]);
+  }, [sessionId]);
 
   // Load buddy list for inviting
   useEffect(() => {

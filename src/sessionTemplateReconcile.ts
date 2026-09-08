@@ -134,8 +134,14 @@ export function templateFromWorkout(workout: Workout): TemplateExercise[] {
   }));
 }
 
-/** Two TemplateExercise[] are equal for sync purposes if every entry
- *  matches by id, name, defaultSets, defaultReps, and supersetGroup. */
+/** Two TemplateExercise[] are equal for sync purposes if every entry matches
+ *  by id, name, defaultSets and supersetGroup.
+ *
+ *  `defaultReps` is deliberately NOT compared. The host's live template is
+ *  derived from their in-progress workout, where reps start at 0 and change
+ *  as they log — so including it made every snapshot look like a structural
+ *  change and ran the reconcile (which can delete a participant's unlogged
+ *  exercises) many times per session for no reason. */
 export function templatesEqual(
   a: TemplateExercise[] | undefined,
   b: TemplateExercise[] | undefined,
@@ -148,7 +154,6 @@ export function templatesEqual(
     if (x.exerciseId !== y.exerciseId) return false;
     if (x.exerciseName !== y.exerciseName) return false;
     if (x.defaultSets !== y.defaultSets) return false;
-    if (x.defaultReps !== y.defaultReps) return false;
     if ((x.supersetGroup || null) !== (y.supersetGroup || null)) return false;
   }
   return true;
