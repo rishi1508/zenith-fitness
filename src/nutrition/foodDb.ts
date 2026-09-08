@@ -49,6 +49,12 @@ interface Searchable extends FoodIndexEntry {
   /** Lowercased, punctuation-free name + aliases, and their word starts. */
   haystack: string[];
   words: string[];
+  /** The name before the first comma or bracket — "milk" for
+   *  "Milk, whole, Cow", "rice" for "Rice, raw, milled", "curd" for
+   *  "Curd (dahi)". Databases qualify plain foods after a comma, so this is
+   *  what makes a one-word search land on the plain food rather than on a
+   *  dish that merely starts with the same word ("Milk barfi"). */
+  head: string;
 }
 
 let indexPromise: Promise<FoodIndexEntry[]> | null = null;
@@ -73,7 +79,12 @@ export function loadFoodIndex(): Promise<FoodIndexEntry[]> {
         }));
         searchable = entries.map((e) => {
           const haystack = [normalize(e.name), ...e.aliases.map(normalize)].filter(Boolean);
-          return { ...e, haystack, words: haystack.flatMap((h) => h.split(' ')) };
+          return {
+            ...e,
+            haystack,
+            words: haystack.flatMap((h) => h.split(' ')),
+            head: normalize(e.name.split(/[,(]/)[0]),
+          };
         });
         return entries;
       })
@@ -85,6 +96,28 @@ export function loadFoodIndex(): Promise<FoodIndexEntry[]> {
 // --------------------------------------------------------------------- search
 
 const SOURCE_RANK: Record<FoodSource, number> = { dish: 60, ifct: 40, user: 30, off: 20, usda: 0 };
+
+/**
+ * IFCT is a composition table of RAW ingredients. "Dal, bengal gram" and
+ * "Rice, raw, milled" are the right answer for a lab and the wrong answer for
+ * someone logging lunch, so entries from these groups sit below prepared
+ * foods. Dairy, fruit, vegetables, eggs, meat and fish are left alone — those
+ * rows are what people actually eat.
+ */
+const RAW_STAPLE_GROUPS = new Set([
+  'cereals and millets', 'grain legumes', 'condiments and spices',
+  'edible oils and fats', 'sugars',
+]);
+const RAW_PENALTY = 200;
+
+function isRawStaple(entry: Searchable): boolean {
+  return entry.source === 'ifct' && RAW_STAPLE_GROUPS.has((entry.group ?? '').toLowerCase());
+}
+
+/** Bonus for a name whose head (before the qualifier comma) IS the query —
+ *  enough to lift a plain food over a dish that starts with the same word,
+ *  not enough to lift a USDA row over the curated Indian dish. */
+const HEAD_EXACT_BONUS = 45;
 
 function scoreEntry(entry: Searchable, query: string, tokens: string[]): number {
   let best = 0;
@@ -104,6 +137,9 @@ function scoreEntry(entry: Searchable, query: string, tokens: string[]): number 
     if (all) best = 380;
   }
   if (!best) return 0;
+  // "milk" should find milk, not "Milk barfi": a food whose name head IS the
+  // query beats one that merely starts with it.
+  if (entry.head === query) best += HEAD_EXACT_BONUS;
   return best + SOURCE_RANK[entry.source] - Math.min(entry.name.length, 60) * 0.5;
 }
 
@@ -127,8 +163,11 @@ export function searchFoods(query: string, opts: SearchOptions = {}): FoodIndexE
   for (const entry of searchable) {
     let score = scoreEntry(entry, q, tokens);
     if (!score) continue;
+    const known = favourites.has(entry.id) || recents.has(entry.id);
     if (favourites.has(entry.id)) score += 150;
     if (recents.has(entry.id)) score += 120;
+    // Raw ingredients sink — unless this user actually logs them.
+    if (!known && isRawStaple(entry)) score -= RAW_PENALTY;
     hits.push({ entry, score });
   }
   hits.sort((a, b) => b.score - a.score || a.entry.name.length - b.entry.name.length || a.entry.name.localeCompare(b.entry.name));

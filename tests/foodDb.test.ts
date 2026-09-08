@@ -118,6 +118,11 @@ const FIXTURE: IndexRow[] = [
   ['usda:3', 'Beans, mature, dal', [], 'Legumes and Legume Products', 'usda', 120],
   ['usda:2', 'Chicken, breast, boneless, skinless, raw', [], 'Poultry Products', 'usda', 112.2],
   ['dish:chicken-biryani', 'Chicken biryani', ['murgh biryani', 'hyderabadi biryani'], 'Rice dishes', 'dish', 183],
+  // Plain-vs-dish ranking cases (the "milk finds Milk barfi" bug).
+  ['dish:milk-barfi', 'Milk barfi', [], 'Sweets', 'dish', 380],
+  ['ifct:D001', 'Milk, whole, Cow', ['doodh'], 'Milk and Milk Products', 'ifct', 67],
+  ['dish:curd-rice', 'Curd rice', [], 'Rice dishes', 'dish', 98],
+  ['dish:curd', 'Curd (dahi)', ['yoghurt'], 'Dairy', 'dish', 60],
 ];
 
 const SHARD: FoodItem[] = [{
@@ -145,7 +150,11 @@ describe('searchFoods', () => {
   it('puts dishes and IFCT ahead of USDA on an equal match', () => {
     const sources = searchFoods('dal').map((r) => r.source);
     expect(sources.indexOf('usda')).toBeGreaterThan(sources.indexOf('dish'));
-    expect(sources.indexOf('usda')).toBeGreaterThan(sources.indexOf('ifct'));
+    // IFCT beats USDA when the row is something people eat as-is. Raw staples
+    // ("Dal, bengal gram") are the deliberate exception — see the raw-staple
+    // test below — so this uses a dairy row instead.
+    const milk = searchFoods('milk').map((r) => r.source);
+    expect(milk.indexOf('ifct')).toBeLessThan(milk.indexOf('usda') === -1 ? Infinity : milk.indexOf('usda'));
   });
 
   it('matches aliases and multi-word prefixes', () => {
@@ -178,5 +187,18 @@ describe('searchFoods', () => {
     const food = await getFood('dish:dal-tadka');
     expect(food?.per100g.protein).toBe(5.4);
     expect(await getFood('dish:nope')).toBeNull();
+  });
+
+  it('puts the plain food above a dish that merely starts with the word', () => {
+    expect(searchFoods('milk')[0].name).toBe('Milk, whole, Cow');
+    expect(searchFoods('curd')[0].name).toBe('Curd (dahi)');
+  });
+
+  it('keeps raw ingredients out of the way unless the user logs them', () => {
+    const names = searchFoods('dal').map((r) => r.name);
+    expect(names[0]).toBe('Dal tadka');
+    expect(names.indexOf('Dal, bengal gram')).toBeGreaterThan(names.indexOf('Dal makhani'));
+    // …but a raw staple the user actually logs comes straight back to the top.
+    expect(searchFoods('dal', { boost: { recentIds: ['ifct:B001'] } })[0].id).toBe('ifct:B001');
   });
 });
