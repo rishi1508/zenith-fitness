@@ -195,3 +195,19 @@ Owner testing on Android produced 14 issues; all are addressed. Notes worth keep
 - **Experience levels**: `src/levels.ts`, lifetime volume → level, step 1.5 t then 2.5 t then ×1.35.
   `zenith_level_seen` is seeded silently on first run so nobody is congratulated for old history.
 - **Buddy ordering**: `src/buddyAffinity.ts`, local synced tally with a 30-day half-life. No new reads.
+
+## 12. "Only shows the first exercise" — the actual cause (3.18.4, 2026-09-09)
+Two different bugs wore the same symptom, which is why the first fix did not land.
+1. **3.18.2** fixed `SessionLobbyView` calling `onSessionStart` on every snapshot (real, but only
+   affected group sessions).
+2. **3.18.4** fixed the one that bit him: **the active workout had no scroll region.** It is the only
+   view rendered outside `AppShell`, and the app root is `h-dvh flex flex-col overflow-hidden`. A
+   six-exercise workout is ~3 500 px inside a 915 px box, so everything below the first exercise was
+   clipped with no way to scroll. Reproduced headlessly (`scratchpad/repro_active.mjs`) before fixing:
+   all six exercises were in the DOM and in localStorage, only the container was wrong.
+   **Rule: any view rendered outside AppShell must supply its own `overflow-y-auto` main.**
+   `scratchpad/qa_318.mjs` now asserts the active workout scrolls to its last exercise.
+
+Connectivity: `useOnlineStatus` gave Firestore a single 4 s attempt; a cold channel on mobile data is
+often slower, so the blocking gate appeared on nearly every launch. Now two attempts at 8 s each, and a
+`permission-denied` still counts as reachable.
