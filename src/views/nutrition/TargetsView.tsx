@@ -3,7 +3,8 @@ import { ArrowLeft, Scale, User } from 'lucide-react';
 import type { ActivityLevel, HealthProfile, NutritionTargets, PhaseGoal } from '../../types';
 import * as storage from '../../storage';
 import {
-  getHealthProfile, getPhaseSettings, getTargets, setHealthProfile, setTargets, subscribeHealth,
+  getHealthProfile, getPhaseSettings, getTargets, localDateISO, setHealthProfile, setPhaseSettings,
+  setTargets, subscribeHealth,
 } from '../../health/store';
 import { computeTargets, estimateBmr, estimateMaintenanceKcal } from '../../health/targets';
 import {
@@ -28,6 +29,12 @@ const ACTIVITY_LABEL: Record<ActivityLevel, string> = {
 const ACTIVITY_LEVELS = Object.keys(ACTIVITY_LABEL) as ActivityLevel[];
 
 const GOAL_LABEL: Record<PhaseGoal, string> = { bulk: 'Bulk', cut: 'Cut', maintain: 'Maintain' };
+const GOALS: { value: PhaseGoal; label: string }[] = [
+  { value: 'cut', label: 'Cut' }, { value: 'maintain', label: 'Maintain' }, { value: 'bulk', label: 'Bulk' },
+];
+/** Weekly rate presets per goal, as % of body weight. */
+const RATES: Record<PhaseGoal, number[]> = { cut: [-0.5, -0.75, -1], maintain: [0], bulk: [0.25, 0.5] };
+const DEFAULT_RATE: Record<PhaseGoal, number> = { cut: -0.5, maintain: 0, bulk: 0.25 };
 
 /**
  * Daily calorie and macro targets (docs/HEALTH_SPEC.md §3). Auto derives
@@ -70,6 +77,18 @@ export function TargetsView({ onBack }: TargetsViewProps) {
     onBack();
   };
 
+  /** The goal lives in phase settings so this screen and Weight & phase never
+   *  disagree; changing it here recomputes the numbers immediately. */
+  const applyGoal = (nextGoal: PhaseGoal, nextRate = DEFAULT_RATE[nextGoal]) => {
+    const existing = getPhaseSettings();
+    setPhaseSettings({
+      goal: nextGoal,
+      targetRatePctPerWeek: nextRate,
+      startDate: existing && existing.goal === nextGoal ? existing.startDate : localDateISO(),
+      startWeightKg: existing && existing.goal === nextGoal ? existing.startWeightKg : (weightKg || undefined),
+    });
+  };
+
   return (
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-3">
@@ -102,8 +121,35 @@ export function TargetsView({ onBack }: TargetsViewProps) {
             <SummaryRow
               icon={<Scale className="w-[18px] h-[18px]" strokeWidth={1.75} />}
               title="Body weight"
-              subtitle={weightKg > 0 ? `${weightKg} kg · ${GOAL_LABEL[goal]} at ${ratePct > 0 ? '+' : ''}${ratePct} %/week` : 'Log a weigh-in first'}
+              subtitle={weightKg > 0 ? `${weightKg} kg` : 'Log a weigh-in first'}
             />
+          </Card>
+
+          <Card>
+            <span className={CAPTION}>Goal</span>
+            <div className="mt-2">
+              <SegmentedControl
+                options={GOALS}
+                value={goal}
+                onChange={(g) => applyGoal(g)}
+                label="Calorie goal"
+              />
+            </div>
+            {RATES[goal].length > 1 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {RATES[goal].map((r) => (
+                  <Chip key={r} on={r === ratePct} onClick={() => applyGoal(goal, r)}>
+                    {r > 0 ? '+' : ''}{r} %/week
+                  </Chip>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-subtle mt-2">
+              {goal === 'maintain'
+                ? 'Eat at maintenance — the target tracks your weight, not a deficit.'
+                : `${GOAL_LABEL[goal]} at ${ratePct > 0 ? '+' : ''}${ratePct} %/week`
+                  + (weightKg > 0 ? ` ≈ ${ratePct > 0 ? '+' : '−'}${Math.abs((ratePct / 100) * weightKg).toFixed(2)} kg a week.` : '.')}
+            </p>
           </Card>
 
           <Card>

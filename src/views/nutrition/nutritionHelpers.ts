@@ -8,7 +8,8 @@ import type {
 } from '../../types';
 import { ACTIVITY_MULTIPLIER } from '../../health/targets';
 
-export const MEALS: MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snacks'];
+// Chronological, the way people eat: snacks sit between lunch and dinner.
+export const MEALS: MealSlot[] = ['breakfast', 'lunch', 'snacks', 'dinner'];
 
 export const MEAL_LABEL: Record<MealSlot, string> = {
   breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', snacks: 'Snacks',
@@ -74,9 +75,9 @@ export function removeEntry(day: NutritionDay, entryId: string): NutritionDay {
   return { ...day, entries: day.entries.filter((e) => e.id !== entryId) };
 }
 
-/** 0.25 steps for household units, 5 g steps for grams. Never below one step. */
+/** 0.25 steps for household units, 5 g/ml steps for the raw unit. Never below one step. */
 export function stepQty(qty: number, unitLabel: string, dir: 1 | -1): number {
-  const step = unitLabel === 'g' ? 5 : 0.25;
+  const step = unitLabel === 'g' || unitLabel === 'ml' ? 5 : 0.25;
   const next = Math.round((qty + dir * step) / step) * step;
   return next < step ? step : Math.round(next * 100) / 100;
 }
@@ -101,27 +102,39 @@ export function foodFromEntry(entry: FoodEntry): FoodItem {
     name: entry.name,
     source: entry.source,
     approx: entry.approx,
+    basis: entry.basis,
     per100g: {
       kcal: m.kcal * k, protein: m.protein * k, carbs: m.carbs * k, fat: m.fat * k,
       fiber: m.fiber != null ? m.fiber * k : undefined,
     },
-    units: entry.unit === 'g' ? [] : [{ label: entry.unit, grams: unitGrams }],
+    units: entry.unit === 'g' || entry.unit === 'ml' ? [] : [{ label: entry.unit, grams: unitGrams }],
   };
 }
 
-/** `"katori 150, piece 40"` → food units. Ignores malformed pairs. */
+/**
+ * Free-text serving list → food units. Tolerant of how people actually write
+ * them: `"katori 150"`, `"1 glass = 250 ml"`, `"cup 250ml"`, `"roti - 40g"`.
+ * A leading count ("1 glass") is dropped, and a trailing g/ml/gm/gram unit is
+ * ignored (the food's own basis decides what the number means).
+ */
 export function parseUnits(text: string): FoodUnit[] {
   return text
-    .split(',')
+    .split(/[,\n;]/)
     .map((part) => part.trim())
     .filter(Boolean)
     .map((part) => {
-      const m = /^(.+?)\s+(\d+(?:\.\d+)?)$/.exec(part);
+      const m = /^(?:\d+(?:\.\d+)?\s*)?(.+?)\s*(?:=|-|:)?\s*(\d+(?:\.\d+)?)\s*(?:g|gm|gms|gram|grams|ml|millilitre|millilitres)?$/i.exec(part);
       if (!m) return null;
+      const label = m[1].replace(/[=:-]\s*$/, '').trim();
       const grams = Number(m[2]);
-      return grams > 0 ? { label: m[1].trim(), grams } : null;
+      return label && grams > 0 ? { label, grams } : null;
     })
     .filter((u): u is FoodUnit => u !== null);
+}
+
+/** The word this food measures its raw amount in — "ml" for drinks, else "g". */
+export function basisLabel(food: { basis?: 'g' | 'ml' } | null | undefined): 'g' | 'ml' {
+  return food?.basis === 'ml' ? 'ml' : 'g';
 }
 
 const SOURCE_TEXT: Record<FoodSource, string> = {

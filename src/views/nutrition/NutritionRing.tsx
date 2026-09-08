@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { NutritionDay, NutritionTargets } from '../../types';
 import { getNutritionDay, getTargets, localDateISO, subscribeHealth, sumMacros } from '../../health/store';
-import { CAPTION, STAT } from '../../ui';
+import { CAPTION } from '../../ui';
 
 export interface NutritionRingProps {
   /** Local date (YYYY-MM-DD). Defaults to today. Ignored when `day` is given. */
@@ -56,9 +56,15 @@ export function NutritionRing({
   const over = targetKcal != null && kcal > targetKcal;
   const left = targetKcal != null ? targetKcal - kcal : null;
 
-  const stroke = Math.max(8, Math.round(size * 0.085));
+  const stroke = Math.max(6, Math.round(size * 0.085));
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
+  // The three stacked lines only fit inside a big ring. Small ones (the Home
+  // row) show the number and a compact "/target" and drop the rest, instead
+  // of overlapping three lines of text inside a 64px circle.
+  const compact = size < 104;
+  const numberSize = Math.max(15, Math.round(size * 0.22));
+  const captionSize = Math.max(9, Math.round(size * 0.085));
 
   const body = (
     <div className={`flex flex-col items-center gap-3 ${className}`}>
@@ -76,13 +82,18 @@ export function NutritionRing({
             style={{ transition: 'stroke-dasharray .3s ease' }}
           />
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`${STAT} ${over ? 'text-danger' : 'text-text'}`}>{kcal}</span>
-          <span className="text-[11px] leading-4 text-muted">
-            {targetKcal ? `of ${targetKcal} kcal` : 'kcal'}
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center leading-none">
+          <span
+            className={`font-display font-bold tabular-nums tracking-[-0.02em] ${over ? 'text-danger' : 'text-text'}`}
+            style={{ fontSize: numberSize, lineHeight: 1.05 }}
+          >
+            {kcal}
           </span>
-          {left != null && (
-            <span className="text-[11px] leading-4 font-semibold text-subtle">
+          <span className="text-muted mt-0.5" style={{ fontSize: captionSize, lineHeight: 1.2 }}>
+            {targetKcal ? (compact ? `/ ${targetKcal}` : `of ${targetKcal} kcal`) : 'kcal'}
+          </span>
+          {!compact && left != null && (
+            <span className="font-semibold text-subtle mt-0.5" style={{ fontSize: captionSize, lineHeight: 1.2 }}>
               {left >= 0 ? `${left} left` : `${-left} over`}
             </span>
           )}

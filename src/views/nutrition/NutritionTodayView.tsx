@@ -12,7 +12,7 @@ import { NutritionRing } from './NutritionRing';
 import { FoodEntrySheet } from './FoodEntrySheet';
 import {
   MEALS, MEAL_LABEL, canGoForward, copyDayEntries, dayLabel, entriesForMeal, foodFromEntry,
-  formatQty, mealKcal, removeEntry, shiftDate,
+  basisLabel, formatQty, mealKcal, removeEntry, shiftDate,
 } from './nutritionHelpers';
 
 export interface NutritionTodayViewProps {
@@ -260,7 +260,7 @@ function EntryRow({ entry, onOpen, onLongPress }: {
         <span className="text-[15px] leading-[22px] font-semibold text-text truncate">{entry.name}</span>
         <span className="text-[13px] leading-[18px] text-muted truncate">
           {formatQty(entry.qty)} {entry.unit}
-          {entry.unit !== 'g' && entry.grams > 0 ? ` · ${Math.round(entry.grams)} g` : ''}
+          {entry.unit !== basisLabel(entry) && entry.grams > 0 ? ` · ${Math.round(entry.grams)} ${basisLabel(entry)}` : ''}
           {` · ${Math.round(entry.macros.kcal)} kcal`}
         </span>
       </span>

@@ -5,9 +5,12 @@ import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthContext';
 import type { FoodEntry, FoodItem, FoodSource, Macros, MealSlot } from '../../types';
 import {
-  getCustomFoods, getFavouriteFoodIds, getNutritionDay, getRecentFoods,
+  getCustomFoods, getFavouriteFoodIds, getNutritionDay, getRecentFoods, replaceCachedFood,
   saveCustomFood, saveNutritionDay, subscribeHealth, toggleFavouriteFood,
 } from '../../health/store';
+import { isAdmin } from '../../admin';
+import { FoodForm } from './FoodForm';
+import type { FoodFormValues } from './FoodForm';
 import { getFood, loadFoodIndex, lookupBarcode, OFF_ATTRIBUTION, searchFoods } from '../../nutrition';
 import {
   Button, Card, EmptyState, IconButton, SegmentedControl, Sheet, Skeleton, useToast,
@@ -15,7 +18,7 @@ import {
 } from '../../ui';
 import { BarcodeScanView } from './BarcodeScanView';
 import { FoodEntrySheet } from './FoodEntrySheet';
-import { MEAL_LABEL, parseUnits, sourceLabel, upsertEntry } from './nutritionHelpers';
+import { MEAL_LABEL, basisLabel, sourceLabel, upsertEntry } from './nutritionHelpers';
 
 export interface FoodSearchViewProps {
   /** Diary day the entry lands on (YYYY-MM-DD). */
@@ -35,6 +38,7 @@ interface SearchRow {
   id: string;
   name: string;
   source: FoodSource;
+  basis?: 'g' | 'ml';
   group?: string;
   brand?: string;
   approx?: boolean;
@@ -77,8 +81,15 @@ function publishSharedFood(item: FoodItem): void {
     createdBy: item.createdBy, createdByName: item.createdByName ?? null, createdAt: item.createdAt,
   };
   if (item.brand) payload.brand = item.brand;
-  setDoc(doc(db, 'sharedFoods', item.id), payload)
+  if (item.basis) payload.basis = item.basis;
+  setDoc(doc(db, 'sharedFoods', item.id), payload, { merge: true })
     .catch((e) => console.warn('[Nutrition] sharedFoods publish failed', e));
+}
+
+/** A member may correct the foods they created; an admin may correct any of
+ *  them (rules mirror this on `sharedFoods`). */
+function canEditFood(food: FoodItem | null, uid: string | undefined): boolean {
+  return !!food && !!uid && food.source === 'user' && (food.createdBy === uid || isAdmin(uid));
 }
 
 /**
@@ -102,6 +113,7 @@ export function FoodSearchView({ date, meal, onBack, onOpenScan }: FoodSearchVie
   const [selected, setSelected] = useState<FoodItem | null>(null);
   const [sheetNote, setSheetNote] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<FoodItem | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -192,6 +204,7 @@ export function FoodSearchView({ date, meal, onBack, onOpenScan }: FoodSearchVie
         <FoodEntrySheet
           open={!!selected} onClose={() => setSelected(null)}
           food={selected} date={date} meal={meal} note={sheetNote} onSaved={afterAdd}
+          onEditFood={canEditFood(selected, user?.uid) ? (f) => { setSelected(null); setEditing(f); } : undefined}
         />
       </>
     );
@@ -269,17 +282,54 @@ export function FoodSearchView({ date, meal, onBack, onOpenScan }: FoodSearchVie
         food={selected} date={date} meal={meal} note={sheetNote} onSaved={afterAdd}
       />
 
-      {createOpen && <CreateFoodSheet
+      {createOpen && <FoodSheet
+        title="Create food"
+        submitLabel="Create and log"
+        createdBy={user?.uid}
         onClose={() => setCreateOpen(false)}
-        onCreated={(item) => {
+        onSubmit={(values) => {
+          const item: FoodItem = {
+            id: `user:${crypto.randomUUID()}`,
+            source: 'user',
+            name: values.name,
+            brand: values.brand,
+            basis: values.basis,
+            per100g: values.per100g,
+            units: values.units,
+            createdBy: user!.uid,
+            createdByName: user?.displayName ?? undefined,
+            createdAt: new Date().toISOString(),
+          };
           saveCustomFood(item);
           publishSharedFood(item);
           setCreateOpen(false);
           setSheetNote(undefined);
+          showToast(`Created ${item.name}.`);
           setSelected(item);
         }}
+      />}
+
+      {editing && <FoodSheet
+        title="Edit food"
+        submitLabel="Save changes"
+        initial={editing}
         createdBy={user?.uid}
-        createdByName={user?.displayName ?? undefined}
+        onClose={() => setEditing(null)}
+        onSubmit={(values) => {
+          const updated: FoodItem = {
+            ...editing,
+            name: values.name,
+            brand: values.brand,
+            basis: values.basis,
+            per100g: values.per100g,
+            units: values.units,
+          };
+          replaceCachedFood(updated);
+          publishSharedFood(updated);
+          setEditing(null);
+          showToast(`Updated ${updated.name}.`);
+          setSelected(updated);
+        }}
       />}
 
       {quickOpen && <QuickAddSheet
@@ -305,7 +355,7 @@ function ResultRow({ row, favourite, onPick, onToggleFavourite }: {
         <span className="text-[15px] leading-[22px] font-semibold text-text truncate w-full">{row.name}</span>
         <span className="text-[13px] leading-[18px] text-muted truncate w-full">
           {sourceLabel(row.source, { brand: row.brand, approx: row.approx })}
-          {kcal != null && ` · ${Math.round(kcal)} kcal/100 g`}
+          {kcal != null && ` · ${Math.round(kcal)} kcal/100 ${basisLabel(row)}`}
         </span>
       </button>
       <button
@@ -336,83 +386,36 @@ function NumField({ label, value, onChange, suffix }: {
   );
 }
 
-/** Mounted only while open, so the fields start empty every time. */
-function CreateFoodSheet({ onClose, onCreated, createdBy, createdByName }: {
-  onClose: () => void;
-  onCreated: (item: FoodItem) => void;
+/** Create/edit wrapper around the shared `FoodForm`. Mounted only while open,
+ *  so the fields seed once from `initial` and no reset effect is needed.
+ *  `busy` blocks the double-taps that used to create the same food twice. */
+function FoodSheet({ title, submitLabel, initial, createdBy, onClose, onSubmit }: {
+  title: string;
+  submitLabel: string;
+  initial?: FoodItem;
   createdBy?: string;
-  createdByName?: string;
+  onClose: () => void;
+  onSubmit: (values: FoodFormValues) => void;
 }) {
-  const [name, setName] = useState('');
-  const [brand, setBrand] = useState('');
-  const [kcal, setKcal] = useState('');
-  const [protein, setProtein] = useState('');
-  const [carbs, setCarbs] = useState('');
-  const [fat, setFat] = useState('');
-  const [fiber, setFiber] = useState('');
-  const [unitsText, setUnitsText] = useState('');
-
-  const num = (v: string) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
-  const valid = name.trim().length > 1 && Number(kcal) > 0 && !!createdBy;
-
-  const submit = () => {
-    if (!valid || !createdBy) return;
-    const units = parseUnits(unitsText);
-    onCreated({
-      id: `user:${crypto.randomUUID()}`,
-      name: name.trim(),
-      brand: brand.trim() || undefined,
-      source: 'user',
-      per100g: {
-        kcal: num(kcal), protein: num(protein), carbs: num(carbs), fat: num(fat),
-        fiber: fiber.trim() ? num(fiber) : undefined,
-      },
-      units: units.length ? units : [{ label: 'serving', grams: 100 }],
-      createdBy,
-      createdByName,
-      createdAt: new Date().toISOString(),
-    });
-  };
-
+  const [busy, setBusy] = useState(false);
   return (
-    <Sheet open onClose={onClose} title="Create food">
-      <p className={SUB}>Values per 100 g. Everyone gets to use what you add, so keep it honest.</p>
-      <label className="flex flex-col gap-1">
-        <span className={CAPTION}>Name</span>
-        <input
-          value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Mom's rajma"
-          className="h-11 px-3 rounded-control border border-border bg-surface-2 text-text placeholder:text-subtle text-sm outline-none focus:border-accent/50"
-        />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className={CAPTION}>Brand (optional)</span>
-        <input
-          value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="e.g. Amul"
-          className="h-11 px-3 rounded-control border border-border bg-surface-2 text-text placeholder:text-subtle text-sm outline-none focus:border-accent/50"
-        />
-      </label>
-      <div className="grid grid-cols-2 gap-2">
-        <NumField label="Calories" suffix="kcal" value={kcal} onChange={setKcal} />
-        <NumField label="Protein" suffix="g" value={protein} onChange={setProtein} />
-        <NumField label="Carbs" suffix="g" value={carbs} onChange={setCarbs} />
-        <NumField label="Fat" suffix="g" value={fat} onChange={setFat} />
-        <NumField label="Fibre" suffix="g" value={fiber} onChange={setFiber} />
-      </div>
-      <label className="flex flex-col gap-1">
-        <span className={CAPTION}>Units (optional)</span>
-        <input
-          value={unitsText} onChange={(e) => setUnitsText(e.target.value)} placeholder="katori 150, piece 40"
-          className="h-11 px-3 rounded-control border border-border bg-surface-2 text-text placeholder:text-subtle text-sm outline-none focus:border-accent/50"
-        />
-        <span className="text-xs text-subtle">Label and grams, comma separated. Grams is always available.</span>
-      </label>
-      {!createdBy && <p className="text-xs text-danger">Sign in to create a food.</p>}
-      <Button variant="primary" size="lg" full disabled={!valid} onClick={submit}>Create and log</Button>
+    <Sheet open onClose={onClose} title={title}>
+      {!createdBy && <p className="text-xs text-danger">Sign in to add or edit a food.</p>}
+      <FoodForm
+        initial={initial}
+        submitLabel={submitLabel}
+        busy={busy || !createdBy}
+        onSubmit={(values) => {
+          if (busy || !createdBy) return;
+          setBusy(true);
+          onSubmit(values);
+        }}
+      />
     </Sheet>
   );
 }
 
-/** Mounted only while open — see `CreateFoodSheet`. */
+/** Mounted only while open — see `FoodSheet`. */
 function QuickAddSheet({ onClose, meal, onAdd }: {
   onClose: () => void; meal: MealSlot; onAdd: (entry: FoodEntry) => void;
 }) {

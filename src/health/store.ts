@@ -92,6 +92,21 @@ export function saveCustomFood(item: FoodItem): void {
   const next = [item, ...getCustomFoods().filter((f) => f.id !== item.id)];
   writeSynced(HEALTH_KEYS.CUSTOM_FOODS, next);
 }
+/** Replaces a food wherever it is already cached (own foods, recents) after an
+ *  edit. Unlike `saveCustomFood` it never adopts a food the user does not have
+ *  — an admin correcting somebody else's entry keeps their own list clean. */
+export function replaceCachedFood(item: FoodItem): void {
+  const custom = getCustomFoods();
+  if (custom.some((f) => f.id === item.id)) {
+    writeSynced(HEALTH_KEYS.CUSTOM_FOODS, custom.map((f) => (f.id === item.id ? item : f)));
+  }
+  const recents = getRecentFoods();
+  if (recents.some((f) => f.id === item.id)) {
+    writeSynced(HEALTH_KEYS.RECENTS, recents.map((f) => (f.id === item.id ? item : f)));
+  }
+  notify();
+}
+
 export function deleteCustomFood(id: string): void {
   writeSynced(HEALTH_KEYS.CUSTOM_FOODS, getCustomFoods().filter((f) => f.id !== id));
 }

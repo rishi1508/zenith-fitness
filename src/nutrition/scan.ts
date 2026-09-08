@@ -70,6 +70,11 @@ function resolveEndpoint(): string {
   return '/api/foodscan';
 }
 
+/** Milliseconds before we give up on the route. The function itself caps at
+ *  60 s; without a client deadline a stalled connection left the UI spinning
+ *  on "Analysing your plate…" forever. */
+const SCAN_TIMEOUT_MS = 75_000;
+
 function loadImage(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
@@ -80,27 +85,97 @@ function loadImage(blob: Blob): Promise<HTMLImageElement> {
   });
 }
 
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result);
+      resolve(result.slice(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(new ScanError('image', "That photo couldn't be read. Try again."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try { canvas.toBlob((b) => resolve(b), 'image/jpeg', quality); }
+    catch { resolve(null); }
+  });
+}
+
 /**
- * Downscales to `MAX_IMAGE_PX` on the long edge and encodes JPEG, dropping
- * quality until the base64 fits the route's 700 KB cap.
+ * Draws the photo into a canvas no larger than `maxPx` on the long edge.
+ *
+ * Phone cameras hand us 12 MP JPEGs. Decoding one at full size costs ~50 MB
+ * of bitmap, and doing that inside an Android WebView — while the original
+ * File and a preview <img> are also live — is what made the scan kill the
+ * app. `createImageBitmap` with resize options decodes straight to the target
+ * size, so the full-size bitmap never exists; the <img> path is the fallback
+ * for browsers without it.
  */
-export async function downscaleToJpegBase64(blob: Blob, maxPx = MAX_IMAGE_PX): Promise<string> {
+async function drawDownscaled(blob: Blob, maxPx: number): Promise<HTMLCanvasElement> {
+  const canvas = document.createElement('canvas');
+  const draw = (w: number, h: number, src: CanvasImageSource) => {
+    canvas.width = Math.max(1, Math.round(w));
+    canvas.height = Math.max(1, Math.round(h));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new ScanError('image', "This device couldn't process the photo.");
+    ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+  };
+
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const probe = await createImageBitmap(blob);
+      const scale = Math.min(1, maxPx / Math.max(probe.width, probe.height));
+      const w = probe.width * scale;
+      const h = probe.height * scale;
+      probe.close?.();
+      const bitmap = await createImageBitmap(blob, {
+        resizeWidth: Math.max(1, Math.round(w)),
+        resizeHeight: Math.max(1, Math.round(h)),
+        resizeQuality: 'medium',
+      });
+      draw(bitmap.width, bitmap.height, bitmap);
+      bitmap.close?.();
+      return canvas;
+    } catch {
+      // Fall through to the <img> path (some WebViews reject resize options).
+    }
+  }
+
   const img = await loadImage(blob);
   const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new ScanError('image', "This device couldn't process the photo.");
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  draw(img.naturalWidth * scale, img.naturalHeight * scale, img);
+  return canvas;
+}
 
-  let base64 = '';
+/**
+ * Downscales to `MAX_IMAGE_PX` on the long edge and encodes JPEG, dropping
+ * quality until the base64 fits the route's 700 KB cap. Returns the encoded
+ * bytes AND the compressed blob, so the caller can preview the small copy
+ * instead of decoding the original a second time.
+ */
+export async function prepareScanImage(
+  blob: Blob,
+  maxPx = MAX_IMAGE_PX,
+): Promise<{ base64: string; preview: Blob }> {
+  const canvas = await drawDownscaled(blob, maxPx);
+  let last: { base64: string; preview: Blob } | null = null;
   for (const quality of JPEG_QUALITIES) {
-    base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1] ?? '';
-    if (base64.length <= MAX_IMAGE_B64_BYTES) return base64;
+    const out = await canvasToBlob(canvas, quality);
+    if (!out) break;
+    const base64 = await blobToBase64(out);
+    last = { base64, preview: out };
+    if (base64.length <= MAX_IMAGE_B64_BYTES) return last;
   }
-  if (!base64) throw new ScanError('image', "This device couldn't process the photo.");
+  if (!last) throw new ScanError('image', "This device couldn't process the photo.");
   throw new ScanError('image', 'That photo is too large. Try a closer shot.');
+}
+
+/** Back-compat wrapper — the base64 alone. */
+export async function downscaleToJpegBase64(blob: Blob, maxPx = MAX_IMAGE_PX): Promise<string> {
+  return (await prepareScanImage(blob, maxPx)).base64;
 }
 
 interface ScanApiResponse {
@@ -115,14 +190,22 @@ interface ScanApiResponse {
 
 async function post(url: string, body: Record<string, unknown>): Promise<ScanApiResponse> {
   let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SCAN_TIMEOUT_MS);
   try {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
-  } catch {
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw new ScanError('busy', 'The scan took too long. Try again in a moment.');
+    }
     throw new ScanError('network', 'Could not reach the scanner. Check your connection and try again.');
+  } finally {
+    clearTimeout(timer);
   }
   const data = (await res.json().catch(() => ({}))) as ScanApiResponse;
   if (!res.ok) {
@@ -136,9 +219,8 @@ async function post(url: string, body: Record<string, unknown>): Promise<ScanApi
   return data;
 }
 
-/** Downscale, upload, and return what the model saw. Never throws raw fetch errors. */
-export async function captureAndScan(file: Blob, opts: CaptureAndScanOptions): Promise<ScanResult> {
-  const image = await downscaleToJpegBase64(file);
+/** Upload an already-prepared image. Never throws raw fetch errors. */
+export async function scanPreparedImage(image: string, opts: CaptureAndScanOptions): Promise<ScanResult> {
   const hint = [opts.hint?.trim(), opts.meal ? `This is ${opts.meal}.` : ''].filter(Boolean).join(' ');
   const data = await post(opts.endpoint || resolveEndpoint(), {
     idToken: opts.idToken,
@@ -156,6 +238,12 @@ export async function captureAndScan(file: Blob, opts: CaptureAndScanOptions): P
 }
 
 // ----- mapping to diary entries -------------------------------------------
+
+/** Downscale, upload, and return what the model saw. */
+export async function captureAndScan(file: Blob, opts: CaptureAndScanOptions): Promise<ScanResult> {
+  const { base64 } = await prepareScanImage(file);
+  return scanPreparedImage(base64, opts);
+}
 
 /** "Dal Tadka (home)" → "dal-tadka-home". */
 export function slugifyFood(name: string): string {

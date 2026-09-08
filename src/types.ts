@@ -544,6 +544,9 @@ export interface FoodUnit {
 export interface FoodItem {
   id: string;
   name: string;
+  /** `ml` for drinks: `per100g` is then per 100 ml and every amount for this
+   *  food is labelled in millilitres. Absent means grams. */
+  basis?: 'g' | 'ml';
   aliases?: string[];
   source: FoodSource;
   group?: string;
@@ -564,6 +567,8 @@ export interface FoodEntry {
   id: string;
   foodId: string;
   name: string;
+  /** Copied from the food so the diary keeps saying "ml" for drinks. */
+  basis?: 'g' | 'ml';
   source: FoodSource;
   meal: MealSlot;
   qty: number;
