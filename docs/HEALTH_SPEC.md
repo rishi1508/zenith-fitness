@@ -171,3 +171,27 @@ Micronutrients, recipes builder, iOS HealthKit, FatSecret, restaurant chains, wa
 3. Shorter display names for USDA foods; more regional dishes (Bengali, North-East).
 4. Per-user rate limit on `api/push.ts`; `request.query.limit` bounds in rules (docs/COST_CONTROLS.md §3).
 5. Remove QA admin uid from `src/admin.ts`, `api/admin.ts`, rules after the pitch.
+
+## 11. Post-launch feedback round (3.18.2 / 3.18.3, 2026-09-08)
+Owner testing on Android produced 14 issues; all are addressed. Notes worth keeping:
+- **Group sessions** built the workout repeatedly (`SessionLobbyView` fired `onSessionStart` on every
+  snapshot AND re-subscribed on every parent render because the callback was a fresh arrow). Each repeat
+  hit `startWorkout`'s "discard?" prompt, so the session workout was never built. Fixed with a
+  fire-once ref + a stable listener; `templatesEqual` no longer compares `defaultReps` (it changes on
+  every set logged, so the participant reconcile — which deletes unlogged exercises — ran constantly).
+- **Plate scan** killed the WebView: a 12 MP JPEG was decoded at full size for the preview *and* for
+  the canvas. Now `createImageBitmap` with resize options, `toBlob` instead of `toDataURL`, the small
+  copy is the preview, and the fetch has a 75 s deadline. One capture path only (camera / gallery).
+- **Zen** returned 502 on the data round-trip: the API answers 500 "Internal error encountered" for some
+  valid prompts on one Gemma model while the peer serves them. 5xx is now switchable; only 429 pins the
+  preferred model.
+- **Food search** ranking: a name whose head (before the first comma/bracket) equals the query gets
+  +45, and raw IFCT staple groups get −200 unless the user has logged them. Canonical foods must be
+  named so the head IS the search word — "Rice (cooked)", not "Plain rice (cooked)".
+- **ml basis**: `FoodItem.basis` / `FoodEntry.basis` = 'ml' for drinks; `per100g` then means per 100 ml
+  and every label says ml. 41 foods carry it.
+- **Saved meals**: `SavedMeal` in `zenith_meals` (synced), published to `sharedMeals` (rules mirror
+  sharedFoods). The Community tab reads 20 docs on demand — no listener.
+- **Experience levels**: `src/levels.ts`, lifetime volume → level, step 1.5 t then 2.5 t then ×1.35.
+  `zenith_level_seen` is seeded silently on first run so nobody is congratulated for old history.
+- **Buddy ordering**: `src/buddyAffinity.ts`, local synced tally with a 30-day half-life. No new reads.
