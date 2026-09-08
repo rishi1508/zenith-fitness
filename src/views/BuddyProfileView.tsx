@@ -9,6 +9,7 @@ import { StartSessionModal, ActivityHeatmap } from '../components';
 import { buddyStreakFromProfile, weekStartISO } from '../streakService';
 
 import { useConfirm } from '../ui';
+import { LevelPill } from '../components/LevelBadge';
 interface BuddyProfileViewProps {
   buddyUid: string;
   buddyName: string;
@@ -164,6 +165,9 @@ export function BuddyProfileView({
           })()}
         </div>
         <h2 className="text-lg font-bold">{buddyName}</h2>
+        {profile?.level != null && profile.level > 1 && (
+          <div className="mt-1.5"><LevelPill level={profile.level} /></div>
+        )}
         {profile?.isWorkingOut && (
           <div className="text-sm text-emerald-400 flex items-center justify-center gap-1 mt-1">
             <Flame className="w-4 h-4" />

@@ -79,6 +79,8 @@ function ViewFallback() {
 import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
 import { isAdmin } from './admin';
+import { levelForVolume } from './levels';
+import { LevelUpModal } from './components/LevelUpModal';
 import * as buddyService from './buddyService';
 import * as sessionService from './workoutSessionService';
 import { templateFromWorkout, templatesEqual, reconcileWorkoutWithTemplate } from './sessionTemplateReconcile';
@@ -105,6 +107,8 @@ function App() {
   // Follow-up prompt from a ZenCard daily note, consumed once by
   // ZenChatView after seeding its composer (see openZen below).
   const [zenPrefill, setZenPrefill] = useState<string | null>(null);
+  // Pending "Level N unlocked" celebration, set by loadData after a workout.
+  const [levelUp, setLevelUp] = useState<{ from: number; to: number; volume: number } | null>(null);
   const { showToast } = useToast();
   const { confirm: confirmDialog } = useConfirm();
   // Which day/meal the food search or plate scan adds to (docs/HEALTH_SPEC.md §7).
@@ -312,7 +316,18 @@ function App() {
     // Rebuild PRs from workout history so stored records stay consistent with the
     // current max-weight-then-reps hierarchy (also heals records from older logic).
     storage.recomputePersonalRecords();
-    setStats(storage.calculateStats());
+    const freshStats = storage.calculateStats();
+    setStats(freshStats);
+    // Experience level (src/levels.ts). The first run after this shipped just
+    // records where the user already is — nobody gets a burst of confetti for
+    // history they logged months ago. After that, crossing a threshold shows
+    // the achievement once.
+    {
+      const reached = levelForVolume(freshStats.totalVolume).level;
+      const seen = storage.getSeenLevel();
+      if (seen === 0) storage.setSeenLevel(reached);
+      else if (reached > seen) setLevelUp({ from: seen, to: reached, volume: freshStats.totalVolume });
+    }
     setWorkoutHistory(storage.getWorkouts());
     // Check for missing days after splash
     const missing = storage.getMissingDays();
@@ -1712,6 +1727,15 @@ function App() {
         )}
         </Suspense>
       </AppShell>
+      )}
+
+      {levelUp && (
+        <LevelUpModal
+          level={levelUp.to}
+          from={levelUp.from}
+          totalVolumeKg={levelUp.volume}
+          onClose={() => { storage.setSeenLevel(levelUp.to); setLevelUp(null); }}
+        />
       )}
 
       {/* Post-Workout Group Comparison Modal */}

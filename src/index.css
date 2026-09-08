@@ -156,3 +156,16 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/* Level-up celebration (src/components/LevelUpModal.tsx). Pieces start above
+   the viewport and fall past the bottom; `forwards` leaves them off-screen. */
+@keyframes zenith-confetti {
+  0%   { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate3d(0, 115vh, 0) rotate(720deg); opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes zenith-confetti {
+    0%, 100% { transform: translate3d(0, 115vh, 0); opacity: 0; }
+  }
+}

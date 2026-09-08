@@ -8,6 +8,8 @@ import * as buddyService from '../../buddyService';
 import { Card, StatTile, ListRow, Pill, SectionHeader, useToast } from '../../ui';
 import type { PillTone } from '../../ui';
 import { usePremium, PremiumBadge } from '../../premium';
+import { LevelPill, LevelProgressCard } from '../../components/LevelBadge';
+import { levelForVolume } from '../../levels';
 import type { Tier } from '../../premium';
 
 interface YouTabViewProps {
@@ -102,9 +104,16 @@ export function YouTabView({
         </div>
         <div className="min-w-0">
           <h2 className="font-display text-lg font-bold truncate">{user?.displayName || 'Anonymous'}</h2>
-          <Pill tone={TIER_TONE[tier]} className="mt-1">{TIER_LABEL[tier]}</Pill>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            <Pill tone={TIER_TONE[tier]}>{TIER_LABEL[tier]}</Pill>
+            <LevelPill level={levelForVolume(volume).level} />
+          </div>
         </div>
       </div>
+
+      <Card>
+        <LevelProgressCard totalVolumeKg={volume} />
+      </Card>
 
       <div className="grid grid-cols-3 gap-2">
         <StatTile eyebrow="Workouts" value={completedCount} compact />

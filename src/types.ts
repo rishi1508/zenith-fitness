@@ -246,6 +246,10 @@ export interface UserProfile {
   currentStreak: number;
   /** Days/week `currentStreak` is measured at. Absent for legacy clients. */
   streakLevel?: number;
+  /** Experience level from lifetime volume (src/levels.ts). */
+  level?: number;
+  /** Lifetime volume in kg, mirrored so a buddy's profile can show progress. */
+  totalVolume?: number;
   isWorkingOut: boolean;
   activeWorkoutName?: string;
   activeWorkoutStartedAt?: string;

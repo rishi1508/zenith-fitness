@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   BODY_WEIGHT: 'zenith_body_weight', // Body weight tracking entries
   BODY_MEASUREMENTS: 'zenith_body_measurements', // Per-part circumference log
   DELOAD_WEEKS: 'zenith_deload_weeks', // Array of ISO week strings that were deload weeks
+  LEVEL_SEEN: 'zenith_level_seen', // Highest experience level already celebrated
 };
 
 // Generic storage helpers
@@ -1609,4 +1610,20 @@ export function updateAppSettings<K extends keyof AppSettings>(
   const next: AppSettings = { ...current, [section]: { ...current[section], ...patch } };
   setItem(STORAGE_KEYS.SETTINGS, next);
   return next;
+}
+
+// ============ EXPERIENCE LEVEL ============
+// The level itself is derived from lifetime volume (src/levels.ts). All we
+// persist is the highest level the user has already been congratulated for,
+// so the celebration fires once — and never for the levels an existing user
+// had already earned before the feature shipped.
+
+/** 0 means "never recorded" — the caller should seed it silently. */
+export function getSeenLevel(): number {
+  const v = getItem<number>(STORAGE_KEYS.LEVEL_SEEN, 0);
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+}
+
+export function setSeenLevel(level: number): void {
+  setItem(STORAGE_KEYS.LEVEL_SEEN, Math.max(getSeenLevel(), Math.floor(level)));
 }

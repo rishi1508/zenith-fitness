@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { readFileSync } from 'fs'
@@ -15,6 +15,12 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5174
+  },
+  // Vitest: keep agent worktrees under .claude/ out of the run — they carry
+  // their own copies of every test file.
+  test: {
+    include: ['tests/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '.claude/**', 'dist/**'],
   },
   build: {
     rollupOptions: {

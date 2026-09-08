@@ -5,6 +5,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { levelForVolume } from './levels';
 import { deliverPush } from './pushService';
 import { computeStreak } from './streakService';
 
@@ -54,12 +55,16 @@ export async function upsertUserProfile(
       profile.totalWorkouts = stats?.totalWorkouts ?? 0;
       profile.currentStreak = stats?.currentStreak ?? 0;
       profile.streakLevel = stats?.streakLevel ?? 1;
+      profile.level = levelForVolume(stats?.totalVolume ?? 0).level;
+      profile.totalVolume = Math.round(stats?.totalVolume ?? 0);
       profile.isWorkingOut = false;
     } else {
       if (stats) {
         profile.totalWorkouts = stats.totalWorkouts;
         profile.currentStreak = stats.currentStreak;
         profile.streakLevel = stats.streakLevel ?? 1;
+        profile.level = levelForVolume(stats.totalVolume).level;
+        profile.totalVolume = Math.round(stats.totalVolume);
       }
     }
 
