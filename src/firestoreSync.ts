@@ -20,6 +20,7 @@ const STORAGE_TO_FIRESTORE: Record<string, string> = {
   zenith_food_favourites: 'foodFavourites',
   zenith_food_recents: 'foodRecents',
   zenith_custom_foods: 'customFoods',
+  zenith_meals: 'meals',
   zenith_deload_weeks: 'deloadWeeks',
   zenith_level_seen: 'levelSeen',
   zenith_buddy_affinity: 'buddyAffinity',

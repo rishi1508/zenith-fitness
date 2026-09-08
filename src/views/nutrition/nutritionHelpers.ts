@@ -5,6 +5,7 @@
  */
 import type {
   ActivityLevel, FoodEntry, FoodItem, FoodSource, FoodUnit, MealSlot, NutritionDay, PhaseGoal,
+  SavedMealItem,
 } from '../../types';
 import { ACTIVITY_MULTIPLIER } from '../../health/targets';
 
@@ -61,6 +62,14 @@ export function copyDayEntries(
   opts: { id: () => string; at: string },
 ): FoodEntry[] {
   return entries.map((e) => ({ ...e, id: opts.id(), at: opts.at }));
+}
+
+/** A diary entry without the fields that tie it to one day and slot, ready to
+ *  be stored inside a `SavedMeal` and re-added later. */
+export function toSavedItem(entry: FoodEntry): SavedMealItem {
+  const { id, at, meal, ...rest } = entry;
+  void id; void at; void meal;
+  return rest;
 }
 
 export function upsertEntry(day: NutritionDay, entry: FoodEntry): NutritionDay {

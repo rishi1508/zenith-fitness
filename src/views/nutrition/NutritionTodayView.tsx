@@ -3,7 +3,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, CopyPlus, GlassWater, Minus, Plus
 import type { FoodEntry, FoodItem, MealSlot } from '../../types';
 import {
   addDaysISO, fetchNutritionDay, getCustomFoods, getNutritionDay, getRecentFoods, getTargets,
-  localDateISO, saveNutritionDay, subscribeHealth, sumMacros,
+  localDateISO, saveMeal, saveNutritionDay, subscribeHealth, sumMacros,
 } from '../../health/store';
 import { getFood } from '../../nutrition';
 import { hapticImpact } from '../../haptics';
@@ -12,8 +12,11 @@ import { NutritionRing } from './NutritionRing';
 import { FoodEntrySheet } from './FoodEntrySheet';
 import {
   MEALS, MEAL_LABEL, canGoForward, copyDayEntries, dayLabel, entriesForMeal, foodFromEntry,
-  basisLabel, formatQty, mealKcal, removeEntry, shiftDate,
+  basisLabel, formatQty, mealKcal, removeEntry, shiftDate, toSavedItem,
 } from './nutritionHelpers';
+import { MealsSheet, SaveMealSheet } from './MealsSheet';
+import { publishMeal } from './sharedMeals';
+import { useAuth } from '../../auth/AuthContext';
 
 export interface NutritionTodayViewProps {
   onBack: () => void;
@@ -35,6 +38,7 @@ const WATER_STEP_ML = 250;
  */
 export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDate }: NutritionTodayViewProps) {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const today = localDateISO();
   const [date, setDate] = useState(() => initialDate ?? today);
   const [tick, setTick] = useState(0);
@@ -58,6 +62,9 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
   const yesterday = useMemo(() => getNutritionDay(addDaysISO(date, -1)), [date, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { confirm: confirmDialog } = useConfirm();
+  // Saved meals (docs/HEALTH_SPEC.md §3): pick one to add, or save a section.
+  const [mealPicker, setMealPicker] = useState<MealSlot | null>(null);
+  const [savingMeal, setSavingMeal] = useState<MealSlot | null>(null);
   const deleteEntry = async (entry: FoodEntry) => {
     void hapticImpact('light');
     if (!(await confirmDialog({ title: 'Remove entry?', message: `Remove ${entry.name} from this day?`, confirmLabel: 'Remove', tone: 'danger' }))) return;
@@ -166,7 +173,15 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
           <div key={meal} className="space-y-2">
             <SectionHeader
               caption={`${MEAL_LABEL[meal]}${entries.length ? ` · ${mealKcal(day.entries, meal)} kcal` : ''}`}
-              trailing={{ label: '+ Add', onClick: () => onAddFood(date, meal) }}
+              trailing={(
+                <div className="flex items-center gap-3">
+                  {entries.length > 0 && (
+                    <button onClick={() => setSavingMeal(meal)} className="text-[13px] font-bold text-muted">Save as meal</button>
+                  )}
+                  <button onClick={() => setMealPicker(meal)} className="text-[13px] font-bold text-muted">Meals</button>
+                  <button onClick={() => onAddFood(date, meal)} className="text-[13px] font-bold text-accent">+ Add</button>
+                </div>
+              )}
             />
             <Card padding="list">
               {entries.length === 0 ? (
@@ -187,6 +202,51 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
           </div>
         );
       })}
+
+      {mealPicker && (
+        <MealsSheet
+          meal={mealPicker}
+          onClose={() => setMealPicker(null)}
+          onPick={(saved) => {
+            const now = new Date().toISOString();
+            const fresh = getNutritionDay(date);
+            const added = saved.items.map((item) => ({ ...item, id: crypto.randomUUID(), at: now, meal: mealPicker }));
+            saveNutritionDay({ ...fresh, entries: [...fresh.entries, ...added] });
+            setMealPicker(null);
+            showToast(`Added ${saved.name} (${added.length} item${added.length === 1 ? '' : 's'}).`);
+          }}
+        />
+      )}
+
+      {savingMeal && (() => {
+        const items = entriesForMeal(day.entries, savingMeal);
+        const kcal = items.reduce((sum, e) => sum + e.macros.kcal, 0);
+        return (
+          <SaveMealSheet
+            defaultName={`My ${MEAL_LABEL[savingMeal].toLowerCase()}`}
+            itemCount={items.length}
+            kcal={kcal}
+            onClose={() => setSavingMeal(null)}
+            onSave={(name, share) => {
+              const saved = {
+                id: `meal:${crypto.randomUUID()}`,
+                name,
+                // Drop the per-day identity so re-adding never collides.
+                items: items.map((e) => toSavedItem(e)),
+                kcal: Math.round(kcal),
+                createdBy: user?.uid,
+                createdByName: user?.displayName ?? undefined,
+                createdAt: new Date().toISOString(),
+                shared: share,
+              };
+              saveMeal(saved);
+              if (share) publishMeal(saved).catch(() => showToast('Saved, but publishing failed.', 'error'));
+              setSavingMeal(null);
+              showToast(share ? `Saved and shared "${name}".` : `Saved "${name}".`);
+            }}
+          />
+        );
+      })()}
 
       {day.entries.length === 0 && yesterday.entries.length > 0 && (
         <Button variant="secondary" size="md" icon={CopyPlus} full onClick={copyYesterday}>

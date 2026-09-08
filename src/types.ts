@@ -567,6 +567,26 @@ export interface FoodItem {
 
 export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snacks';
 
+/**
+ * A set of foods logged together — "my usual breakfast". Saved from a day's
+ * meal section and re-added in one tap. Private by default; publishing copies
+ * it to `sharedMeals` for everyone (docs/HEALTH_SPEC.md §3).
+ */
+export interface SavedMeal {
+  id: string;
+  name: string;
+  /** Diary entries minus their per-day identity (`id`, `at`, `meal`). */
+  items: SavedMealItem[];
+  kcal: number;
+  createdBy?: string;
+  createdByName?: string;
+  createdAt: string;
+  /** True once the user has published it to the shared library. */
+  shared?: boolean;
+}
+
+export type SavedMealItem = Omit<FoodEntry, 'id' | 'at' | 'meal'>;
+
 export interface FoodEntry {
   id: string;
   foodId: string;

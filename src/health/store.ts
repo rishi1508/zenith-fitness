@@ -14,7 +14,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs, documentId, ord
 import { auth, db } from '../firebase';
 import { queueFirestoreSync } from '../firestoreSync';
 import type {
-  NutritionDay, NutritionTargets, ActivityDay, HealthProfile, PhaseSettings, FoodItem,
+  NutritionDay, NutritionTargets, ActivityDay, HealthProfile, PhaseSettings, FoodItem, SavedMeal,
 } from '../types';
 
 export const HEALTH_KEYS = {
@@ -24,6 +24,7 @@ export const HEALTH_KEYS = {
   FAVOURITES: 'zenith_food_favourites',
   RECENTS: 'zenith_food_recents',
   CUSTOM_FOODS: 'zenith_custom_foods',
+  MEALS: 'zenith_meals',
   NUTRITION_DAYS: 'zenith_nutrition_days', // cache only — never synced as a whole
   ACTIVITY_DAYS: 'zenith_activity_days',   // cache only — never synced as a whole
 } as const;
@@ -109,6 +110,17 @@ export function replaceCachedFood(item: FoodItem): void {
 
 export function deleteCustomFood(id: string): void {
   writeSynced(HEALTH_KEYS.CUSTOM_FOODS, getCustomFoods().filter((f) => f.id !== id));
+}
+
+/** Meals the user saved from a day's section ("my usual breakfast"). */
+export function getMeals(): SavedMeal[] { return read<SavedMeal[]>(HEALTH_KEYS.MEALS, []); }
+
+export function saveMeal(meal: SavedMeal): void {
+  writeSynced(HEALTH_KEYS.MEALS, [meal, ...getMeals().filter((m) => m.id !== meal.id)]);
+}
+
+export function deleteMeal(id: string): void {
+  writeSynced(HEALTH_KEYS.MEALS, getMeals().filter((m) => m.id !== id));
 }
 
 // ---------- per-day documents ----------

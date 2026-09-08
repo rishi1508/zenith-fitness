@@ -202,6 +202,15 @@ service cloud.firestore {
       allow delete: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
     }
 
+    // ---------- shared meals (a set of foods logged together) ----------
+    // Same creator model as sharedFoods.
+    match /sharedMeals/{mealId} {
+      allow read:   if signedIn();
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+      allow delete: if signedIn() && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
     // ---------- LEGACY shared exercise library ----------
     // The old single array document. Kept readable because older clients
     // still pull it and useOnlineStatus uses it as a connectivity probe;
