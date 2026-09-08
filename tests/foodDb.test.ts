@@ -65,6 +65,43 @@ describe('generated food database', () => {
     expect(names.some((n) => /^chicken, breast/.test(n))).toBe(true);
   });
 
+  it('answers a one-word search with the plain everyday food', () => {
+    // `head` is what src/nutrition/foodDb.ts ranks on: the name before the
+    // first comma or bracket. For a food people type by one word, the head
+    // has to BE that word — "Rice (cooked)", not "Plain rice (cooked)".
+    const heads = new Set(index.map((r) => r[1].split(/[,(]/)[0].trim().toLowerCase()));
+    const missing = ['milk', 'rice', 'egg', 'bread', 'curd', 'banana', 'apple', 'chicken breast',
+      'biscuit', 'muesli', 'protein bar', 'peanut butter', 'oats', 'chana', 'sprouts', 'mutton',
+      'tofu', 'honey', 'sugar', 'jam', 'chips', 'popcorn', 'butter', 'ghee', 'paneer']
+      .filter((q) => !heads.has(q));
+    expect(missing).toEqual([]);
+
+    const names = index.map((r) => r[1]);
+    for (const canonical of ['Rice (cooked)', 'Egg (boiled)', 'Egg white (boiled)',
+      'Dosa (plain)', 'Dal (plain, boiled)', 'Milk (toned)', 'Bread (whole wheat)']) {
+      expect(names).toContain(canonical);
+    }
+  });
+
+  it('logs drinks in millilitres, with volume units only', () => {
+    const dishes = readShard('dishes');
+    const drinks = dishes.filter((d) => d.basis === 'ml');
+    expect(drinks.length).toBeGreaterThan(30);
+    // A "slice" or a "scoop" of a drink makes no sense; 750 ml caps a bottle.
+    const solidOnly = new Set(['piece', 'slice', 'egg', 'roti', 'paratha', 'idli', 'dosa',
+      'handful', 'bar', 'packet', 'scoop', 'plate', 'cube', 'serving']);
+    for (const d of drinks) {
+      expect(d.units.length).toBeGreaterThan(0);
+      for (const u of d.units) {
+        expect(solidOnly.has(u.label)).toBe(false);
+        expect(u.grams).toBeGreaterThanOrEqual(5);
+        expect(u.grams).toBeLessThanOrEqual(750);
+      }
+    }
+    // Nothing pourable is left on the gram basis.
+    expect(dishes.filter((d) => d.group === 'Beverages' && d.basis !== 'ml')).toEqual([]);
+  });
+
   it('gives every food at least one household unit and sane macros', () => {
     const dishes = readShard('dishes');
     const ifct = readShard('ifct');
