@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
   ChevronLeft, FileSpreadsheet, Download, Upload,
   CheckCircle2, Copy, Volume2, Palette, Sun, Moon, Clock, User, LogOut, LogIn,
-  Cloud, Bell, Flame, Trash2, Vibrate,
+  Cloud, Bell, Flame, Trash2, Vibrate, ChevronRight, Database, Dumbbell, HeartPulse, Info,
 } from 'lucide-react';
 import * as storage from '../storage';
 import type { Workout, Exercise, WeeklyPlan } from '../types';
@@ -16,6 +17,7 @@ import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '.
 import { deleteMyAccount } from '../accountService';
 import { Capacitor } from '@capacitor/core';
 import { Sheet, Button, useToast, useConfirm } from '../ui';
+import { registerBackHandler } from '../backHandlerRegistry';
 import { playCue } from '../sound';
 import { hapticCue } from '../haptics';
 
@@ -659,6 +661,34 @@ function ThemeSettingsSection({ isDark, onThemeChange }: { isDark: boolean; onTh
 
 
 // Settings View
+type CategoryId = 'account' | 'appearance' | 'workout' | 'sound' | 'notifications' | 'health' | 'data' | 'about';
+
+interface Category {
+  id: CategoryId;
+  title: string;
+  subtitle: string;
+  icon: LucideIcon;
+  tint: string;
+}
+
+/** The index. Order is by how often a setting is actually touched, not by
+ *  how the code happens to be arranged. */
+const CATEGORIES: Category[] = [
+  { id: 'account', title: 'Account', subtitle: 'Profile, sign-in and your data', icon: User, tint: 'text-blue-400' },
+  { id: 'appearance', title: 'Appearance', subtitle: 'Theme and automatic dark mode', icon: Palette, tint: 'text-purple-400' },
+  { id: 'workout', title: 'Workout', subtitle: 'Rest timers and weekly commitment', icon: Dumbbell, tint: 'text-orange-400' },
+  { id: 'sound', title: 'Sound & vibration', subtitle: 'Cues for sets, timers and PRs', icon: Volume2, tint: 'text-pink-400' },
+  { id: 'notifications', title: 'Notifications', subtitle: 'Push reminders and buddy alerts', icon: Bell, tint: 'text-amber-400' },
+  { id: 'health', title: 'Health sync', subtitle: 'Health Connect read and write-back', icon: HeartPulse, tint: 'text-red-400' },
+  { id: 'data', title: 'Data & backup', subtitle: 'Export, import and restore', icon: Database, tint: 'text-cyan-400' },
+  { id: 'about', title: 'About', subtitle: `Version ${__APP_VERSION__} and updates`, icon: Info, tint: 'text-zinc-400' },
+];
+
+/**
+ * Settings, as a phone does it: a list of categories, then one screen of
+ * settings at a time. Every option used to be on one page, which meant
+ * scrolling past sound cues and CSV exports to change the theme.
+ */
 export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
   onBack: () => void;
   onDataChange: () => void;
@@ -666,13 +696,18 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
   isDark: boolean;
 }) {
   const { confirm: confirmDialog } = useConfirm();
+  const [open, setOpen] = useState<CategoryId | null>(null);
   const [exportCsv, setExportCsv] = useState('');
   const [copied, setCopied] = useState(false);
-  
-  const handleExport = () => {
-    const csv = storage.exportToCSV();
-    setExportCsv(csv);
-  };
+  const { user, isGuest, signOut, exitGuestMode } = useAuth();
+
+  // Back closes the open category before it leaves settings altogether.
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => { setOpen(null); return true; });
+  }, [open]);
+
+  const handleExport = () => setExportCsv(storage.exportToCSV());
 
   const copyToClipboard = async () => {
     try {
@@ -691,131 +726,166 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
     }
   };
 
-  const { user, isGuest, signOut, exitGuestMode } = useAuth();
+  const cardCls = `rounded-xl border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`;
+  const current = CATEGORIES.find((c) => c.id === open) ?? null;
+
+  const header = (
+    <div className="flex items-center gap-4">
+      <button
+        onClick={() => (open ? setOpen(null) : onBack())}
+        aria-label={open ? 'Back to settings' : 'Back'}
+        className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}
+      >
+        <ChevronLeft className="w-6 h-6" />
+      </button>
+      <h1 className="text-xl font-bold">{current ? current.title : 'Settings'}</h1>
+    </div>
+  );
+
+  if (!current) {
+    return (
+      <div className="space-y-4 animate-fadeIn">
+        {header}
+        <div className={`${cardCls} divide-y ${isDark ? 'divide-[#2e2e2e]' : 'divide-gray-100'}`}>
+          {CATEGORIES.map(({ id, title, subtitle, icon: Icon, tint }) => (
+            <button
+              key={id}
+              onClick={() => setOpen(id)}
+              className="w-full min-h-16 px-4 flex items-center gap-3 text-left"
+            >
+              <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-[#252525]' : 'bg-gray-100'}`}>
+                <Icon className={`w-5 h-5 ${tint}`} strokeWidth={1.75} />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[15px] font-semibold truncate">{title}</span>
+                <span className={`block text-xs truncate ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{subtitle}</span>
+              </span>
+              <ChevronRight className={`w-[18px] h-[18px] shrink-0 ${isDark ? 'text-zinc-600' : 'text-gray-400'}`} strokeWidth={1.75} />
+            </button>
+          ))}
+        </div>
+        <div className={`text-center text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+          <p>Zenith Fitness v{__APP_VERSION__}</p>
+          <p>Built by Rishi</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      <div className="flex items-center gap-4">
-        <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h1 className="text-xl font-bold">Settings</h1>
-      </div>
+    <div className="space-y-4 animate-fadeIn">
+      {header}
 
-      {/* Account Section */}
-      <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-2 mb-3">
-          <User className="w-5 h-5 text-blue-400" />
-          <span className="font-medium">Account</span>
-        </div>
-        {user ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              {user.photoURL ? (
-                <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" />
-              ) : (
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isDark ? 'bg-blue-500/20' : 'bg-blue-100'}`}>
-                  <User className="w-5 h-5 text-blue-400" />
+      {open === 'account' && (
+        <div className={`${cardCls} p-4`}>
+          {user ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="" className="w-10 h-10 rounded-full" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isDark ? 'bg-blue-500/20' : 'bg-blue-100'}`}>
+                    <User className="w-5 h-5 text-blue-400" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  {user.displayName && <div className="font-medium truncate">{user.displayName}</div>}
+                  <div className={`text-sm truncate ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>{user.email || 'No email'}</div>
                 </div>
-              )}
-              <div className="flex-1 min-w-0">
-                {user.displayName && <div className="font-medium truncate">{user.displayName}</div>}
-                <div className={`text-sm truncate ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>{user.email || 'No email'}</div>
               </div>
+              <EditProfileSection isDark={isDark} />
+              <div className="flex items-center gap-2">
+                <Cloud className="w-3.5 h-3.5 text-green-400" />
+                <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Data synced to cloud</span>
+              </div>
+              <button
+                onClick={async () => { if (await confirmDialog({ title: 'Sign out?', message: 'Your data is safely stored in the cloud.', confirmLabel: 'Sign out' })) signOut(); }}
+                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                  isDark ? 'bg-[#252525] hover:bg-[#303030] text-zinc-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+              <DeleteAccountSection isDark={isDark} />
             </div>
-            <EditProfileSection isDark={isDark} />
-            <div className="flex items-center gap-2">
-              <Cloud className="w-3.5 h-3.5 text-green-400" />
-              <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>Data synced to cloud</span>
+          ) : isGuest ? (
+            <div className="space-y-3">
+              <div className={`flex items-center gap-2 ${isDark ? 'text-yellow-400/80' : 'text-yellow-600'}`}>
+                <span className="text-xs">Guest mode — data stored on this device only</span>
+              </div>
+              <button
+                onClick={exitGuestMode}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
+              >
+                <LogIn className="w-4 h-4" />
+                Sign In to Sync Data
+              </button>
             </div>
-            <button
-              onClick={async () => { if (await confirmDialog({ title: 'Sign out?', message: 'Your data is safely stored in the cloud.', confirmLabel: 'Sign out' })) signOut(); }}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isDark ? 'bg-[#252525] hover:bg-[#303030] text-zinc-300' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-              }`}
-            >
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </button>
-            <DeleteAccountSection isDark={isDark} />
-          </div>
-        ) : isGuest ? (
-          <div className="space-y-3">
-            <div className={`flex items-center gap-2 ${isDark ? 'text-yellow-400/80' : 'text-yellow-600'}`}>
-              <span className="text-xs">Guest mode — data stored on this device only</span>
-            </div>
-            <button
-              onClick={exitGuestMode}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
-            >
-              <LogIn className="w-4 h-4" />
-              Sign In to Sync Data
-            </button>
-          </div>
-        ) : null}
-      </div>
-
-      {/* Sound Settings */}
-      <SoundSettingsSection isDark={isDark} />
-
-      {/* Theme Settings */}
-      <ThemeSettingsSection isDark={isDark} onThemeChange={onThemeChange} />
-
-      {/* Rest Timer Presets */}
-      <RestTimerPresetsSection isDark={isDark} />
-
-      {/* Streak commitment (days/week) */}
-      <StreakSettingsSection isDark={isDark} onChange={onDataChange} />
-
-      {/* Data Import/Export */}
-      <div className={`rounded-xl p-4 border space-y-3 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
-        <div className="flex items-center gap-2">
-          <Upload className="w-5 h-5 text-blue-400" />
-          <span className="font-medium">Data Import / Export</span>
+          ) : null}
         </div>
-        <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
-          Back up your workouts or move them to another device.
-        </p>
-        {/* CSV Export */}
-        {!exportCsv ? (
-          <button
-            onClick={handleExport}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            Export to CSV
-          </button>
-        ) : (
-          <div className="space-y-2">
-            <textarea
-              value={exportCsv}
-              readOnly
-              className={`w-full h-32 rounded-lg px-3 py-2 text-xs font-mono resize-none border ${
-                isDark ? 'bg-[#252525] border-[#3e3e3e] text-zinc-300' : 'bg-gray-50 border-gray-200 text-gray-700'
-              }`}
-            />
+      )}
+
+      {open === 'appearance' && <ThemeSettingsSection isDark={isDark} onThemeChange={onThemeChange} />}
+
+      {open === 'workout' && (
+        <>
+          <RestTimerPresetsSection isDark={isDark} />
+          <StreakSettingsSection isDark={isDark} onChange={onDataChange} />
+        </>
+      )}
+
+      {open === 'sound' && <SoundSettingsSection isDark={isDark} />}
+      {open === 'notifications' && <PushNotificationsSection isDark={isDark} />}
+      {open === 'health' && <HealthSyncSection isDark={isDark} />}
+
+      {open === 'data' && (
+        <div className={`${cardCls} p-4 space-y-3`}>
+          <div className="flex items-center gap-2">
+            <Upload className="w-5 h-5 text-blue-400" />
+            <span className="font-medium">Data Import / Export</span>
+          </div>
+          <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+            Back up your workouts or move them to another device.
+          </p>
+          {!exportCsv ? (
             <button
-              onClick={copyToClipboard}
+              onClick={handleExport}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
             >
-              {copied ? (<><CheckCircle2 className="w-4 h-4" /> Copied!</>) : (<><Copy className="w-4 h-4" /> Copy CSV</>)}
+              <FileSpreadsheet className="w-4 h-4" />
+              Export to CSV
             </button>
+          ) : (
+            <div className="space-y-2">
+              <textarea
+                value={exportCsv}
+                readOnly
+                className={`w-full h-32 rounded-lg px-3 py-2 text-xs font-mono resize-none border ${
+                  isDark ? 'bg-[#252525] border-[#3e3e3e] text-zinc-300' : 'bg-gray-50 border-gray-200 text-gray-700'
+                }`}
+              />
+              <button
+                onClick={copyToClipboard}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
+              >
+                {copied ? (<><CheckCircle2 className="w-4 h-4" /> Copied!</>) : (<><Copy className="w-4 h-4" /> Copy CSV</>)}
+              </button>
+            </div>
+          )}
+          <DataBackupSection isDark={isDark} onDataChange={onDataChange} />
+        </div>
+      )}
+
+      {open === 'about' && (
+        <>
+          <CheckForUpdatesSection isDark={isDark} />
+          <div className={`${cardCls} p-4 text-center text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+            <p>Zenith Fitness v{__APP_VERSION__}</p>
+            <p>Built by Rishi</p>
           </div>
-        )}
-        {/* JSON Export / Import */}
-        <DataBackupSection isDark={isDark} onDataChange={onDataChange} />
-      </div>
-
-      {/* Check for updates */}
-      <PushNotificationsSection isDark={isDark} />
-      <HealthSyncSection isDark={isDark} />
-      <CheckForUpdatesSection isDark={isDark} />
-
-      {/* App Info */}
-      <div className={`text-center text-xs space-y-1 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
-        <p>Zenith Fitness v{__APP_VERSION__}</p>
-        <p>Built by Rishi</p>
-      </div>
+        </>
+      )}
     </div>
   );
 }

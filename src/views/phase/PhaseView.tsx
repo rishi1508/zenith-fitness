@@ -21,8 +21,9 @@ import { GOAL_LABEL, STATUS_LABEL, STATUS_TONE, rateBadge, signed } from './stat
 const RATE_WINDOW_DAYS = 14;
 const RAW_COLOR = '#a855f7';
 const EMA_COLOR = '#f97316';
-/** The plan is drawn dashed and cool, so it never reads as measured data. */
-const PLAN_COLOR = '#38bdf8';
+/** Dashed green: distinct from the raw line (purple), the trend (orange) and
+ *  the chart's own moving average (cyan), and never reads as measured data. */
+const PLAN_COLOR = '#22c55e';
 const INPUT_CLS = 'rounded-control px-3 h-11 text-sm bg-surface-2 border border-border text-text focus:outline-none focus:border-accent';
 
 const RATE_PRESETS: Record<PhaseGoal, number[]> = { cut: [-0.5, -0.75], bulk: [0.25, 0.5], maintain: [0] };
