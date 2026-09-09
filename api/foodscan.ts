@@ -142,6 +142,37 @@ function extractText(body: GeminiResponse): string {
   return parts.filter((p) => !p.thought).map((p) => p.text ?? '').join('').trim();
 }
 
+/** Raw-shape diagnostics, returned only to admins who pass `debug: true`.
+ *  Never carries user data — status, finish reason, token counts and the
+ *  first line of any error. The same shape Zen returns (api/zen.ts). */
+export interface ScanDebug {
+  model: string;
+  status: number;
+  finishReason?: string;
+  blockReason?: string;
+  parts?: Array<{ thought: boolean; chars: number }>;
+  usage?: unknown;
+  error?: string;
+  parsed?: number | 'no';
+  /** First 300 chars of the reply, so an unparseable answer can be read. */
+  sample?: string;
+}
+
+function describe(model: string, r: { status: number; body: GeminiResponse }, text?: string, parsed?: number | 'no'): ScanDebug {
+  const c = r.body.candidates?.[0];
+  return {
+    model,
+    status: r.status,
+    finishReason: c?.finishReason,
+    blockReason: r.body.promptFeedback?.blockReason,
+    parts: c?.content?.parts?.map((p) => ({ thought: !!p.thought, chars: (p.text ?? '').length })),
+    usage: r.body.usageMetadata,
+    error: r.body.error?.message?.slice(0, 300),
+    ...(parsed !== undefined ? { parsed } : {}),
+    ...(text !== undefined ? { sample: text.slice(0, 300) } : {}),
+  };
+}
+
 /** True when the model rejected `responseMimeType` rather than the request itself. */
 function isResponseMimeRejection(status: number, body: GeminiResponse): boolean {
   return status === 400 && /response.?mime/i.test(body.error?.message || '');
@@ -156,6 +187,7 @@ async function scan(
   db: admin.firestore.Firestore,
   prompt: string,
   image: ScanImage,
+  debug: ScanDebug[] | null = null,
 ): Promise<{ payload: ScanPayload; model: string }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new HttpError(503, 'Scanning is not configured on the server yet.');
@@ -174,11 +206,13 @@ async function scan(
       r = await callGemini(model, prompt, image, apiKey, false);
     }
     if (isExhaustedStatus(r.status)) {
+      debug?.push(describe(model, r));
       await markExhausted(db, model);
       if (canRetry(attempt)) continue;
       break;
     }
     if (isTransientStatus(r.status)) {
+      debug?.push(describe(model, r));
       console.warn(`[foodscan] ${model} returned ${r.status} — trying the next model`);
       lastFailure = r.status === 504
         ? new HttpError(504, 'The scan took too long. Please try again.', { reason: 'busy' })
@@ -187,11 +221,13 @@ async function scan(
       break;
     }
     if (r.status < 200 || r.status >= 300) {
+      debug?.push(describe(model, r));
       console.error('[foodscan] Gemini error', model, r.status, (r.body.error?.message || '').slice(0, 200));
-      throw new HttpError(502, "The scan didn't work. Please try again.", { reason: 'busy' });
+      throw new HttpError(502, "The scan didn't work. Please try again.", { reason: 'busy', ...(debug ? { debug } : {}) });
     }
     const text = extractText(r.body);
     const payload = parseScanPayload(text);
+    debug?.push(describe(model, r, text, payload ? payload.items.length : 'no'));
     if (!payload) {
       // A garbled reply is the model's problem, not the photo's — give the
       // next one a go before telling the user to retake it.
@@ -204,7 +240,9 @@ async function scan(
     console.log(`[foodscan] model=${model} items=${payload.items.length} prompt=${u?.promptTokenCount ?? '?'} out=${u?.candidatesTokenCount ?? '?'}`);
     return { payload, model };
   }
-  throw lastFailure ?? new HttpError(429, 'Scanning is busy today. Try again tomorrow.', { reason: 'quota' });
+  const failure = lastFailure ?? new HttpError(429, 'Scanning is busy today. Try again tomorrow.', { reason: 'quota' });
+  if (debug) failure.extra = { ...failure.extra, debug };
+  throw failure;
 }
 
 // ----- Handler -------------------------------------------------------------
@@ -244,10 +282,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
     ]);
 
-    const prompt = hint ? `${SCAN_PROMPT}\n\nThe user says: ${hint}` : SCAN_PROMPT;
-    const { payload, model } = await scan(db, prompt, image);
+    // Admins may ask for raw-shape diagnostics (never user data) with debug: true.
+    const adminUids = (process.env.ADMIN_UIDS || 'BXedteurc3bPydsehvPIdVWPTbM2,upLvcTSoE5SS7lOmhYBKHFWSV0r1').split(',');
+    const debug: ScanDebug[] | null = body.debug === true && adminUids.includes(uid) ? [] : null;
 
-    res.status(200).json({ items: payload.items, note: payload.note, model, remainingToday: remaining.scan ?? 0 });
+    const prompt = hint ? `${SCAN_PROMPT}\n\nThe user says: ${hint}` : SCAN_PROMPT;
+    const { payload, model } = await scan(db, prompt, image, debug);
+
+    res.status(200).json({
+      items: payload.items, note: payload.note, model, remainingToday: remaining.scan ?? 0,
+      ...(debug ? { debug } : {}),
+    });
   } catch (err) {
     if (err instanceof HttpError) {
       res.status(err.status).json({ error: err.message, ...err.extra });
