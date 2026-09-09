@@ -248,3 +248,30 @@ checks its own switch (`zenith_sound_settings`, `zenith_haptic_settings`). Const
 `tests/feedback.test.ts`: every cue under 700 ms, 329–2100 Hz, sine/triangle only, routine haptics
 one beat. Wired to set completion, rest start / three-seconds-out / done, PRs, finishing a session
 and levelling up.
+
+## 15. Camera capture on Android (3.19.0, 2026-09-09)
+The plate scan and the gym feed's progress photo go through `@capacitor/camera`
+(`src/nativeCamera.ts`) on native, and keep the `<input type="file">` only on the web.
+
+Why, after "taking photo still crashes the app" on 3.18.5: a file input with `capture`
+hands the screen to the system camera app from inside the WebView, and
+(a) this app *declares* `android.permission.CAMERA` for the QR scanner, which makes the
+runtime grant mandatory before any image-capture intent may start — without it the launch
+throws and the process dies; (b) the camera app is memory-hungry, so Android often destroys
+our activity behind it and the WebView returns cold, losing the photo. The plugin owns the
+permission prompt and the bridge restores the pending call across a recreated activity. It
+also writes an already-downscaled file (1600 px), so the 12 MP original is never decoded in
+the WebView; `prepareScanImage` still does the final 1024 px framing.
+
+Supporting changes: `READ_EXTERNAL_STORAGE` (maxSdk 32) for gallery picks on Android ≤ 12;
+the FileProvider covers external-files and files dirs; `variables.gradle` pins
+`kotlin_version = 2.4.10` so the camera plugin does not load a second Kotlin plugin version
+alongside `@capgo/capacitor-health`.
+
+Scan reliability: a 500/502/timeout from one Gemini model, or an unparseable reply, now
+advances the model cascade instead of failing the request, and does **not** mark that model
+exhausted for the day (`isTransientStatus` in `api/_modelRouter.ts`). That was
+"it failed a few times, then it worked".
+
+Every add-food flow (scan and manual) ends on the diary for that day — `showDiary` in
+App.tsx rewinds `food-search` / `food-scan` out of the navigation history first.
