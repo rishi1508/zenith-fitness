@@ -234,7 +234,7 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
                   <ScanRow
                     key={`${row.base.name}-${i}`}
                     item={row.item}
-                    onGrams={(grams) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, item: scaleScanItem(r.item, grams) } : r)))}
+                    onGrams={(grams) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, item: scaleScanItem(r.base, grams) } : r)))}
                     onEdit={() => setEditing(i)}
                     onRemove={() => setRows((prev) => prev.filter((_, j) => j !== i))}
                   />
