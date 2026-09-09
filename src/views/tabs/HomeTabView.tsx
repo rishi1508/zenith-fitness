@@ -286,13 +286,19 @@ export function HomeTabView({
               <ListRow
                 key={b.uid}
                 leading={(
-                  <button
+                  // A span, not a button: ListRow's own onClick already wraps
+                  // the whole row in one, and a button inside a button is
+                  // invalid HTML (React warns, and the inner tap is unreliable).
+                  <span
+                    role="button"
+                    tabIndex={0}
                     onClick={(e) => { e.stopPropagation(); onOpenProfile?.(b.uid); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); onOpenProfile?.(b.uid); } }}
                     aria-label={`${b.name}'s profile`}
                     className="shrink-0"
                   >
                     <Avatar name={b.name} photoURL={b.photoURL} size="sm" />
-                  </button>
+                  </span>
                 )}
                 title={b.name}
                 subtitle={b.sub}

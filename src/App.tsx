@@ -818,7 +818,7 @@ function App() {
         await StatusBar.setBackgroundColor({ color: '#0f0f0f' });
         await StatusBar.show();
       } catch (e) {
-        console.log('StatusBar setup error:', e);
+        console.warn('StatusBar setup error:', e);
       }
 
       try {
@@ -839,7 +839,7 @@ function App() {
           cleanup = () => handler.remove();
         }
       } catch (e) {
-        console.log('backButton listener failed:', e);
+        console.error('backButton listener failed:', e);
       }
     })();
 

@@ -328,6 +328,9 @@ export async function acceptBuddyRequest(requestId: string): Promise<void> {
     },
     createdAt: new Date().toISOString(),
     chatId,
+    // Proof that the person being added agreed: the rules can check that this
+    // request was addressed to whoever writes the pair.
+    requestId,
   };
   batch.set(buddyRef, relationship);
 

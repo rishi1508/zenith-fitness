@@ -301,6 +301,10 @@ export interface BuddyRelationship {
   userPhotos: Record<string, string>;
   createdAt: string;
   chatId: string;
+  /** The request this pair came from — the recipient's proof of consent.
+   *  Written since 3.25.0; the security rule that requires it can only be
+   *  tightened once older installs have updated (docs/AUDIT_2026-09-10.md). */
+  requestId?: string;
 }
 
 /** Chat message between buddies */
