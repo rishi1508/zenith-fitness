@@ -13,6 +13,10 @@ export interface Exercise {
    *  admin) and shown to everyone who has it. Read-only for others. */
   sharedNotes?: string;
   videoUrl?: string; // YouTube or form guide link
+  /** Metabolic cost of this movement, in METs, used to price the calories it
+   *  burns (see src/energy.ts). Absent means "derive it from category and
+   *  equipment" — only set this when the derived value is wrong. */
+  met?: number;
   isFavorite?: boolean; // Mark as favorite for quick access
   /** uid of the user who created / owns the shared definition. Absent on
    *  the built-in seed until the shared library assigns one. */

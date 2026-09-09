@@ -80,6 +80,8 @@ import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
 import { isAdmin } from './admin';
 import { levelForVolume } from './levels';
+import { workoutEnergy } from './energy';
+import { getHealthProfile } from './health';
 import { recordBuddyInteraction } from './buddyAffinity';
 import { LevelUpModal } from './components/LevelUpModal';
 import * as buddyService from './buddyService';
@@ -138,6 +140,10 @@ function App() {
      *  even a typo'd-then-corrected set still gets celebrated when its
      *  final value beats the user's previous best. */
     prs?: Array<{ exercise: string; weight: number; reps: number; isFirstEver: boolean }>;
+    /** Calories burned above resting, from src/energy.ts. */
+    kcal?: number;
+    /** True when the profile was too thin for a personalised figure. */
+    kcalEstimated?: boolean;
   } | null>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     try { return storage.getEffectiveTheme(); } 
@@ -987,12 +993,25 @@ function App() {
           });
       }
 
+      // Calories burned, priced per exercise from its MET and the user's own
+      // resting rate (src/energy.ts) — a headline number, not a footnote.
+      const burn = workoutEnergy(
+        { exercises: exercisesClean, duration },
+        {
+          profile: getHealthProfile(),
+          weightKg: storage.getLatestBodyWeight()?.weight ?? 0,
+          library: storage.getExercises(),
+        },
+      );
+
       // Show celebration
       setCelebrationData({
         name: activeWorkout.name,
         exercises: activeWorkout.exercises.length,
         duration,
         prs: sessionPRs,
+        kcal: burn.activeKcal > 0 ? burn.activeKcal : undefined,
+        kcalEstimated: burn.estimated,
       });
       setShowCelebration(true);
       
@@ -1318,6 +1337,12 @@ function App() {
                 <div className="text-center">
                   <div className="text-2xl font-bold text-emerald-400">{celebrationData.duration}m</div>
                   <div className="text-xs text-zinc-500">Duration</div>
+                </div>
+              )}
+              {celebrationData.kcal !== undefined && (
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-400">{celebrationData.kcal}</div>
+                  <div className="text-xs text-zinc-500">kcal burned</div>
                 </div>
               )}
               {celebrationData.prs && celebrationData.prs.length > 0 && (
