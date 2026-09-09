@@ -23,6 +23,7 @@ export const ZEN_REQUEST_KINDS = [
   'volume_by_muscle',
   'nutrition_range',
   'activity_range',
+  'energy_range',
   'phase_detail',
 ] as const;
 
@@ -41,4 +42,5 @@ export const ZEN_REQUEST_PROTOCOL =
   '{"zen_request":{"kind":"volume_by_muscle","weeks":4}} — sets and volume per muscle group\n' +
   '{"zen_request":{"kind":"nutrition_range","from":"YYYY-MM-DD","to":"YYYY-MM-DD"}} — kcal and macros logged each day in a range\n' +
   '{"zen_request":{"kind":"activity_range","from":"YYYY-MM-DD","to":"YYYY-MM-DD"}} — steps, sleep and active kcal each day in a range\n' +
+  '{"zen_request":{"kind":"energy_range","from":"YYYY-MM-DD","to":"YYYY-MM-DD"}} — calories out each day (resting, training, moving) against calories in\n' +
   '{"zen_request":{"kind":"phase_detail"}} — bulk/cut phase, weight trend, intake average and calorie targets';

@@ -4,12 +4,15 @@ import type { Exercise, ExerciseCategory, ExerciseEquipment, MuscleGroup } from 
 import { EXERCISE_CATEGORIES, EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../types';
 import * as storage from '../storage';
 import { labelize, guessCategory } from '../exerciseUtils';
+import { metFor } from '../energy';
 
 export interface ExerciseFormValues {
   name: string;
   muscleGroup: MuscleGroup;
   category: ExerciseCategory;
   equipment?: ExerciseEquipment;
+  /** Metabolic equivalent. Undefined = derive it from the category. */
+  met?: number;
   /** Creator notes — shared with everyone who has the exercise. */
   sharedNotes: string;
   /** Personal notes — private. */
@@ -47,6 +50,7 @@ export function ExerciseForm({
   );
   const [categoryTouched, setCategoryTouched] = useState(!!initial?.category);
   const [equipment, setEquipment] = useState<ExerciseEquipment | undefined>(initial?.equipment);
+  const [met, setMet] = useState(initial?.met != null ? String(initial.met) : '');
   const [sharedNotes, setSharedNotes] = useState(initial?.sharedNotes ?? '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [videoUrl, setVideoUrl] = useState(initial?.videoUrl ?? '');
@@ -64,6 +68,15 @@ export function ExerciseForm({
 
   const canSubmit = name.trim().length > 0 && !duplicate;
 
+  // Blank (or nonsense) means "use the category default", which is what
+  // energy.ts does with an absent met. 1–20 covers everything from a slow
+  // stretch to an all-out sprint.
+  const metValue = (() => {
+    const n = Number(met);
+    return met.trim() && Number.isFinite(n) && n >= 1 && n <= 20 ? Math.round(n * 10) / 10 : undefined;
+  })();
+  const derivedMet = metFor({ name, isCompound: category === 'compound', category, equipment });
+
   const submit = () => {
     if (!canSubmit) return;
     onSubmit({
@@ -71,6 +84,7 @@ export function ExerciseForm({
       muscleGroup,
       category,
       equipment,
+      met: metValue,
       sharedNotes: sharedNotes.trim(),
       notes: notes.trim(),
       videoUrl: videoUrl.trim(),
@@ -165,6 +179,29 @@ export function ExerciseForm({
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Effort (MET) — feeds the calories-burned estimate. */}
+      <div className="space-y-1">
+        <label className={label}>
+          Effort <span className="font-normal opacity-70">· MET, optional</span>
+        </label>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.5"
+          min="1"
+          max="20"
+          value={met}
+          onChange={(e) => setMet(e.target.value)}
+          placeholder={String(derivedMet)}
+          className={input}
+          disabled={locked}
+        />
+        <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+          How hard this is, per minute of work. Blank uses {derivedMet} for a{' '}
+          {labelize(category).toLowerCase()} movement. Calories burned come from this.
+        </p>
       </div>
 
       {/* Creator notes */}

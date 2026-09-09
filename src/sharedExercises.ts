@@ -37,6 +37,9 @@ export interface SharedExerciseDoc {
   category: ExerciseCategory;
   isCompound: boolean;
   equipment?: ExerciseEquipment;
+  /** Metabolic equivalent, when the creator set one. Absent means every
+   *  client derives it from the category (src/energy.ts). */
+  met?: number;
   /** Creator notes. */
   notes?: string;
   videoUrl?: string;
@@ -82,6 +85,7 @@ export async function publishExercise(ex: Exercise): Promise<void> {
     category: ex.category ?? (ex.isCompound ? 'compound' : 'isolation'),
     isCompound: ex.isCompound,
     equipment: ex.equipment,
+    met: ex.met,
     notes: ex.sharedNotes?.trim() || undefined,
     videoUrl: ex.videoUrl?.trim() || undefined,
     createdBy,
@@ -101,10 +105,11 @@ export async function publishExercise(ex: Exercise): Promise<void> {
     await setDoc(doc(db, COLLECTION, docId), payload, { merge: true });
     // merge:true can't unset a field; if the creator cleared their notes
     // or video, write the cleared shape explicitly.
-    if (!payload.notes || !payload.videoUrl) {
+    if (!payload.notes || !payload.videoUrl || payload.met === undefined) {
       const clear: Record<string, unknown> = {};
       if (!payload.notes) clear.notes = null;
       if (!payload.videoUrl) clear.videoUrl = null;
+      if (payload.met === undefined) clear.met = null;
       await setDoc(doc(db, COLLECTION, docId), clear, { merge: true });
     }
   } catch (err) {
@@ -182,6 +187,7 @@ export function mergeSharedIntoLocal(
         isCompound: s.isCompound ?? s.category === 'compound',
         category: s.category,
         equipment: s.equipment,
+        met: s.met ?? undefined,
         sharedNotes: s.notes || undefined,
         videoUrl: s.videoUrl || undefined,
         createdBy: s.createdBy,
@@ -210,6 +216,7 @@ export function mergeSharedIntoLocal(
       category: s.category ?? before.category,
       isCompound: s.isCompound ?? before.isCompound,
       equipment: s.equipment ?? before.equipment,
+      met: s.met ?? before.met,
       sharedNotes: s.notes || undefined,
       videoUrl: s.videoUrl || before.videoUrl || undefined,
       createdBy: s.createdBy,

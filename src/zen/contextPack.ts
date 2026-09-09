@@ -6,7 +6,8 @@ import { membershipStatus, upcomingSessions } from '../gymStats';
 import { addDaysISO, getNutritionDay, getPhaseSettings, getTargets, listActivityDays, listNutritionDays, localDateISO } from '../health/store';
 import type { Gym, GymMember, GymClass, MembershipStatus, Workout, BodyMeasurementEntry } from '../types';
 import { fmtDay, fmtDate, fmtShort, fmtVolume, fmtExerciseBest, workoutVolume, capChars, signed, num } from './format';
-import { activityContextLine, nutritionContextLines, phaseContextLine, weightTrend } from './healthLines';
+import { activityContextLine, energyContextLine, nutritionContextLines, phaseContextLine, weightTrend } from './healthLines';
+import { energyForDay } from '../health/energyDay';
 
 /**
  * `buildZenContext()` — everything Zen needs to know about this user,
@@ -118,6 +119,8 @@ export function buildZenContext(opts: BuildZenContextOptions = {}): string {
   if (activityLine) lines.push(activityLine);
   const phaseLine = phaseContextLine(getPhaseSettings(), weightTrend(storage.getBodyWeightEntries(), now));
   if (phaseLine) lines.push(phaseLine);
+  const energyLine = energyContextLine(energyForDay(today, now));
+  if (energyLine) lines.push(energyLine);
 
   const gymLine = formatGymBlock(opts.gym, now);
   if (gymLine) lines.push(gymLine);

@@ -41,6 +41,7 @@ export const viewToTab: Record<View, Tab> = {
   'food-scan': 'health',
   'nutrition-targets': 'health',
   activity: 'health',
+  energy: 'health',
   phase: 'health',
   you: 'you',
   history: 'you',

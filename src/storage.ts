@@ -421,6 +421,8 @@ export interface NewExerciseInput {
   muscleGroup: MuscleGroup;
   category: ExerciseCategory;
   equipment?: ExerciseEquipment;
+  /** Metabolic equivalent; absent means derive it from the category. */
+  met?: number;
   /** Creator notes — shared with everyone. */
   sharedNotes?: string;
   /** Personal notes — private. */
@@ -442,6 +444,7 @@ export function createExercise(input: NewExerciseInput): Exercise {
     category: input.category,
     isCompound: input.category === 'compound',
     equipment: input.equipment,
+    met: input.met,
     sharedNotes: clean(input.sharedNotes),
     notes: clean(input.notes),
     videoUrl: clean(input.videoUrl),

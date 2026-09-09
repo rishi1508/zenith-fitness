@@ -76,7 +76,9 @@ export function ExerciseRow({
         >
           <Star className="w-[18px] h-[18px]" strokeWidth={1.75} fill={exercise.isFavorite ? 'currentColor' : 'none'} />
         </button>
-        {deletable && (
+        {/* Seeded exercises keep the slot as empty space, so the star column
+            lines up whether or not a row can be deleted. */}
+        {deletable ? (
           <button
             onClick={onDelete}
             aria-label={`Remove ${exercise.name}`}
@@ -85,6 +87,8 @@ export function ExerciseRow({
           >
             <Trash2 className="w-[18px] h-[18px]" strokeWidth={1.75} />
           </button>
+        ) : (
+          <span className="shrink-0 w-9 h-9" aria-hidden="true" />
         )}
       </div>
       {expanded && <div className="pb-3 pt-3 px-1 border-t border-border">{children}</div>}

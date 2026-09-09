@@ -6,6 +6,7 @@ import { ZenCard } from '../zen';
 import { NutritionRing } from '../nutrition';
 import { PhaseCard } from '../phase';
 import { ActivityCard } from '../activity';
+import { EnergyCard } from '../energy';
 import { Card, StatTile, ListRow, SectionHeader } from '../../ui';
 
 interface HealthTabViewProps {
@@ -16,10 +17,11 @@ interface HealthTabViewProps {
   onOpenNutrition: () => void;
   onOpenPhase: () => void;
   onOpenActivity: () => void;
+  onOpenEnergy: () => void;
 }
 
 /** Health tab root (docs/REVAMP_SPEC.md §3, §6). */
-export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasurements, onOpenInsights, onOpenNutrition, onOpenPhase, onOpenActivity }: HealthTabViewProps) {
+export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasurements, onOpenInsights, onOpenNutrition, onOpenPhase, onOpenActivity, onOpenEnergy }: HealthTabViewProps) {
   const topInsight = useMemo(() => buildCoachReport().insights[0] ?? null, []);
   const latestWeight = useMemo(() => storage.getLatestBodyWeight(), []);
   const weightChange = useMemo(() => storage.getBodyWeightChange(30), []);
@@ -36,6 +38,8 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
       </Card>
 
       <ZenCard onAskZen={onOpenZen} />
+
+      <EnergyCard onOpen={onOpenEnergy} />
 
       <ActivityCard onOpen={onOpenActivity} />
 

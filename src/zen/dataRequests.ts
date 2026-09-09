@@ -7,7 +7,8 @@ import {
   fmtDay, fmtDate, fmtVolume, fmtSets, workoutVolume, capChars, num, localDay,
   isTraining, byDateAsc, byDateDesc,
 } from './format';
-import { formatActivityRange, formatNutritionRange, formatPhaseDetail } from './healthLines';
+import { formatActivityRange, formatEnergyRange, formatNutritionRange, formatPhaseDetail } from './healthLines';
+import { energyRange } from '../health/energyDay';
 
 /**
  * Resolves one `zen_request` (the server's one-round data protocol, see
@@ -30,6 +31,7 @@ export type ZenRequestKind =
   | 'volume_by_muscle'
   | 'nutrition_range'
   | 'activity_range'
+  | 'energy_range'
   | 'phase_detail';
 
 export interface ZenRequest {
@@ -64,6 +66,7 @@ function resolve(request: ZenRequest, opts: ResolveZenDataOptions): string {
     case 'volume_by_muscle': return volumeByMuscle(request.weeks ?? 4);
     case 'nutrition_range': return nutritionRange(request.from ?? '', request.to ?? '');
     case 'activity_range': return activityRange(request.from ?? '', request.to ?? '');
+    case 'energy_range': return energyLedger(request.from ?? '', request.to ?? '');
     case 'phase_detail': return phaseDetail();
     default: return 'Unknown request.';
   }
@@ -202,6 +205,17 @@ function activityRange(fromRaw: string, toRaw: string): string {
   const range = boundRange(fromRaw, toRaw);
   if (!range) return 'Invalid date range.';
   return formatActivityRange(listActivityDays(range.from, range.to), range.from, range.to);
+}
+
+/** The energy ledger for a range — the calories-out side Zen otherwise
+ *  has to guess at. `energyRange` counts days back from the end date. */
+function energyLedger(fromRaw: string, toRaw: string): string {
+  const range = boundRange(fromRaw, toRaw);
+  if (!range) return 'Invalid date range.';
+  const days = Math.round(
+    (new Date(range.to + 'T00:00:00').getTime() - new Date(range.from + 'T00:00:00').getTime()) / 86_400_000,
+  ) + 1;
+  return formatEnergyRange(energyRange(days, range.to));
 }
 
 function phaseDetail(): string {

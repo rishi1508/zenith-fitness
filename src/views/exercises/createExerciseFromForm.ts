@@ -14,6 +14,7 @@ export function createExerciseFromForm(values: ExerciseFormValues, sessionId?: s
     muscleGroup: values.muscleGroup,
     category: values.category,
     equipment: values.equipment,
+    met: values.met,
     sharedNotes: values.sharedNotes || undefined,
     notes: values.notes || undefined,
     videoUrl: values.videoUrl || undefined,

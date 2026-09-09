@@ -1,3 +1,4 @@
+import type { DayEnergy } from '../energy';
 import type { ActivityDay, BodyWeightEntry, NutritionDay, NutritionTargets, PhaseSettings } from '../types';
 import { fmtDate, fmtDay, num, signed } from './format';
 
@@ -226,4 +227,48 @@ export function formatPhaseDetail(input: PhaseDetailInput): string {
   }
 
   return lines.join('\n');
+}
+
+// ----- energy ledger (src/energy.ts) -----------------------------------
+
+/** "Energy today: 2,510 kcal out (1,680 resting + 340 training + 490 moving),
+ *   2,180 in, −330 balance." Null when the profile can't give us a BMR. */
+export function energyContextLine(day: DayEnergy): string | null {
+  if (day.totalKcal == null) return null;
+  const parts = [`${Math.round(day.restingKcal ?? 0)} resting`];
+  if (day.workoutKcal > 0) parts.push(`${Math.round(day.workoutKcal)} training`);
+  const other = day.activeSource === 'device'
+    ? Math.max(0, day.activeKcal - day.workoutKcal)
+    : day.stepsKcal;
+  if (other > 0) parts.push(`${Math.round(other)} moving`);
+  const intake = day.intakeKcal > 0
+    ? `, ${Math.round(day.intakeKcal)} in, ${signed(day.balanceKcal ?? 0, 0)} balance`
+    : ', nothing logged to eat yet';
+  return `Energy today: ${Math.round(day.totalKcal)} kcal out (${parts.join(' + ')})${intake}.`;
+}
+
+/** One line per day for `energy_range`, plus how the active side was measured. */
+export function formatEnergyRange(days: DayEnergy[]): string {
+  const usable = days.filter((d) => d.totalKcal != null);
+  if (usable.length === 0) {
+    return 'No energy figures: the health profile needs height, age and sex, plus a recent weigh-in.';
+  }
+  const rows = usable.map((d) => {
+    const bits = [
+      `out ${Math.round(d.totalKcal!)}`,
+      `rest ${Math.round(d.restingKcal ?? 0)}`,
+      d.workoutKcal > 0 ? `train ${Math.round(d.workoutKcal)}` : null,
+      d.stepsKcal > 0 ? `steps ${Math.round(d.stepsKcal)}` : null,
+      d.deviceActiveKcal != null ? `device ${Math.round(d.deviceActiveKcal)}` : null,
+      d.intakeKcal > 0 ? `in ${Math.round(d.intakeKcal)}` : 'in unlogged',
+      d.intakeKcal > 0 && d.balanceKcal != null ? `bal ${signed(d.balanceKcal, 0)}` : null,
+    ].filter(Boolean);
+    return `${fmtDay(d.date)}: ${bits.join(', ')}`;
+  });
+  const logged = usable.filter((d) => d.intakeKcal > 0);
+  const avgOut = usable.reduce((a, d) => a + (d.totalKcal ?? 0), 0) / usable.length;
+  const summary = logged.length
+    ? `Average: ${Math.round(avgOut)} kcal out, ${Math.round(logged.reduce((a, d) => a + d.intakeKcal, 0) / logged.length)} kcal in on ${logged.length} logged day${logged.length === 1 ? '' : 's'}.`
+    : `Average: ${Math.round(avgOut)} kcal out. No food logged in this window.`;
+  return `${rows.join('\n')}\n${summary}\nActive calories are the larger of what the phone measured and what we estimate from steps and sets, so they are never double counted.`;
 }

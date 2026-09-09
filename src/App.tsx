@@ -62,6 +62,7 @@ const TargetsView = lazyNamed(() => import('./views/nutrition'), 'TargetsView');
 const FoodScanView = lazyNamed(() => import('./views/nutrition/scan'), 'FoodScanView');
 const PhaseView = lazyNamed(() => import('./views/phase'), 'PhaseView');
 const ActivityView = lazyNamed(() => import('./views/activity'), 'ActivityView');
+const EnergyView = lazyNamed(() => import('./views/energy'), 'EnergyView');
 const AdminGymsView = lazyNamed(() => import('./views/admin'), 'AdminGymsView');
 const AdminUsersView = lazyNamed(() => import('./views/admin'), 'AdminUsersView');
 const AdminLibraryView = lazyNamed(() => import('./views/admin'), 'AdminLibraryView');
@@ -96,7 +97,7 @@ import { useAuth } from './auth/AuthContext';
 import { useGym } from './gym/GymContext';
 
 import { useToast, useConfirm } from './ui';
-export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'phase';
+export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'energy' | 'phase';
 export type Theme = 'dark' | 'light';
 
 function App() {
@@ -1506,6 +1507,7 @@ function App() {
             onOpenNutrition={() => { setFoodNav((n) => ({ ...n, date: healthToday() })); navigateTo('nutrition'); }}
             onOpenPhase={() => navigateTo('phase')}
             onOpenActivity={() => navigateTo('activity')}
+            onOpenEnergy={() => navigateTo('energy')}
           />
         )}
         {view === 'you' && (
@@ -1676,6 +1678,9 @@ function App() {
         )}
         {view === 'activity' && (
           <ActivityView onBack={() => goBack()} />
+        )}
+        {view === 'energy' && (
+          <EnergyView onBack={() => goBack()} onAskZen={openZen} />
         )}
         {view === 'nutrition-targets' && (
           <TargetsView onBack={() => goBack()} />
