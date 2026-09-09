@@ -6,7 +6,9 @@ import {
   getCustomFoods, getFavouriteFoodIds, getMeals, getNutritionDay, getRecentFoods, replaceCachedFood,
   saveCustomFood, saveNutritionDay, subscribeHealth, toggleFavouriteFood,
 } from '../../health/store';
-import { getFood, loadFoodIndex, lookupBarcode, OFF_ATTRIBUTION, searchFoods } from '../../nutrition';
+import {
+  getFood, getSharedFoods, loadFoodIndex, loadSharedFoods, lookupBarcode, OFF_ATTRIBUTION, searchAllFoods,
+} from '../../nutrition';
 import {
   Button, Card, EmptyState, IconButton, SegmentedControl, Sheet, Skeleton, useToast,
   CAPTION, H2, SUB,
@@ -66,7 +68,9 @@ function matches(row: SearchRow & { aliases?: string[] }, q: string): boolean {
 /** Custom foods live only in the user's own store, so they are matched here
  *  rather than by `searchFoods` (which covers the static shards). */
 async function resolveFood(id: string): Promise<FoodItem | null> {
-  const local = getCustomFoods().find((f) => f.id === id) ?? getRecentFoods().find((f) => f.id === id);
+  const local = getCustomFoods().find((f) => f.id === id)
+    ?? getRecentFoods().find((f) => f.id === id)
+    ?? getSharedFoods().find((f) => f.id === id);
   if (local) return local;
   return await Promise.resolve(getFood(id));
 }
@@ -107,10 +111,10 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
 
   // `tick` is the health-store change signal — re-read everything on it.
   const stored = useMemo(() => ({
-    favouriteIds: getFavouriteFoodIds(), recents: getRecentFoods(), customFoods: getCustomFoods(), meals: getMeals(),
+    favouriteIds: getFavouriteFoodIds(), recents: getRecentFoods(), meals: getMeals(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [tick]);
-  const { favouriteIds, recents, customFoods, meals } = stored;
+  const { favouriteIds, recents, meals } = stored;
 
   /** A saved meal is the fastest thing to log, so it sits above the foods and
    *  answers the same search box. */
@@ -151,18 +155,17 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
     let cancelled = false;
     setSearching(true);
     void (async () => {
-      await loadFoodIndex();
-      const boost = { favouriteIds, recentIds: recents.map((r) => r.id) };
-      const found = await Promise.resolve(searchFoods(debounced, { limit: 40, boost }));
+      // The community library is read back here (once every few hours) so a
+      // food someone created is findable by everyone, on any device.
+      await Promise.all([loadFoodIndex(), loadSharedFoods()]);
       if (cancelled) return;
-      const custom = customFoods.filter((f) => matches(f, debounced));
-      const seen = new Set(custom.map((f) => f.id));
-      setRows([...custom, ...found.filter((f) => !seen.has(f.id))]);
+      const boost = { favouriteIds, recentIds: recents.map((r) => r.id) };
+      setRows(searchAllFoods(debounced, { limit: 40, boost, uid: user?.uid }));
       setSearching(false);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segment, debounced, favouriteKey, tick]);
+  }, [segment, debounced, favouriteKey, tick, user?.uid]);
 
   const listed: SearchRow[] = useMemo(() => {
     if (segment === 'recents') return recents.filter((f) => matches(f, debounced));

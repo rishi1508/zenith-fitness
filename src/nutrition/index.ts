@@ -13,6 +13,10 @@ export {
 } from './foodDb';
 export type { FoodIndexEntry, SearchOptions } from './foodDb';
 
+export { getSharedFoods, loadSharedFoods } from './sharedFoodCache';
+export { searchAllFoods, findFoodByName } from './foodSearchAll';
+export type { FoodRow } from './foodSearchAll';
+
 export {
   MEASURES,
   GROUP_UNITS,

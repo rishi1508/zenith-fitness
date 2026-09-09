@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Search } from 'lucide-react';
-import type { FoodIndexEntry } from '../../nutrition';
-import { getFood, loadFoodIndex, macrosFor, searchFoods } from '../../nutrition';
+import type { FoodRow } from '../../nutrition';
+import { getFood, getSharedFoods, loadFoodIndex, loadSharedFoods, macrosFor, searchAllFoods } from '../../nutrition';
+import { getCustomFoods } from '../../health/store';
 import type { ScanItem } from '../../nutrition/scan';
 import { scaleScanItem } from '../../nutrition/scan';
 import { Button, Card, Sheet, Skeleton, CAPTION, SUB } from '../../ui';
@@ -22,19 +23,28 @@ export function ScanItemSheet({ item, onSave, onClose }: {
   const [ready, setReady] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
 
-  useEffect(() => { void loadFoodIndex().then(() => setReady(true)).catch(() => setReady(true)); }, []);
+  useEffect(() => {
+    void Promise.all([loadFoodIndex(), loadSharedFoods()])
+      .then(() => setReady(true))
+      .catch(() => setReady(true));
+  }, []);
 
-  const results = useMemo<FoodIndexEntry[]>(
-    () => (ready && query.trim().length >= 2 ? searchFoods(query, { limit: 8 }) : []),
+  // Your own foods and the community's, not just the static index — the
+  // whole point of searching here is to say "no, it was THAT food".
+  const results = useMemo<FoodRow[]>(
+    () => (ready && query.trim().length >= 2 ? searchAllFoods(query, { limit: 8 }).slice(0, 8) : []),
     [query, ready],
   );
 
   /** Swap in a real food: its per-100 g figures replace the estimate, and the
    *  diary entry will link to it instead of a `scan:` placeholder. */
-  const replaceWithFood = async (entry: FoodIndexEntry) => {
+  const replaceWithFood = async (entry: FoodRow) => {
     setPicking(entry.id);
     try {
-      const food = await getFood(entry.id);
+      const food = entry.item
+        ?? getCustomFoods().find((f) => f.id === entry.id)
+        ?? getSharedFoods().find((f) => f.id === entry.id)
+        ?? await getFood(entry.id);
       if (!food) return;
       const macros = macrosFor(food, draft.grams);
       setDraft({
@@ -96,7 +106,9 @@ export function ScanItemSheet({ item, onSave, onClose }: {
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold text-text truncate">{r.name}</span>
                   <span className={`${SUB} block truncate`}>
-                    {Math.round(r.kcal100)} kcal / 100 g{r.approx ? ' · approx.' : ''}
+                    {Math.round(r.kcal100)} kcal / 100 g
+                    {r.item && !r.community ? ' · yours' : r.community ? ' · community' : ''}
+                    {r.approx ? ' · approx.' : ''}
                   </span>
                 </span>
                 {picking === r.id && <Check className="w-4 h-4 text-accent shrink-0" strokeWidth={2} />}

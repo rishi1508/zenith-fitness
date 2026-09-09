@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
-import { BarChart3, Building2, Camera, ChevronRight, ClipboardList, Library, Loader2, TrendingUp, UserCog, Users } from 'lucide-react';
+import {
+  BarChart3, Building2, Camera, ChevronRight, ClipboardList, Library, Loader2, Settings, TrendingUp, UserCog, Users,
+} from 'lucide-react';
 import type { UserStats, Workout } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
 import { updateProfile } from 'firebase/auth';
@@ -124,6 +126,17 @@ export function YouTabView({
         <StatTile eyebrow="Volume" value={volumeLabel} compact onClick={onOpenProgress} />
       </div>
 
+      {/* Social lives on the profile — that is where people look for it. */}
+      <Card padding="list">
+        <ListRow
+          icon={Users}
+          iconTone="accent"
+          title="Buddies"
+          subtitle="Training partners, invites and requests"
+          onClick={onOpenBuddies}
+        />
+      </Card>
+
       <Card padding="list">
         <ListRow icon={TrendingUp} title="Progress" subtitle="Per-exercise trends and PRs" onClick={onOpenProgress} />
         <ListRow
@@ -139,10 +152,9 @@ export function YouTabView({
           )}
         />
         <ListRow icon={ClipboardList} title="Workout history" subtitle={`${completedCount} sessions`} onClick={onOpenHistory} />
-        <ListRow icon={Users} title="Buddies & requests" subtitle="Friends, invites and alerts" onClick={onOpenBuddies} />
       </Card>
 
-      <ListRow icon={ClipboardList} title="Settings" subtitle="Theme, data, sync and more" onClick={onOpenSettings} />
+      <ListRow icon={Settings} title="Settings" subtitle="Account, appearance, data and more" onClick={onOpenSettings} />
 
       {levelOpen && (
         <LevelDetailSheet volume={volume} completedCount={completedCount} onClose={() => setLevelOpen(false)} />

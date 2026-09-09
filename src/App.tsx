@@ -11,7 +11,10 @@ import {
   ACTIVITY_THROTTLE_MS, AUTO_FINISH_CHECK_MS, buildAutoFinishedWorkout, formatEndedAt,
   isIdlePastThreshold, lastActivityMs, participantIsActive,
 } from './autoFinish';
-import { SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate, PushPermissionPrompt } from './components';
+import {
+  SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate,
+  PushPermissionPrompt, SessionInviteBanner,
+} from './components';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { ActiveWorkoutView, LoginView } from './views';
 import type { GymView, GymNavParams } from './views';
@@ -471,6 +474,10 @@ function App() {
   // closure (which fires from inside the host-template effect) always
   // calls the latest function instead of an early-mount snapshot.
   const saveActiveWorkoutRef = useRef<((workout: import('./types').Workout) => void) | null>(null);
+  // Same reason: the session listener must be able to start a workout without
+  // re-subscribing every time `startWorkout` or `activeWorkout` changes.
+  const startWorkoutRef = useRef<((t: WorkoutTemplate, sessionId?: string) => void) | null>(null);
+  const activeWorkoutRef = useRef<Workout | null>(null);
   useEffect(() => {
     if (!activeSessionId) {
       // Reset template snapshot when leaving a session so next attach
@@ -496,6 +503,19 @@ function App() {
       const iAmHost = !!user && s.hostUid === user.uid;
       if (user) {
         setSessionMode(iAmHost ? 'host' : 'participant');
+      }
+
+      // The host pressing Start has to start it for everyone, from wherever
+      // they happen to be standing. Only the lobby used to react to this, so
+      // a buddy who accepted from a toast and then wandered off just watched
+      // nothing happen (reported 2026-09-09).
+      if (s.status === 'active' && user && !iAmHost && !activeWorkoutRef.current) {
+        startWorkoutRef.current?.({
+          id: `session_${s.id}`,
+          name: s.workoutName,
+          type: s.workoutType,
+          exercises: s.currentTemplateExercises ?? s.templateExercises,
+        }, s.id);
       }
       // PARTICIPANT-SIDE: reconcile our workout when the host's live
       // template changes (they added/removed/swapped an exercise or
@@ -1154,6 +1174,9 @@ function App() {
     return startActivityAutoSync();
   }, [user]);
 
+  startWorkoutRef.current = startWorkout;
+  activeWorkoutRef.current = activeWorkout;
+
   const checkIdleAutoFinishRef = useRef(checkIdleAutoFinish);
   checkIdleAutoFinishRef.current = checkIdleAutoFinish;
 
@@ -1512,7 +1535,10 @@ function App() {
         userAvatar={user?.photoURL ? <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" /> : undefined}
         userPhotoURL={user?.photoURL}
         onOpenProfile={() => navigateToTab('you')}
-        banner={activeSessionId && view !== 'session-lobby' ? (
+        banner={(
+          <>
+            {!activeSessionId && <SessionInviteBanner onOpen={openSession} />}
+            {activeSessionId && view !== 'session-lobby' ? (
           <div className="px-5 pt-2">
             <GroupSessionBar
               sessionId={activeSessionId}
@@ -1526,8 +1552,10 @@ function App() {
                 }
               }}
             />
-          </div>
-        ) : undefined}
+              </div>
+            ) : null}
+          </>
+        )}
       >
         <Suspense fallback={<ViewFallback />}>
         {view === 'home' && (

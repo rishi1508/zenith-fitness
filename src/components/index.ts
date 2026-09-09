@@ -31,3 +31,4 @@ export { QrScanner } from './gym/QrScanner';
 export { MemberCodeInput } from './gym/MemberCodeInput';
 export { MembershipCard } from './gym/MembershipCard';
 export { ClassSessionRow } from './gym/ClassSessionRow';
+export { SessionInviteBanner } from './SessionInviteBanner';

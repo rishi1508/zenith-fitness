@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, CopyPlus, GlassWater, Minus, Plus, Target } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, CopyPlus, GlassWater, Minus, Pencil, Plus, Target } from 'lucide-react';
 import type { FoodEntry, FoodItem, MealSlot } from '../../types';
 import {
   addDaysISO, fetchNutritionDay, getCustomFoods, getNutritionDay, getRecentFoods, getTargets,
@@ -17,7 +17,7 @@ import {
   foodFromEntry, basisLabel, formatQty, glassesFor, mealKcal, publishSharedFood, removeEntry, shiftDate,
   toSavedItem,
 } from './nutritionHelpers';
-import { MealsSheet, SaveMealSheet } from './MealsSheet';
+import { SaveMealSheet } from './MealsSheet';
 import { publishMeal } from './sharedMeals';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
@@ -77,7 +77,6 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
 
   const { confirm: confirmDialog } = useConfirm();
   // Saved meals (docs/HEALTH_SPEC.md §3): pick one to add, or save a section.
-  const [mealPicker, setMealPicker] = useState<MealSlot | null>(null);
   const [savingMeal, setSavingMeal] = useState<MealSlot | null>(null);
   const deleteEntry = async (entry: FoodEntry) => {
     void hapticImpact('light');
@@ -198,7 +197,6 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
                   {entries.length > 0 && (
                     <button onClick={() => setSavingMeal(meal)} className="text-[13px] font-bold text-muted">Save as meal</button>
                   )}
-                  <button onClick={() => setMealPicker(meal)} className="text-[13px] font-bold text-muted">Meals</button>
                   <button onClick={() => onAddFood(date, meal)} className="text-[13px] font-bold text-accent">+ Add</button>
                 </div>
               )}
@@ -214,6 +212,7 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
                     key={entry.id}
                     entry={entry}
                     onOpen={() => { void openEntry(entry); }}
+                    onEdit={() => { void openEntry(entry); }}
                     onLongPress={() => deleteEntry(entry)}
                   />
                 ))
@@ -233,21 +232,6 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
         <Plus className="w-5 h-5" strokeWidth={2.5} />
         Log food
       </button>
-
-      {mealPicker && (
-        <MealsSheet
-          meal={mealPicker}
-          onClose={() => setMealPicker(null)}
-          onPick={(saved) => {
-            const now = new Date().toISOString();
-            const fresh = getNutritionDay(date);
-            const added = saved.items.map((item) => ({ ...item, id: crypto.randomUUID(), at: now, meal: mealPicker }));
-            saveNutritionDay({ ...fresh, entries: [...fresh.entries, ...added] });
-            setMealPicker(null);
-            showToast(`Added ${saved.name} (${added.length} item${added.length === 1 ? '' : 's'}).`);
-          }}
-        />
-      )}
 
       {savingMeal && (() => {
         const items = entriesForMeal(day.entries, savingMeal);
@@ -308,6 +292,7 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
           title={`Edit ${editingFood.name}`}
           submitLabel="Save food"
           initial={editingFood}
+          createdBy={user?.uid}
           onClose={() => setEditingFood(null)}
           onSubmit={(values) => {
             const next: FoodItem = { ...editingFood, ...values };
@@ -343,8 +328,8 @@ function MacroBar({ label, value, target }: { label: string; value: number; targ
 
 const LONG_PRESS_MS = 500;
 
-function EntryRow({ entry, onOpen, onLongPress }: {
-  entry: FoodEntry; onOpen: () => void; onLongPress: () => void;
+function EntryRow({ entry, onOpen, onEdit, onLongPress }: {
+  entry: FoodEntry; onOpen: () => void; onEdit: () => void; onLongPress: () => void;
 }) {
   const timer = useRef<number | null>(null);
   const fired = useRef(false);
@@ -359,24 +344,29 @@ function EntryRow({ entry, onOpen, onLongPress }: {
   };
 
   return (
-    <button
-      onPointerDown={start}
-      onPointerUp={clear}
-      onPointerLeave={clear}
-      onPointerCancel={clear}
-      onContextMenu={(e) => e.preventDefault()}
-      onClick={() => { if (!fired.current) onOpen(); }}
-      className="flex items-center gap-3 min-h-14 px-1 w-full text-left border-b border-border last:border-b-0 transition-colors hover:bg-surface-2/40"
-    >
-      <span className="flex-1 min-w-0 flex flex-col">
-        <span className="text-[15px] leading-[22px] font-semibold text-text truncate">{entry.name}</span>
-        <span className="text-[13px] leading-[18px] text-muted truncate">
-          {formatQty(entry.qty)} {entry.unit}
-          {entry.unit !== basisLabel(entry) && entry.grams > 0 ? ` · ${Math.round(entry.grams)} ${basisLabel(entry)}` : ''}
-          {` · ${Math.round(entry.macros.kcal)} kcal`}
+    <div className="flex items-center gap-1 min-h-14 border-b border-border last:border-b-0">
+      <button
+        onPointerDown={start}
+        onPointerUp={clear}
+        onPointerLeave={clear}
+        onPointerCancel={clear}
+        onContextMenu={(e) => e.preventDefault()}
+        onClick={() => { if (!fired.current) onOpen(); }}
+        className="flex items-center gap-3 min-h-14 px-1 flex-1 min-w-0 text-left transition-colors hover:bg-surface-2/40"
+      >
+        <span className="flex-1 min-w-0 flex flex-col">
+          <span className="text-[15px] leading-[22px] font-semibold text-text truncate">{entry.name}</span>
+          <span className="text-[13px] leading-[18px] text-muted truncate">
+            {formatQty(entry.qty)} {entry.unit}
+            {entry.unit !== basisLabel(entry) && entry.grams > 0 ? ` · ${Math.round(entry.grams)} ${basisLabel(entry)}` : ''}
+            {` · ${Math.round(entry.macros.kcal)} kcal`}
+          </span>
         </span>
-      </span>
-      {entry.approx && <Pill tone="neutral">approx.</Pill>}
-    </button>
+        {entry.approx && <Pill tone="neutral">approx.</Pill>}
+      </button>
+      {/* Correcting a figure should not require discovering that the row is
+          tappable. */}
+      <IconButton icon={Pencil} label={`Edit ${entry.name}`} size="sm" onClick={onEdit} />
+    </div>
   );
 }

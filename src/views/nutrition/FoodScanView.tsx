@@ -3,8 +3,10 @@ import { ArrowLeft, Camera, ImagePlus, Minus, Pencil, Plus, RotateCcw, Trash2 } 
 import { useAuth } from '../../auth/AuthContext';
 import { AppBar, Button, Card, IconButton, SegmentedControl, useToast, CAPTION, H2, SUB } from '../../ui';
 import { PremiumBadge, PremiumGate } from '../../premium';
-import { getNutritionDay, localDateISO, saveNutritionDay } from '../../health/store';
-import type { MealSlot } from '../../types';
+import { getNutritionDay, localDateISO, saveCustomFood, saveNutritionDay } from '../../health/store';
+import type { FoodEntry, FoodItem, MealSlot } from '../../types';
+import { findFoodByName, loadSharedFoods } from '../../nutrition';
+import { publishSharedFood } from './nutritionHelpers';
 import { prepareScanImage, scaleScanItem, ScanError, scanItemToEntry, scanPreparedImage } from '../../nutrition/scan';
 import type { ScanErrorKind, ScanItem } from '../../nutrition/scan';
 import { ScanItemSheet } from './ScanItemSheet';
@@ -90,6 +92,8 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
   const targetDate = date ?? localDateISO();
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  // Warm the community library so "does this food already exist?" is answerable.
+  useEffect(() => { void loadSharedFoods(); }, []);
 
   const runScan = useCallback(async (file: Blob) => {
     if (!user) { setError('Please sign in again to scan food.'); return; }
@@ -152,10 +156,51 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
     setStage('capture');
   };
 
+  /**
+   * A dish the model named that nobody has in the library yet becomes a real
+   * food, so the next time it is one search away instead of another scan.
+   * Only when it does not already exist — by name, across your foods and the
+   * community's — and never for an item already matched to one.
+   */
+  const learnNewFoods = (): FoodEntry[] => {
+    const out: FoodEntry[] = [];
+    for (const { item } of rows) {
+      if (item.foodId) continue;
+      const existing = findFoodByName(item.name);
+      if (existing) {
+        // Log it against the food we already know rather than a scan: id.
+        out.push(scanItemToEntry({ ...item, foodId: existing.id, source: existing.source }, target));
+        continue;
+      }
+      if (!user || item.grams <= 0) { out.push(scanItemToEntry(item, target)); continue; }
+      const per100 = (n: number) => Math.round((n / item.grams) * 100 * 10) / 10;
+      const food: FoodItem = {
+        id: `user:${crypto.randomUUID()}`,
+        source: 'user',
+        name: item.name,
+        per100g: {
+          kcal: Math.round(per100(item.kcal)),
+          protein: per100(item.protein),
+          carbs: per100(item.carbs),
+          fat: per100(item.fat),
+        },
+        units: [{ label: 'serving', grams: Math.round(item.grams) }],
+        approx: true,
+        createdBy: user.uid,
+        createdByName: user.displayName ?? undefined,
+        createdAt: new Date().toISOString(),
+      };
+      saveCustomFood(food);
+      publishSharedFood(food);
+      out.push(scanItemToEntry({ ...item, foodId: food.id, source: 'user' }, target));
+    }
+    return out;
+  };
+
   const addAll = () => {
     if (rows.length === 0) return;
     const day = getNutritionDay(targetDate);
-    const entries = rows.map((r) => scanItemToEntry(r.item, target));
+    const entries = learnNewFoods();
     saveNutritionDay({ ...day, entries: [...day.entries, ...entries] });
     showToast(`Added ${entries.length} item${entries.length === 1 ? '' : 's'} to ${target}`, 'success');
     onAdded?.(entries.length);

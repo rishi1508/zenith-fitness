@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { Camera, CameraErrorCode, MediaTypeSelection } from '@capacitor/camera';
+import { Camera, CameraErrorCode, CameraResultType, CameraSource } from '@capacitor/camera';
 
 /**
  * Taking a photo on Android, the way that does not kill the app.
@@ -45,6 +45,9 @@ const CANCELLED: string[] = [
   CameraErrorCode.ChooseMediaCancelled,
 ];
 
+/** The long-standing `getPhoto` flow reports a cancel as a plain message. */
+const CANCEL_TEXT = /cancel|no image picked|user cancelled/i;
+
 /**
  * Take a photo (or pick one) and return it as a Blob the rest of the app
  * can treat exactly like a `File` from an `<input>`.
@@ -69,24 +72,22 @@ export async function capturePhoto(source: 'camera' | 'gallery'): Promise<Blob> 
       }
     }
 
-    const result = source === 'camera'
-      ? await Camera.takePhoto({
-        quality: JPEG_QUALITY,
-        targetWidth: CAPTURE_PX,
-        targetHeight: CAPTURE_PX,
-        correctOrientation: true,
-        saveToGallery: false,
-      })
-      : (await Camera.chooseFromGallery({
-        mediaType: MediaTypeSelection.Photo,
-        allowMultipleSelection: false,
-        quality: JPEG_QUALITY,
-        targetWidth: CAPTURE_PX,
-        targetHeight: CAPTURE_PX,
-      })).results[0];
-
-    if (!result) throw new PhotoCancelled();
-    const src = result.webPath ?? (result.uri ? Capacitor.convertFileSrc(result.uri) : null);
+    // `getPhoto` and not the newer `takePhoto`: taking a photo still killed
+    // the app on 3.19.x while picking one worked, and the difference between
+    // those two paths is `takePhoto`'s new ioncamera-android implementation.
+    // `getPhoto` is the long-standing Capacitor flow — a plain
+    // ACTION_IMAGE_CAPTURE through our own FileProvider, with the pending
+    // call saved across an activity Android decides to recycle.
+    const photo = await Camera.getPhoto({
+      source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
+      resultType: CameraResultType.Uri,
+      quality: JPEG_QUALITY,
+      width: CAPTURE_PX,
+      correctOrientation: true,
+      saveToGallery: false,
+      allowEditing: false,
+    });
+    const src = photo.webPath ?? (photo.path ? Capacitor.convertFileSrc(photo.path) : null);
     if (!src) throw new Error('The camera returned nothing we can read.');
     const response = await fetch(src);
     if (!response.ok) throw new Error('That photo could not be read back.');
@@ -95,7 +96,7 @@ export async function capturePhoto(source: 'camera' | 'gallery'): Promise<Blob> 
     if (err instanceof PhotoCancelled) throw err;
     const code = (err as { code?: string }).code;
     const message = err instanceof Error ? err.message : '';
-    if ((code && CANCELLED.includes(code)) || /cancel/i.test(message)) throw new PhotoCancelled();
+    if ((code && CANCELLED.includes(code)) || CANCEL_TEXT.test(message)) throw new PhotoCancelled();
     if (code === CameraErrorCode.CameraPermissionDenied) {
       throw new Error('Camera access is off for Zenith. Turn it on in Android settings and try again.');
     }
