@@ -57,6 +57,29 @@ export async function consumeLimit(
   });
 }
 
+/**
+ * Hand one consumed request back, when the work it paid for never happened.
+ * Only ever decrements the *current* window, so a refund arriving after the
+ * window rolled over cannot create credit out of thin air. Best-effort: a
+ * failed refund must never turn into a second error for the caller.
+ */
+export async function refundLimit(db: Firestore, key: string, field: string, windowMs: number): Promise<void> {
+  const ref = db.collection('zenLimits').doc(key);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const data = snap.data() as Record<string, { win: number; count: number }>;
+      const cur = data[field];
+      const win = Math.floor(Date.now() / windowMs);
+      if (!cur || cur.win !== win || cur.count <= 0) return;
+      tx.set(ref, { [field]: { win, count: cur.count - 1 }, updatedAt: Date.now() }, { merge: true });
+    });
+  } catch (err) {
+    console.warn('[limits] refund failed', key, field, (err as Error).message);
+  }
+}
+
 /** Paid tier, an admin grant, or a gym membership (REVAMP_SPEC.md §5 precedence). */
 export async function assertPremium(db: Firestore, uid: string, message: string): Promise<void> {
   const snap = await db.collection('userProfiles').doc(uid).get();

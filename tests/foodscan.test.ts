@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { clampItem, MAX_ITEMS, parseScanPayload, repairJson } from '../api/_scanParse';
-import { isExhaustedStatus, isTransientStatus } from '../api/_modelRouter';
+import { classifyFailure, selectModel } from '../api/_modelRouter';
 import { scaleScanItem, scanItemToEntry, slugifyFood } from '../src/nutrition/scan';
 
 describe('repairJson', () => {
@@ -104,20 +104,56 @@ describe('scan → diary mapping', () => {
   });
 });
 
-describe('cascade status classification', () => {
-  it('writes a model off for the day only on a quota-shaped failure', () => {
-    for (const s of [429, 404, 503]) expect(isExhaustedStatus(s)).toBe(true);
-    for (const s of [200, 400, 500, 502, 504]) expect(isExhaustedStatus(s)).toBe(false);
+describe('cascade failure classification', () => {
+  it('only writes a model off for a real daily quota', () => {
+    expect(classifyFailure(429, 'Quota exceeded for quota metric ... GenerateRequestsPerDayPerProject')).toBe('exhausted');
+    expect(classifyFailure(404, 'models/gemini-x is not found')).toBe('exhausted');
   });
 
-  it('takes the next model on a transient failure without burning the quota', () => {
-    for (const s of [500, 502, 504]) {
-      expect(isTransientStatus(s)).toBe(true);
-      expect(isExhaustedStatus(s)).toBe(false);
-    }
-    // A 400 is our fault, not the model's — retrying it elsewhere is pointless.
-    expect(isTransientStatus(400)).toBe(false);
-    expect(isTransientStatus(200)).toBe(false);
+  it('treats a demand spike as transient, not as exhaustion', () => {
+    // The 2026-09-09 bug: this wrote off the three strongest models after
+    // 1-2 calls out of 20 each, for the whole day.
+    expect(classifyFailure(503, 'This model is currently experiencing high demand.')).toBe('transient');
+    expect(classifyFailure(500, 'Internal error encountered.')).toBe('transient');
+    expect(classifyFailure(502, '')).toBe('transient');
+    expect(classifyFailure(504, '')).toBe('transient');
+  });
+
+  it('treats a per-minute rate limit as transient too', () => {
+    expect(classifyFailure(429, 'Quota exceeded ... GenerateRequestsPerMinutePerProject')).toBe('transient');
+    expect(classifyFailure(429, 'Too many requests per minute')).toBe('transient');
+  });
+
+  it('calls a malformed request fatal — no other model will do better', () => {
+    expect(classifyFailure(400, 'Invalid JSON payload')).toBe('fatal');
+    expect(classifyFailure(403, 'API key not valid')).toBe('fatal');
+  });
+});
+
+describe('model selection', () => {
+  const budgets = [
+    { model: 'strong', perDay: 20 },
+    { model: 'mid', perDay: 20 },
+    { model: 'weak', perDay: 500 },
+  ];
+
+  it('takes the strongest model with budget left', () => {
+    expect(selectModel({}, budgets)?.model).toBe('strong');
+  });
+
+  it('skips a model that is exhausted for the day', () => {
+    expect(selectModel({ exhausted: { strong: true } }, budgets)?.model).toBe('mid');
+  });
+
+  it('skips a model that already failed this request without touching its budget', () => {
+    const pick = selectModel({ used: { strong: 3 } }, budgets, new Set(['strong']));
+    expect(pick?.model).toBe('mid');
+    // Nothing was written off: a later request still gets the strong model.
+    expect(selectModel({ used: { strong: 3 } }, budgets)?.model).toBe('strong');
+  });
+
+  it('gives up only when every model is spent', () => {
+    expect(selectModel({ exhausted: { strong: true, mid: true, weak: true } }, budgets)).toBeNull();
   });
 });
 

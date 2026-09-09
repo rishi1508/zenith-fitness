@@ -25,8 +25,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
-import { assertPremium, consumeLimit, DAY_MS, HttpError } from './_limits.js';
-import { isExhaustedStatus, isTransientStatus, markExhausted, MAX_MODEL_ATTEMPTS, pickModel } from './_modelRouter.js';
+import { assertPremium, consumeLimit, DAY_MS, HttpError, refundLimit } from './_limits.js';
+import { classifyFailure, markExhausted, MAX_MODEL_ATTEMPTS, pickModel } from './_modelRouter.js';
 import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js';
 
 // A vision call on a flash model answers in 2–8 s; the ceiling is here for
@@ -36,9 +36,14 @@ export const config = { maxDuration: 60 };
 const DEFAULT_PER_USER_PER_DAY = 10;
 const MAX_IMAGE_B64_BYTES = 700 * 1024;
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png']);
-const GEMINI_TIMEOUT_MS = 20_000;
+/**
+ * A vision call on a thinking model regularly needs 15–20 s; 20 s was cutting
+ * good answers off mid-flight (measured 2026-09-09: a clean scan took 17 s and
+ * the next model timed out at 20 s).
+ */
+const GEMINI_TIMEOUT_MS = 26_000;
 /** Stop starting new model attempts past this point so we answer before maxDuration. */
-const RETRY_DEADLINE_MS = 38_000;
+const RETRY_DEADLINE_MS = 30_000;
 
 function getAdmin() {
   if (admin.apps.length) return admin;
@@ -107,9 +112,16 @@ async function callGemini(
   image: ScanImage,
   apiKey: string,
   jsonMime: boolean,
+  thinking = true,
 ): Promise<{ status: number; body: GeminiResponse }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const generationConfig: Record<string, unknown> = { temperature: 0.2, maxOutputTokens: 1200 };
+  // Room for the JSON *and* whatever the model thinks first. Gemini 3.x flash
+  // models reason before answering and those tokens come out of the same
+  // budget: at 1200 a long deliberation left a truncated object, which is
+  // what "Couldn't read that plate" actually meant. `minimal` keeps the
+  // thinking short (the same setting Zen uses) and 2400 leaves headroom.
+  const generationConfig: Record<string, unknown> = { temperature: 0.2, maxOutputTokens: 2400 };
+  if (thinking) generationConfig.thinkingLevel = 'minimal';
   if (jsonMime) generationConfig.responseMimeType = 'application/json';
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), GEMINI_TIMEOUT_MS);
@@ -178,6 +190,11 @@ function isResponseMimeRejection(status: number, body: GeminiResponse): boolean 
   return status === 400 && /response.?mime/i.test(body.error?.message || '');
 }
 
+/** Same idea for `thinkingLevel` — older models in the cascade don't take it. */
+function isThinkingRejection(status: number, body: GeminiResponse): boolean {
+  return status === 400 && /thinking/i.test(body.error?.message || '');
+}
+
 /**
  * Walks the cascade: reserve a model, call it, and on a 429/404/503 write
  * that model off for the day and take the next one. At most
@@ -199,30 +216,41 @@ async function scan(
   const canRetry = (attempt: number) =>
     attempt + 1 < MAX_MODEL_ATTEMPTS && Date.now() - startedAt < RETRY_DEADLINE_MS;
 
+  // Models that already failed this request. A transient failure doesn't
+  // touch the daily budget, so without this the picker would hand back the
+  // same model on the next attempt.
+  const tried = new Set<string>();
+
   for (let attempt = 0; attempt < MAX_MODEL_ATTEMPTS; attempt++) {
-    const { model } = await pickModel(db, { purpose: 'foodscan' });
+    const { model } = await pickModel(db, { purpose: 'foodscan', skip: tried });
     let r = await callGemini(model, prompt, image, apiKey, true);
+    if (isThinkingRejection(r.status, r.body)) {
+      r = await callGemini(model, prompt, image, apiKey, true, false);
+    }
     if (isResponseMimeRejection(r.status, r.body)) {
-      r = await callGemini(model, prompt, image, apiKey, false);
-    }
-    if (isExhaustedStatus(r.status)) {
-      debug?.push(describe(model, r));
-      await markExhausted(db, model);
-      if (canRetry(attempt)) continue;
-      break;
-    }
-    if (isTransientStatus(r.status)) {
-      debug?.push(describe(model, r));
-      console.warn(`[foodscan] ${model} returned ${r.status} — trying the next model`);
-      lastFailure = r.status === 504
-        ? new HttpError(504, 'The scan took too long. Please try again.', { reason: 'busy' })
-        : new HttpError(502, "The scan didn't work. Please try again.", { reason: 'busy' });
-      if (canRetry(attempt)) continue;
-      break;
+      r = await callGemini(model, prompt, image, apiKey, false, !isThinkingRejection(r.status, r.body));
     }
     if (r.status < 200 || r.status >= 300) {
       debug?.push(describe(model, r));
-      console.error('[foodscan] Gemini error', model, r.status, (r.body.error?.message || '').slice(0, 200));
+      const why = r.body.error?.message || '';
+      const kind = classifyFailure(r.status, why);
+      console.warn(`[foodscan] ${model} → ${r.status} (${kind}) ${why.slice(0, 140)}`);
+      if (kind === 'exhausted') {
+        await markExhausted(db, model);
+        tried.add(model);
+        if (canRetry(attempt)) continue;
+        break;
+      }
+      if (kind === 'transient') {
+        // The model is fine, this call was not. Skip it for the rest of THIS
+        // request only — its daily budget is untouched.
+        tried.add(model);
+        lastFailure = r.status === 504
+          ? new HttpError(504, 'The scan took too long. Please try again in a moment.', { reason: 'busy' })
+          : new HttpError(503, 'The scanner is busy right now. Try again in a moment.', { reason: 'busy' });
+        if (canRetry(attempt)) continue;
+        break;
+      }
       throw new HttpError(502, "The scan didn't work. Please try again.", { reason: 'busy', ...(debug ? { debug } : {}) });
     }
     const text = extractText(r.body);
@@ -232,7 +260,8 @@ async function scan(
       // A garbled reply is the model's problem, not the photo's — give the
       // next one a go before telling the user to retake it.
       console.warn('[foodscan] unparseable reply', model, r.body.candidates?.[0]?.finishReason, text.slice(0, 200));
-      lastFailure = new HttpError(502, "Couldn't read that plate. Try a clearer, closer photo.", { reason: 'busy' });
+      tried.add(model);
+      lastFailure = new HttpError(502, "Couldn't read that plate. Try a clearer, closer photo.", { reason: 'image' });
       if (canRetry(attempt)) continue;
       break;
     }
@@ -287,7 +316,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const debug: ScanDebug[] | null = body.debug === true && adminUids.includes(uid) ? [] : null;
 
     const prompt = hint ? `${SCAN_PROMPT}\n\nThe user says: ${hint}` : SCAN_PROMPT;
-    const { payload, model } = await scan(db, prompt, image, debug);
+    let payload: ScanPayload;
+    let model: string;
+    try {
+      ({ payload, model } = await scan(db, prompt, image, debug));
+    } catch (err) {
+      // A scan that never produced anything shouldn't cost one of the day's
+      // ten. The user retrying our own flakiness was burning their budget.
+      await refundLimit(db, uid, 'scan', DAY_MS);
+      throw err;
+    }
 
     res.status(200).json({
       items: payload.items, note: payload.note, model, remainingToday: remaining.scan ?? 0,

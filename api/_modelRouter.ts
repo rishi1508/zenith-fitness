@@ -62,9 +62,13 @@ export interface ModelPick {
  * within HEADROOM of its daily budget, or null when the whole cascade is
  * spent for the day. No I/O — see the tests.
  */
-export function selectModel(state: QuotaState, budgets: ModelBudget[] = MODEL_CASCADE): ModelPick | null {
+export function selectModel(
+  state: QuotaState,
+  budgets: ModelBudget[] = MODEL_CASCADE,
+  skip: ReadonlySet<string> = new Set(),
+): ModelPick | null {
   for (const b of budgets) {
-    if (state.exhausted?.[b.model]) continue;
+    if (state.exhausted?.[b.model] || skip.has(b.model)) continue;
     const used = state.used?.[b.model] ?? 0;
     if (used < b.perDay - HEADROOM) {
       return { model: b.model, remainingToday: b.perDay - HEADROOM - used - 1 };
@@ -94,14 +98,14 @@ function quotaRef(db: Firestore, now?: Date) {
  */
 export async function pickModel(
   db: Firestore,
-  opts: { purpose: string; now?: Date; budgets?: ModelBudget[] },
+  opts: { purpose: string; now?: Date; budgets?: ModelBudget[]; skip?: ReadonlySet<string> },
 ): Promise<ModelPick> {
   const budgets = opts.budgets ?? MODEL_CASCADE;
   const ref = quotaRef(db, opts.now);
   const pick = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const state = (snap.exists ? snap.data() : {}) as QuotaState;
-    const chosen = selectModel(state, budgets);
+    const chosen = selectModel(state, budgets, opts.skip);
     if (!chosen) return null;
     tx.set(
       ref,
@@ -121,18 +125,36 @@ export async function markExhausted(db: Firestore, model: string, now?: Date): P
   await quotaRef(db, now).set({ exhausted: { [model]: true }, updatedAt: Date.now() }, { merge: true });
 }
 
-/** Statuses that mean "this model is done for today, take the next one". */
-export function isExhaustedStatus(status: number): boolean {
-  return status === 429 || status === 404 || status === 503;
+/**
+ * What a failed call means for the model that produced it.
+ *
+ *   'exhausted' — it is out of free-tier requests for the day (or does not
+ *                 exist on this key). Write it off; the next scan skips it.
+ *   'transient' — the model is fine, this call was not: a demand spike, an
+ *                 internal error, a timeout. Take the next model for THIS
+ *                 request but leave the daily budget alone.
+ *   'fatal'     — our request was wrong; no other model will do better.
+ *
+ * Getting this wrong is expensive in exactly one direction, and we got it
+ * wrong: 503 "This model is currently experiencing high demand" was treated
+ * as exhaustion, so on 2026-09-09 the three strongest models were written
+ * off for the whole day after 1, 2 and 2 calls out of 20 each. Every scan
+ * after that fell to the weakest models or failed outright. A demand spike
+ * lasts seconds; a daily quota lasts until midnight Pacific. Only 429 with
+ * a quota message, and 404, may write a model off.
+ */
+export type FailureKind = 'exhausted' | 'transient' | 'fatal';
+
+/** Per-minute limits recover on their own; per-day ones do not. */
+function isPerDayQuota(message: string): boolean {
+  const m = message.toLowerCase();
+  if (/per\s*minute|perminute|per-minute|\brpm\b|requests per minute/.test(m)) return false;
+  return /per\s*day|perday|per-day|\brpd\b|daily|quota/.test(m);
 }
 
-/**
- * A failure that says nothing about the model's daily quota — the API's own
- * "Internal error encountered", a bad gateway, or a request that timed out.
- * The next model in the cascade usually answers the same request fine, which
- * is what "it failed a few times, then it worked" looked like from the
- * outside (reported 2026-09-09). The model is NOT written off for the day.
- */
-export function isTransientStatus(status: number): boolean {
-  return status === 500 || status === 502 || status === 504;
+export function classifyFailure(status: number, message = ''): FailureKind {
+  if (status === 404) return 'exhausted';
+  if (status === 429) return isPerDayQuota(message) ? 'exhausted' : 'transient';
+  if (status === 408 || status === 409 || status === 500 || status === 502 || status === 503 || status === 504) return 'transient';
+  return 'fatal';
 }
