@@ -313,17 +313,24 @@ function ScanOverlay({ stage }: { stage: 'preparing' | 'scanning' }) {
     ? 'Getting the photo ready…'
     : SCANNING_LINES[Math.min(SCANNING_LINES.length - 1, Math.floor(elapsed / 2500))];
 
+  // Colours are inline on purpose. This sits over an arbitrary photo in a
+  // WebView, and the status line has to be readable whatever is behind it and
+  // whatever the theme does — it was reported as invisible on a device.
   return (
-    <div className="absolute inset-0 bg-black/55 flex flex-col justify-end p-4" role="status" aria-live="polite">
+    <div className="absolute inset-0 flex flex-col justify-end" role="status" aria-live="polite">
+      <span className="absolute inset-0 bg-black/45" aria-hidden="true" />
       {stage === 'scanning' && (
-        <span className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-accent/40 to-transparent animate-scanSweep" aria-hidden="true" />
+        <span className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-accent/30 to-transparent animate-scanSweep" aria-hidden="true" />
       )}
-      <div className="space-y-2">
-        <p className="text-sm font-semibold text-white drop-shadow">{line}</p>
-        <div className="h-1.5 rounded-sm bg-white/25 overflow-hidden">
+      <div
+        className="relative m-3 rounded-card px-3.5 py-3 space-y-2"
+        style={{ backgroundColor: 'rgba(9,9,11,0.88)', border: '1px solid rgba(255,255,255,0.12)' }}
+      >
+        <p className="text-sm font-semibold" style={{ color: '#ffffff' }}>{line}</p>
+        <div className="h-1.5 rounded-sm overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.22)' }}>
           <div className="h-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
         </div>
-        <p className="text-[11px] text-white/80">
+        <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.75)' }}>
           {elapsed > 20_000 ? 'Still going — a busy model can take a while.' : 'Usually about ten seconds.'}
         </p>
       </div>

@@ -322,12 +322,31 @@ service cloud.firestore {
         allow create: if (isGymMember(gymId) || isGymStaff(gymId))
           && request.resource.data.uid == request.auth.uid
           && postId.matches(request.auth.uid + '_.*');
+        // Anyone in the gym may react (their own key only) and may bump the
+        // denormalised comment count by one either way — nothing else.
         allow update: if isGymStaff(gymId) || isAdmin()
           || (resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid)
           || ((isGymMember(gymId) || isGymStaff(gymId))
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
-            && request.resource.data.reactions.diff(resource.data.reactions).affectedKeys().hasOnly([request.auth.uid]));
+            && request.resource.data.reactions.diff(resource.data.reactions).affectedKeys().hasOnly([request.auth.uid]))
+          || ((isGymMember(gymId) || isGymStaff(gymId))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount'])
+            && (request.resource.data.commentCount == resource.data.get('commentCount', 0) + 1
+              || request.resource.data.commentCount == resource.data.get('commentCount', 0) - 1));
         allow delete: if isGymStaff(gymId) || isAdmin() || resource.data.uid == request.auth.uid;
+
+        // One comment per doc. A member writes as themselves and deletes
+        // their own; staff can remove anything.
+        match /comments/{commentId} {
+          allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+          allow create: if (isGymMember(gymId) || isGymStaff(gymId))
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 500;
+          allow update: if false;
+          allow delete: if isGymStaff(gymId) || isAdmin() || resource.data.uid == request.auth.uid;
+        }
 
         // The post's photo, kept out of the list query so opening the feed
         // does not download every image in it.

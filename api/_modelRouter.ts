@@ -43,8 +43,10 @@ export const MODEL_CASCADE: ModelBudget[] = [
  */
 export const HEADROOM = 1;
 
-/** How many models a single request may burn through before giving up. */
-export const MAX_MODEL_ATTEMPTS = 3;
+/** How many models a single request may burn through before giving up.
+ *  Four, not three: a 503 demand spike comes back in about a second, and on
+ *  2026-09-09 the two strongest models both spiked on the same call. */
+export const MAX_MODEL_ATTEMPTS = 4;
 
 export interface QuotaState {
   used?: Record<string, number>;

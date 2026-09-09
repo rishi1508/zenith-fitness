@@ -1429,7 +1429,7 @@ function App() {
                   const workout = celebrationData.workout;
                   if (!workout || shareState) return;
                   setShareState('sharing');
-                  createPost(gym.id, { workout: workoutSummary(workout) })
+                  createPost(gym.id, { workout: workoutSummary(workout, celebrationData.prs?.length ?? 0) })
                     .then(() => { setShareState('shared'); showToast(`Shared with ${gym.name}`); })
                     .catch(() => { setShareState(null); showToast('Could not share that — try the Feed tab.', 'error'); });
                 }}
@@ -1874,6 +1874,15 @@ function App() {
           level={levelUp.to}
           from={levelUp.from}
           totalVolumeKg={levelUp.volume}
+          gymName={gym?.name}
+          onShareToGym={gym ? async () => {
+            await createPost(gym.id, {
+              achievement: {
+                label: `Level ${levelUp.to} unlocked`,
+                detail: `${Math.round(levelUp.volume / 1000)} t lifted all time`,
+              },
+            });
+          } : undefined}
           onClose={() => { storage.setSeenLevel(levelUp.to); setLevelUp(null); }}
         />
       )}

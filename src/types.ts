@@ -499,9 +499,15 @@ export interface GymCheckin { id: string; uid: string; at: string; date: string 
 export interface GymDailyStat { date: string; count: number; hours: Record<string, number> }
 export interface GymClass { id: string; name: string; weekday: number /* 0=Sun..6 */; startTime: string /* HH:mm */; durationMin: number; trainerUid?: string; capacity?: number /* undefined = uncapped */; active: boolean }
 export interface GymClassSession { id: string /* `${classId}_${YYYY-MM-DD}` */; classId: string; date: string; enrolled: string[]; attended: string[] }
-/** One post in a gym's feed (docs/GYM_TIER_A_SPEC.md §9). Deliberately
- *  small: the image, when there is one, lives in the post's `media`
- *  subcollection so listing the feed doesn't pull megabytes of base64. */
+/**
+ * One post in a gym's feed (docs/GYM_TIER_A_SPEC.md §9).
+ *
+ * Shaped after Strava's athlete posts: a piece of text that can carry an
+ * attachment — a session, a personal record, an achievement, a photo — rather
+ * than a separate feature per kind. Deliberately small: the image, when there
+ * is one, lives in the post's `media` subcollection so listing the feed does
+ * not pull megabytes of base64.
+ */
 export interface GymFeedPost {
   id: string;
   uid: string;
@@ -509,15 +515,44 @@ export interface GymFeedPost {
   photoURL?: string | null;
   at: string;                    // ISO
   date: string;                  // YYYY-MM-DD local
-  kind: 'workout' | 'photo';
-  /** The member's own caption. */
+  kind: GymFeedKind;
+  /** The member's own words. The only thing every post has. */
   text?: string;
-  /** kind 'workout': the summary, denormalised so the feed is one query. */
-  workout?: { name: string; sets: number; volumeKg: number; durationMin?: number; prs?: number };
+  /** kind 'workout': the session summary, denormalised so the feed is one query. */
+  workout?: GymFeedWorkout;
+  /** kind 'pr': the lift that went up. */
+  pr?: { exercise: string; weight: number; reps: number };
+  /** kind 'achievement': a level, a streak star, a check-in milestone. */
+  achievement?: { label: string; detail?: string };
   /** True when a `media/image` doc exists for this post. */
   hasImage?: boolean;
   /** uid → emoji. Rules let a member add or remove only their own key. */
   reactions?: Record<string, string>;
+  /** Denormalised so the card can say "3 comments" without a second query. */
+  commentCount?: number;
+}
+
+export type GymFeedKind = 'workout' | 'photo' | 'text' | 'pr' | 'achievement';
+
+export interface GymFeedWorkout {
+  name: string;
+  sets: number;
+  volumeKg: number;
+  exercises?: number;
+  durationMin?: number;
+  /** Calories above resting, from src/energy.ts. */
+  kcal?: number;
+  /** How many personal records fell in that session. */
+  prs?: number;
+}
+
+export interface GymFeedComment {
+  id: string;
+  uid: string;
+  name: string;
+  photoURL?: string | null;
+  text: string;
+  at: string;
 }
 
 export interface GymAnnouncement { id: string; text: string; audience: 'all' | { classId: string }; byUid: string; byName: string; at: string }

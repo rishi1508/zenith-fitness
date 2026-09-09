@@ -54,6 +54,21 @@ const CANCELLED: string[] = [
  */
 export async function capturePhoto(source: 'camera' | 'gallery'): Promise<Blob> {
   try {
+    // Ask before launching. The plugin would prompt anyway, but doing it here
+    // means the grant is settled BEFORE any capture intent starts — the exact
+    // sequence whose absence used to take the process down — and a refusal
+    // becomes a sentence the user can act on instead of a dead button.
+    const need = source === 'camera' ? 'camera' : 'photos';
+    const status = await Camera.checkPermissions().catch(() => null);
+    if (status && status[need] !== 'granted' && status[need] !== 'limited') {
+      const asked = await Camera.requestPermissions({ permissions: [need] });
+      if (asked[need] !== 'granted' && asked[need] !== 'limited') {
+        throw new Error(source === 'camera'
+          ? 'Camera access is off for Zenith. Turn it on in Android settings and try again.'
+          : 'Photo access is off for Zenith. Turn it on in Android settings and try again.');
+      }
+    }
+
     const result = source === 'camera'
       ? await Camera.takePhoto({
         quality: JPEG_QUALITY,

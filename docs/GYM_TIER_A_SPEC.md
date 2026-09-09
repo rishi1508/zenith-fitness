@@ -240,16 +240,28 @@ Admin-SDK script (uses `GOOGLE_APPLICATION_CREDENTIALS`) that creates gym `demo-
 
 Payments processing, WhatsApp, PDF reports, lead tracking, per-trainer payroll, member self-registration without a code, multi-gym membership for one user (one gym per profile).
 
-## 10. Gym feed (3.19.0, 2026-09-09)
-`gyms/{gymId}/feed/{uid}_{ts}` — one small doc per post (`GymFeedPost`), listed newest-first with a
-20-doc limit, so opening the Feed segment is ~20 reads. A progress photo lives in
-`feed/{postId}/media/image` as a 720 px JPEG data URL and is read only when that card renders, so
-scrolling past ten photos does not pull ten photos into the list query. Reactions are a
-`uid → emoji` map on the post; rules let a member change only their own key
-(`reactions.diff(...).affectedKeys().hasOnly([request.auth.uid])`), so a fist-bump cannot rewrite
-the post. Authors and staff can delete. Nothing posts automatically — sharing is a deliberate tap.
+## 10. Gym feed (3.19.0, redesigned 3.19.1, 2026-09-09)
+`My Gym` is `Feed | Member | Manage`, and **Feed is the landing segment** — it is what a member
+opens the tab for on most days; the card, plan and QR are one tap away and rarely change.
 
-`My Gym` is now `Member | Feed | Manage` (Manage still staff-only).
+Modelled on Strava's athlete posts rather than a workout-only wall: a post is the member's own
+words, optionally carrying an attachment. `GymFeedPost.kind` is one of `workout | photo | text |
+pr | achievement`, derived from what was attached. The composer offers Session, Photo and Post;
+the end-of-session celebration offers the session, and the level-up modal offers the achievement.
+Nothing ever posts itself.
+
+Card: avatar · name · "did Push Day · 3h" · the member's text · a 4-up metric strip
+(volume / sets / time / kcal, from `workoutSummary`, which prices the session through
+`src/energy.ts`) · a trophy line when PRs fell · the photo · three reactions · comments.
+
+Cost shape: one small document per post, listed newest-first with a 20-doc limit, so opening the
+feed is ~20 reads. A photo lives in `feed/{postId}/media/image` as a 900 px JPEG data URL and is
+read only when that card renders. Comments live in `feed/{postId}/comments/{id}` and are read only
+when the thread is opened; `commentCount` on the post keeps the collapsed card honest.
+
+Rules: only this gym's people can read. A member creates posts and comments as themselves, deletes
+their own, and may otherwise change exactly two things on someone else's post — their own key in
+the `reactions` map, and `commentCount` by ±1. Staff can remove anything.
 
 ## 11. Geofenced check-in and renewal outreach (3.19.0)
 - `Gym.location` + `Gym.geofenceM` (default 100 m, `src/geo.ts`). A poster-QR check-in verifies the

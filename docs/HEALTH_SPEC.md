@@ -275,3 +275,30 @@ exhausted for the day (`isTransientStatus` in `api/_modelRouter.ts`). That was
 
 Every add-food flow (scan and manual) ends on the diary for that day — `showDiary` in
 App.tsx rewinds `food-search` / `food-scan` out of the navigation history first.
+
+## 16. Why the plate scan kept failing (3.19.1, 2026-09-09)
+Two independent faults, both server-side. Found by reading `aiQuota/2026-09-09` in production:
+the three strongest models were flagged `exhausted` after **1, 2 and 2 calls** out of 20 free
+requests each.
+
+1. **A demand spike was being read as a daily quota.** `isExhaustedStatus` counted 503, and Gemini
+   answers `503 "This model is currently experiencing high demand"` during any spike. The first
+   spike of the day permanently disabled that model, so by the third scan the cascade had collapsed
+   onto the weakest models or nothing at all. Replaced with `classifyFailure(status, message)`:
+   *exhausted* only for 404 and a 429 whose message names a per-**day** quota; *transient* for 503,
+   500, 502, 504, 408 and a per-**minute** 429; *fatal* otherwise. A transient failure skips that
+   model for the current request only (`pickModel({ skip })`) and leaves its budget alone.
+2. **Thinking tokens were eating the answer.** Gemini 3.x flash reasons before answering and those
+   tokens come out of `maxOutputTokens`. Measured on a real plate: `thoughts=1099, out=275` — over
+   the old 1200 cap, so the JSON came back truncated and unparseable. That is what the user saw as
+   *"Couldn't read that plate. Try a clearer, closer photo."* — a message about the photo when the
+   photo was fine. Now 2400 with `thinkingLevel: 'minimal'`, plus a retry without the field for any
+   model that rejects it.
+
+Also: the per-call timeout went 20 s → 26 s (a clean scan measured 17 s and the next model was cut
+off at 20 s), `MAX_MODEL_ATTEMPTS` 3 → 4, and a failed scan now **refunds** the user's daily credit
+(`refundLimit`) — retrying our own flakiness was eating their ten a day.
+
+Diagnostics: `POST /api/foodscan` with `debug: true` from an admin uid returns a per-attempt array
+(model, status, finishReason, token usage, and the first 300 chars of an unparseable reply). That
+is how both faults were found; use it before theorising again.

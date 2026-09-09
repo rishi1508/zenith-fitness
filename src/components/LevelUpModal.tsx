@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Share2, Sparkles, X } from 'lucide-react';
+import { Share2, Sparkles, Users, X } from 'lucide-react';
 import { formatVolume, levelTitle } from '../levels';
 import { Button, IconButton, CAPTION, SUB } from '../ui';
 
@@ -32,6 +32,9 @@ export interface LevelUpModalProps {
   /** The level they were on before this workout — shown as "Level 7 → 8". */
   from?: number;
   totalVolumeKg: number;
+  /** Present when the user is in a gym: offers the achievement to its feed. */
+  onShareToGym?: () => Promise<void>;
+  gymName?: string;
   onClose: () => void;
 }
 
@@ -40,9 +43,10 @@ export interface LevelUpModalProps {
  * level threshold (see `src/levels.ts`). Shareable: the Web Share sheet on a
  * phone, clipboard everywhere else.
  */
-export function LevelUpModal({ level, from, totalVolumeKg, onClose }: LevelUpModalProps) {
+export function LevelUpModal({ level, from, totalVolumeKg, onShareToGym, gymName, onClose }: LevelUpModalProps) {
   const pieces = useMemo(() => confettiFor(level), [level]);
   const [shared, setShared] = useState<'idle' | 'copied'>('idle');
+  const [gymShare, setGymShare] = useState<'idle' | 'sharing' | 'done'>('idle');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -107,7 +111,26 @@ export function LevelUpModal({ level, from, totalVolumeKg, onClose }: LevelUpMod
           {formatVolume(totalVolumeKg)} lifted all time. Every kilo you log counts towards the next one.
         </p>
 
-        <div className="flex gap-2 mt-5">
+        {onShareToGym && gymName && (
+          <button
+            onClick={() => {
+              if (gymShare !== 'idle') return;
+              setGymShare('sharing');
+              onShareToGym().then(() => setGymShare('done')).catch(() => setGymShare('idle'));
+            }}
+            disabled={gymShare !== 'idle'}
+            className={`w-full min-h-11 mt-4 rounded-control border text-sm font-semibold flex items-center justify-center gap-2 ${
+              gymShare === 'done' ? 'border-ok/40 text-ok' : 'border-border text-text'
+            } disabled:opacity-70`}
+          >
+            <Users className="w-4 h-4" strokeWidth={1.75} />
+            <span className="truncate">
+              {gymShare === 'done' ? `Shared with ${gymName}` : gymShare === 'sharing' ? 'Sharing…' : `Share with ${gymName}`}
+            </span>
+          </button>
+        )}
+
+        <div className="flex gap-2 mt-3">
           <Button variant="secondary" size="lg" full icon={Share2} onClick={share}>
             {shared === 'copied' ? 'Copied' : 'Share'}
           </Button>

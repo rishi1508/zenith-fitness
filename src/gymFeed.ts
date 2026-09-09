@@ -1,9 +1,13 @@
 import {
-  doc, collection, deleteDoc, getDoc, onSnapshot, query, orderBy, limit as fsLimit, setDoc, updateDoc, deleteField,
+  doc, collection, deleteDoc, getDoc, getDocs, increment, onSnapshot, orderBy, query,
+  limit as fsLimit, setDoc, updateDoc, deleteField,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { localDateISO } from './gymStats';
-import type { GymFeedPost, Workout } from './types';
+import { workoutEnergy } from './energy';
+import { getHealthProfile } from './health';
+import * as storage from './storage';
+import type { GymFeedComment, GymFeedPost, GymFeedWorkout, Workout } from './types';
 
 /**
  * The gym feed (docs/GYM_TIER_A_SPEC.md §9): what the people you actually
@@ -12,9 +16,9 @@ import type { GymFeedPost, Workout } from './types';
  *
  * Two deliberate choices about cost:
  *   - a post is one small doc, so opening the feed is ~20 reads;
- *   - a progress photo lives in `feed/{id}/media/image` and is fetched only
- *     when that post is actually rendered, so a scroll past ten photos does
- *     not download ten photos' worth of base64 into the list query.
+ *   - a photo lives in `feed/{id}/media/image` and is fetched only when that
+ *     post is actually rendered, so a scroll past ten photos does not
+ *     download ten photos' worth of base64 into the list query.
  */
 
 /** Newest posts first. */
@@ -39,11 +43,21 @@ export async function getPostImage(gymId: string, postId: string): Promise<strin
   }
 }
 
-interface NewPost {
+export interface NewPost {
   text?: string;
-  workout?: GymFeedPost['workout'];
+  workout?: GymFeedWorkout;
+  pr?: GymFeedPost['pr'];
+  achievement?: GymFeedPost['achievement'];
   /** JPEG base64 (no data: prefix) — see prepareScanImage in nutrition/scan. */
   imageBase64?: string;
+}
+
+function kindOf(input: NewPost): GymFeedPost['kind'] {
+  if (input.workout) return 'workout';
+  if (input.pr) return 'pr';
+  if (input.achievement) return 'achievement';
+  if (input.imageBase64) return 'photo';
+  return 'text';
 }
 
 /** Post to the gym's feed as the signed-in member. */
@@ -59,11 +73,14 @@ export async function createPost(gymId: string, input: NewPost): Promise<GymFeed
     photoURL: user.photoURL ?? null,
     at: now.toISOString(),
     date: localDateISO(now),
-    kind: input.workout ? 'workout' : 'photo',
-    ...(input.text?.trim() ? { text: input.text.trim().slice(0, 280) } : {}),
+    kind: kindOf(input),
+    ...(input.text?.trim() ? { text: input.text.trim().slice(0, 500) } : {}),
     ...(input.workout ? { workout: input.workout } : {}),
+    ...(input.pr ? { pr: input.pr } : {}),
+    ...(input.achievement ? { achievement: input.achievement } : {}),
     ...(input.imageBase64 ? { hasImage: true } : {}),
     reactions: {},
+    commentCount: 0,
   };
   await setDoc(doc(db, 'gyms', gymId, 'feed', id), post);
   if (input.imageBase64) {
@@ -75,8 +92,11 @@ export async function createPost(gymId: string, input: NewPost): Promise<GymFeed
   return post;
 }
 
-/** A finished session as a feed-ready summary. */
-export function workoutSummary(workout: Workout): NonNullable<GymFeedPost['workout']> {
+/**
+ * A finished session as a feed-ready summary — the numbers a lifter actually
+ * compares: volume, sets, time and what it cost them.
+ */
+export function workoutSummary(workout: Workout, prs = 0): GymFeedWorkout {
   let sets = 0;
   let volumeKg = 0;
   for (const ex of workout.exercises) {
@@ -86,11 +106,19 @@ export function workoutSummary(workout: Workout): NonNullable<GymFeedPost['worko
       volumeKg += s.weight * s.reps;
     }
   }
+  const burn = workoutEnergy(workout, {
+    profile: getHealthProfile(),
+    weightKg: storage.getLatestBodyWeight()?.weight ?? 0,
+    library: storage.getExercises(),
+  });
   return {
     name: workout.name,
     sets,
     volumeKg: Math.round(volumeKg),
+    exercises: workout.exercises.length,
     ...(workout.duration ? { durationMin: workout.duration } : {}),
+    ...(burn.activeKcal > 0 ? { kcal: burn.activeKcal } : {}),
+    ...(prs > 0 ? { prs } : {}),
   };
 }
 
@@ -116,4 +144,43 @@ export async function deletePost(gymId: string, postId: string, hasImage?: boole
     }
   }
   await deleteDoc(doc(db, 'gyms', gymId, 'feed', postId));
+}
+
+// ---------------------------------------------------------------- comments
+
+/** Oldest first — a conversation reads downwards. Read on demand, per post. */
+export async function listComments(gymId: string, postId: string, limit = 30): Promise<GymFeedComment[]> {
+  const q = query(collection(db, 'gyms', gymId, 'feed', postId, 'comments'), orderBy('at', 'asc'), fsLimit(limit));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => d.data() as GymFeedComment);
+}
+
+export async function addComment(gymId: string, postId: string, text: string): Promise<GymFeedComment> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated');
+  const comment: GymFeedComment = {
+    id: `${user.uid}_${Date.now()}`,
+    uid: user.uid,
+    name: user.displayName || 'A member',
+    photoURL: user.photoURL ?? null,
+    text: text.trim().slice(0, 500),
+    at: new Date().toISOString(),
+  };
+  await setDoc(doc(db, 'gyms', gymId, 'feed', postId, 'comments', comment.id), comment);
+  // Denormalised count, so a card can say "3 comments" without a second query.
+  try {
+    await updateDoc(doc(db, 'gyms', gymId, 'feed', postId), { commentCount: increment(1) });
+  } catch (err) {
+    console.warn('[GymFeed] comment count bump failed:', err);
+  }
+  return comment;
+}
+
+export async function deleteComment(gymId: string, postId: string, commentId: string): Promise<void> {
+  await deleteDoc(doc(db, 'gyms', gymId, 'feed', postId, 'comments', commentId));
+  try {
+    await updateDoc(doc(db, 'gyms', gymId, 'feed', postId), { commentCount: increment(-1) });
+  } catch (err) {
+    console.warn('[GymFeed] comment count bump failed:', err);
+  }
 }
