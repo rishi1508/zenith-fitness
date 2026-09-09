@@ -5,6 +5,7 @@ import { AppBar, TabBar, Sidebar, IconButton, TAB_BAR_HEIGHT } from '../ui';
 import { StreakButton } from '../components';
 import { LevelRing } from '../components/LevelRing';
 import { TABS, viewToTab } from './tabs';
+import { useElasticScroll } from '../hooks/useElasticScroll';
 import type { Tab } from './tabs';
 import { GetAppBanner } from './GetAppBanner';
 import type { View } from '../App';
@@ -91,7 +92,11 @@ export function AppShell({
   // lazy chunks the browser's scroll anchoring lands you at the bottom of
   // the page you just opened. Every navigation starts at the top.
   const scrollRef = useRef<HTMLElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [view]);
+  // Both ends give a little and spring back, so anything sitting under the
+  // tab bar or a floating button can be pulled into view.
+  useElasticScroll(scrollRef, contentRef);
 
   const right =
     view === 'you' ? (
@@ -132,17 +137,21 @@ export function AppShell({
           className={`flex-1 overflow-y-auto overflow-x-hidden ${NO_PADDING_VIEWS.has(view) ? 'p-0' : 'px-5 pt-1'}`}
           style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
         >
+          <div ref={contentRef}>
           {NO_PADDING_VIEWS.has(view) ? (
             children
           ) : (
             <div className={`mx-auto w-full ${FULL_WIDTH_VIEWS.has(view) ? '' : 'lg:max-w-[760px]'} lg:py-6`}>
               {children}
-              {/* Reserves room below the last card so the fixed phone
-                  TabBar never covers it; collapses away on desktop
+              {/* Room below the last card for the fixed TabBar AND anything
+                  floating above it (the diary's Log food button is 56px plus
+                  its own 16px gap). Too little here is why the bottom of
+                  several screens sat under the bar. Collapses away on desktop
                   where the sidebar takes over. */}
-              <div className="lg:hidden" style={{ height: `calc(${TAB_BAR_HEIGHT}px + 24px + env(safe-area-inset-bottom, 0px))` }} />
+              <div className="lg:hidden" style={{ height: `calc(${TAB_BAR_HEIGHT}px + 96px + env(safe-area-inset-bottom, 0px))` }} />
             </div>
           )}
+          </div>
         </main>
         <TabBar items={items} active={tab} onChange={onTabChange} />
       </div>

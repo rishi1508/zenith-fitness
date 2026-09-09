@@ -114,3 +114,26 @@ Nutrition and activity data (Phase N/H), payments, per-class rosters, iOS.
 - **Settings** is an index of categories (Account, Appearance, Workout, Sound & vibration,
   Notifications, Health sync, Data & backup, About), each with an icon, opening one screen at a
   time. Back closes the category before leaving settings.
+
+## Shell and feel, 3.22.0 (2026-09-10)
+- **Welcome tour** (`src/components/WelcomeTour.tsx`) is a spotlight, not slides: it dims the app,
+  cuts a hole around the real control (`data-tour="…"`), outlines it in the accent colour and puts
+  one sentence beside it. It drives `navigateToTab` itself, so by the end the user has watched every
+  tab open once. A target that never appears (no gym) degrades to a centred card. Shown once per
+  device (`src/tourState.ts`).
+- **No more tab-bar shuffle.** `GymProvider` seeds itself synchronously from a `zenith_gym_hint`
+  record (uid + gymId + accent), so `My Gym` is in the shell's first paint instead of arriving
+  ~300 ms later. The provider used to clear that hint while auth was still resolving, which is what
+  cost the head start. Measured: the nav goes 0 → 5 tabs with no 4-tab frame in between.
+- **Elastic overscroll** (`src/hooks/useElasticScroll.ts`) on the shell's main scroller and the
+  active workout: both ends give, with resistance that rises as you pull
+  (`MAX * (1 - 1/(d/MAX + 1))`, max 110 px) and one ease-out spring back. Touch only, transform on
+  the content so scrollTop and sticky headers are untouched. Anything with its own drag gesture
+  opts out with `data-elastic-skip` (the charts do).
+- **Bottom spacer** is `TAB_BAR_HEIGHT + 96px + safe-area` — the old 24 px cleared the bar but not
+  the floating buttons above it, which is why several screens ended underneath something.
+- **Profile photos** live on `userProfiles/{uid}.photoURL` plus a local cache
+  (`src/profilePhoto.ts`), never in Firebase Auth's `photoURL`: that field is capped, so a data URI
+  failed with "photo upload failed, URL too large". Google's own https URL still works as the
+  fallback. Everything that writes an avatar (buddy profile, feed post, session participant) reads
+  `effectiveProfilePhoto()`.

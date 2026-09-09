@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 type CardTone = 'default' | 'accent' | 'danger' | 'info' | 'warn';
 
 interface CardProps {
+  /** Marks the card as a target for the welcome tour's spotlight. */
+  'data-tour'?: string;
   /** `md` = 16px; `list` = the tight wrapper for `ListRow`s; `none` = bare. */
   padding?: 'md' | 'list' | 'none';
   /** Tints the 1px border (used for the dues tile, the admin block, …). */

@@ -341,7 +341,7 @@ export function ActiveWorkoutView({
   const progress = totalSets > 0 ? (completedSets / totalSets) * 100 : 0;
 
   return (
-    <div className="space-y-4 animate-fadeIn pb-32">
+    <div className="space-y-4 animate-fadeIn" style={{ paddingBottom: 'calc(128px + env(safe-area-inset-bottom, 0px))' }}>
       {/* PR Achievement Toast */}
       {prAchievement && (
         <div className="fixed top-4 left-4 right-4 z-50 animate-fadeIn">

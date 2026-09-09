@@ -247,6 +247,7 @@ function ChartBody({
         {/* Horizontally scrollable plot */}
         <div
           ref={scrollerRef}
+            data-elastic-skip
           className={
             scrollLocked
               ? 'overflow-x-hidden'

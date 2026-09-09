@@ -25,6 +25,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
   const [editWorkout, setEditWorkout] = useState<Workout>(workout);
   /** Which exercise the picker is open for, while editing. */
   const [swapIndex, setSwapIndex] = useState<number | null>(null);
+  const [saved, setSaved] = useState<Workout | null>(null);
   const allExercises = swapIndex !== null ? storage.getExercises() : [];
   const isImported = workout.type === 'imported';
   const isRest = workout.type === 'rest';
@@ -37,8 +38,14 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
 
   const saveEdits = () => {
     onSave(editWorkout);
+    setSaved(editWorkout);
     setEditing(false);
   };
+
+  /** The list is keyed by workout id, so a re-render hands this card the
+   *  updated workout as a prop — but only once the parent has re-read it.
+   *  Until then, show what was just saved rather than what was replaced. */
+  const shown = editing ? editWorkout : (saved ?? workout);
 
   const cancelEditing = () => {
     setEditWorkout(JSON.parse(JSON.stringify(workout)));
@@ -66,15 +73,15 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
     setEditWorkout(updated);
   };
   
-  const completedSets = workout.exercises.reduce((acc, ex) => 
+  const completedSets = shown.exercises.reduce((acc, ex) =>
     acc + ex.sets.filter(s => s.completed).length, 0
   );
 
   // For imported workouts, show exercise names in title
   const getTitle = () => {
-    if (isImported && workout.exercises.length > 0) {
-      const names = workout.exercises.map(ex => ex.exerciseName).slice(0, 2);
-      const suffix = workout.exercises.length > 2 ? ` +${workout.exercises.length - 2}` : '';
+    if (isImported && shown.exercises.length > 0) {
+      const names = shown.exercises.map(ex => ex.exerciseName).slice(0, 2);
+      const suffix = shown.exercises.length > 2 ? ` +${shown.exercises.length - 2}` : '';
       return names.join(', ') + suffix;
     }
     return workout.name;
@@ -114,7 +121,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
               </div>
               {!isRest && (
                 <div className="text-sm text-zinc-500">
-                  {workout.exercises.length} exercises • {completedSets} sets
+                  {shown.exercises.length} exercises • {completedSets} sets
                 </div>
               )}
             </div>
@@ -175,7 +182,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
       </div>
       
       {/* Expanded exercise details */}
-      {expanded && workout.exercises.length > 0 && (
+      {expanded && shown.exercises.length > 0 && (
         <div className={`px-4 pb-4 border-t pt-3 ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
           {editing && (
             <div className="flex items-center justify-end gap-2 mb-3">
@@ -196,7 +203,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
             </div>
           )}
           <div className="space-y-3">
-            {(editing ? editWorkout : workout).exercises.map((exercise, exIdx) => {
+            {(editing ? editWorkout : shown).exercises.map((exercise, exIdx) => {
               const completedSets = exercise.sets.filter(s => s.completed);
               return (
                 <div key={exIdx}>
@@ -283,9 +290,12 @@ interface HistoryViewProps {
   isDark: boolean;
   onBack: () => void;
   onDelete: (id: string) => void;
+  /** Re-read history after an edit — the list is a prop, so saving to
+   *  storage alone left the old exercise on screen. */
+  onChanged?: () => void;
 }
 
-export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewProps) {
+export function HistoryView({ workouts, isDark, onBack, onDelete, onChanged }: HistoryViewProps) {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [workoutToShare, setWorkoutToShare] = useState<Workout | null>(null);
@@ -388,6 +398,10 @@ export function HistoryView({ workouts, isDark, onBack, onDelete }: HistoryViewP
                     onShare={() => setWorkoutToShare(workout)}
                     onSave={(updated) => {
                       storage.saveWorkout(updated);
+                      // Swapping an exercise changes which records are the
+                      // best ones, so the PR table has to be rebuilt too.
+                      storage.recomputePersonalRecords();
+                      onChanged?.();
                       setToastMessage('Workout updated');
                       setShowToast(true);
                       setTimeout(() => setShowToast(false), 2000);

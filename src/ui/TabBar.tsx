@@ -41,6 +41,7 @@ export function TabBar<T extends string>({ items, active, onChange }: TabBarProp
         return (
           <button
             key={id}
+            data-tour={`tab-${id}`}
             onClick={() => onChange(id)}
             aria-current={on ? 'page' : undefined}
             className={`flex flex-col items-center gap-1 text-[11px] font-bold transition-colors ${

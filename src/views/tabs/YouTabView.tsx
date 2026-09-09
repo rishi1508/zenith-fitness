@@ -4,9 +4,7 @@ import {
 } from 'lucide-react';
 import type { UserStats, Workout } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
-import { updateProfile } from 'firebase/auth';
-import { auth } from '../../firebase';
-import * as buddyService from '../../buddyService';
+import { effectiveProfilePhoto, saveProfilePhoto } from '../../profilePhoto';
 import { Card, StatTile, ListRow, Pill, SectionHeader, useToast } from '../../ui';
 import type { PillTone } from '../../ui';
 import { usePremium, PremiumBadge } from '../../premium';
@@ -35,9 +33,10 @@ interface YouTabViewProps {
 const TIER_LABEL: Record<Tier, string> = { admin: 'Admin', premium: 'Premium', gym: 'Gym premium', free: 'Free' };
 const TIER_TONE: Record<Tier, PillTone> = { admin: 'info', premium: 'accent', gym: 'accent', free: 'neutral' };
 
-/** Resize + JPEG-compress client-side so a data URI fits in Firebase
- *  Auth's photoURL field. Lifted from the old ProfileLanding. */
-async function compressImageFile(file: File, maxPx = 256, quality = 0.8): Promise<string> {
+/** Resize + JPEG-compress client-side. 192 px is plenty for a 72 px ring on a
+ *  3× screen and keeps the document small — the photo is stored on the user's
+ *  profile document, not in Auth (src/profilePhoto.ts). */
+async function compressImageFile(file: File, maxPx = 192, quality = 0.72): Promise<string> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width * scale);
@@ -62,20 +61,20 @@ export function YouTabView({
   const { tier } = usePremium();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const [photoURL, setPhotoURL] = useState(user?.photoURL || null);
+  const [photoURL, setPhotoURL] = useState(() => effectiveProfilePhoto(user?.photoURL));
   const [levelOpen, setLevelOpen] = useState(false);
   const [streakOpen, setStreakOpen] = useState(false);
 
   const { showToast } = useToast();
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !auth.currentUser) return;
+    if (!file || !user) return;
     setUploading(true);
     try {
       const dataUri = await compressImageFile(file);
-      await updateProfile(auth.currentUser, { photoURL: dataUri });
+      await saveProfilePhoto(dataUri);
       setPhotoURL(dataUri);
-      await buddyService.upsertUserProfile();
+      showToast('Photo updated');
     } catch (err) {
       console.error('[You] photo upload failed:', err);
       showToast('Photo upload failed: ' + (err instanceof Error ? err.message : 'unknown'), 'error');

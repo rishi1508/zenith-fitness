@@ -4,6 +4,7 @@ import {
   addDoc, orderBy, limit, arrayUnion,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { effectiveProfilePhoto } from './profilePhoto';
 import { deliverPush } from './pushService';
 import type {
   WorkoutSession, SessionParticipant, SessionProgress,
@@ -26,7 +27,7 @@ export async function createSession(
   const hostParticipant: SessionParticipant = {
     uid: user.uid,
     name: user.displayName || 'Anonymous',
-    photoURL: user.photoURL || null,
+    photoURL: effectiveProfilePhoto(user.photoURL),
     status: 'joined',
     joinedAt: new Date().toISOString(),
     totalVolume: 0,

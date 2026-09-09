@@ -16,6 +16,8 @@ import {
   PushPermissionPrompt, SessionInviteBanner, WelcomeTour,
 } from './components';
 import { tourSeen } from './tourState';
+import { effectiveProfilePhoto } from './profilePhoto';
+import { useElasticScroll } from './hooks/useElasticScroll';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { ActiveWorkoutView, LoginView } from './views';
 import type { GymView, GymNavParams } from './views';
@@ -114,7 +116,10 @@ export type Theme = 'dark' | 'light';
 
 function App() {
   const { user, loading: authLoading, isGuest } = useAuth();
-  const { gym, role: gymRole } = useGym();
+  const { gym, role: gymRole, loading: gymLoading, hasGymHint } = useGym();
+  // While the gym is still loading, trust what this device remembers: adding
+  // the My Gym tab 300 ms after launch shifted the whole bar under the thumb.
+  const showGymTab = !!gym || (gymLoading && hasGymHint);
   const [view, setView] = useState<View>('home');
   // Nav params for the gym screens (which class / which member) — the
   // gym itself comes from useGym(), not from this state. See
@@ -127,6 +132,19 @@ function App() {
   const [levelUp, setLevelUp] = useState<{ from: number; to: number; volume: number } | null>(null);
   // Shown once per device, after the first sign-in settles.
   const [showTour, setShowTour] = useState(false);
+  // A self-uploaded avatar lives on the profile document, not in Auth
+  // (src/profilePhoto.ts) — so the shell reads it from there.
+  const [myPhoto, setMyPhoto] = useState<string | null>(() => effectiveProfilePhoto(null));
+  useEffect(() => {
+    const sync = () => setMyPhoto(effectiveProfilePhoto(user?.photoURL));
+    sync();
+    window.addEventListener('zenith-profile-photo', sync);
+    return () => window.removeEventListener('zenith-profile-photo', sync);
+  }, [user?.photoURL]);
+  // The active workout is the one screen outside AppShell, so it needs its
+  // own elastic scroll wiring.
+  const activeScrollRef = useRef<HTMLElement>(null);
+  const activeContentRef = useRef<HTMLDivElement>(null);
   const { showToast } = useToast();
   const { confirm: confirmDialog } = useConfirm();
   // Which day/meal the food search or plate scan adds to (docs/HEALTH_SPEC.md §7).
@@ -1192,6 +1210,8 @@ function App() {
     return startActivityAutoSync();
   }, [user]);
 
+  useElasticScroll(activeScrollRef, activeContentRef, view === 'active');
+
   startWorkoutRef.current = startWorkout;
   activeWorkoutRef.current = activeWorkout;
 
@@ -1516,10 +1536,11 @@ function App() {
               <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
             )}
             <main
+              ref={activeScrollRef}
               className="flex-1 overflow-y-auto overflow-x-hidden px-5"
               style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
             >
-              <div className="mx-auto w-full lg:max-w-[760px] lg:py-6">
+              <div ref={activeContentRef} className="mx-auto w-full lg:max-w-[760px] lg:py-6">
               <ActiveWorkoutView
                 workout={activeWorkout}
                 onUpdate={saveActiveWorkout}
@@ -1537,7 +1558,7 @@ function App() {
       <AppShell
         view={view}
         onTabChange={navigateToTab}
-        hasGym={!!gym}
+        hasGym={showGymTab}
         gymName={gym?.name}
         isGymOwner={gymRole === 'owner'}
         firstName={user?.displayName?.split(' ')[0] || 'Champ'}
@@ -1550,8 +1571,8 @@ function App() {
         onOpenGymSettings={() => navigateToGym('gym-settings')}
         userName={user?.displayName || 'Anonymous'}
         userSub={user?.email ?? undefined}
-        userAvatar={user?.photoURL ? <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" /> : undefined}
-        userPhotoURL={user?.photoURL}
+        userAvatar={myPhoto ? <img src={myPhoto} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" /> : undefined}
+        userPhotoURL={myPhoto}
         onOpenProfile={() => navigateToTab('you')}
         banner={(
           <>
@@ -1647,6 +1668,7 @@ function App() {
             workouts={workoutHistory}
             isDark={isDark}
             onBack={() => goBack()}
+            onChanged={loadData}
             onDelete={(id) => {
               storage.deleteWorkout(id);
               loadData();
@@ -1924,7 +1946,12 @@ function App() {
       )}
 
       {/* First run: a short guided tour, skippable at every step. */}
-      {showTour && <WelcomeTour onDone={() => setShowTour(false)} />}
+      {showTour && (
+        <WelcomeTour
+          onDone={() => { setShowTour(false); navigateToTab('home'); }}
+          onGoToTab={(tab) => navigateToTab(tab)}
+        />
+      )}
 
       {levelUp && (
         <LevelUpModal

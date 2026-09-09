@@ -3,6 +3,7 @@ import {
   limit as fsLimit, setDoc, updateDoc, deleteField,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { effectiveProfilePhoto } from './profilePhoto';
 import { localDateISO } from './gymStats';
 import { workoutEnergy } from './energy';
 import { getHealthProfile } from './health';
@@ -70,7 +71,7 @@ export async function createPost(gymId: string, input: NewPost): Promise<GymFeed
     id,
     uid: user.uid,
     name: user.displayName || 'A member',
-    photoURL: user.photoURL ?? null,
+    photoURL: effectiveProfilePhoto(user.photoURL),
     at: now.toISOString(),
     date: localDateISO(now),
     kind: kindOf(input),
@@ -162,7 +163,7 @@ export async function addComment(gymId: string, postId: string, text: string): P
     id: `${user.uid}_${Date.now()}`,
     uid: user.uid,
     name: user.displayName || 'A member',
-    photoURL: user.photoURL ?? null,
+    photoURL: effectiveProfilePhoto(user.photoURL),
     text: text.trim().slice(0, 500),
     at: new Date().toISOString(),
   };

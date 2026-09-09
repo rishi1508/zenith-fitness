@@ -200,7 +200,7 @@ export function HomeTabView({
           </p>
           {/* Start alone, or bring someone — the second is one tap, not a
               trip through the Buddies screen. */}
-          <div className="flex gap-2">
+          <div className="flex gap-2" data-tour="start-workout">
             <Button
               variant="primary" size="lg" icon={Dumbbell} className="flex-1 min-w-0"
               onClick={() => onStartWorkout({
@@ -216,6 +216,7 @@ export function HomeTabView({
             <button
               onClick={() => setTogetherOpen(true)}
               aria-label="Work out together"
+              data-tour="together"
               title="Work out together"
               className="w-[52px] shrink-0 rounded-control border border-border text-accent flex items-center justify-center hover:border-accent/50 transition-colors"
             >
@@ -243,7 +244,7 @@ export function HomeTabView({
       </Card>
 
       {hasTargets && (
-        <Card onClick={onOpenNutrition} className="text-left">
+        <Card onClick={onOpenNutrition} className="text-left" data-tour="nutrition-card">
           <div className="flex items-center justify-between gap-2">
             <span className={CAPTION}>Nutrition today</span>
             <span className="text-[13px] font-bold text-accent">Log food</span>

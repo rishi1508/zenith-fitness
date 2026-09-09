@@ -5,6 +5,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { effectiveProfilePhoto } from './profilePhoto';
 import { levelForVolume } from './levels';
 import { deliverPush } from './pushService';
 import { computeStreak } from './streakService';
@@ -47,7 +48,7 @@ export async function upsertUserProfile(
       displayName: user.displayName || 'Anonymous',
       displayNameLower: (user.displayName || 'anonymous').toLowerCase(),
       email: user.email || '',
-      photoURL: user.photoURL || null,
+      photoURL: effectiveProfilePhoto(user.photoURL),
     };
 
     if (!existing.exists()) {
@@ -265,7 +266,7 @@ export async function sendBuddyRequest(toUid: string, toName: string, toPhoto?: 
   const request: Omit<BuddyRequest, 'id'> = {
     fromUid: user.uid,
     fromName: user.displayName || 'Anonymous',
-    fromPhoto: user.photoURL || null,
+    fromPhoto: effectiveProfilePhoto(user.photoURL),
     toUid,
     toName,
     toPhoto: toPhoto || null,
