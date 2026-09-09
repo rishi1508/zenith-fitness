@@ -320,7 +320,7 @@ export function StreakModal({ onClose, isDark }: Props) {
           <div
             className="flex items-center justify-between flex-none px-2"
             style={{
-              paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)',
+              paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)',
               paddingBottom: '6px',
             }}
           >

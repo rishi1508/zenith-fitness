@@ -21,7 +21,10 @@ export function AppBar({ title, eyebrow, left, right }: AppBarProps) {
   return (
     <header
       className="flex-none flex items-center justify-between gap-3 px-5 pb-2 bg-bg"
-      style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 14px)' }}
+      // Breathing room ON TOP of the status bar, not the larger of the two:
+      // with `max()` a device reporting a 24px inset got no gap at all and
+      // the title sat against the clock.
+      style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)' }}
     >
       <div className="min-w-0 flex-1">
         {left ?? (

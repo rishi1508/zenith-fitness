@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
+import { isAdmin } from '../../admin';
 import { useGym } from '../../gym/GymContext';
 import * as storage from '../../storage';
 import type { GymFeedComment, GymFeedPost, Workout } from '../../types';
@@ -50,7 +51,7 @@ type Composing = 'text' | 'photo' | 'workout' | null;
  * PR or an achievement. Nothing posts itself; sharing is always a tap.
  */
 export function GymFeedView() {
-  const { gym } = useGym();
+  const { gym, role } = useGym();
   const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
@@ -63,9 +64,20 @@ export function GymFeedView() {
     return listenToFeed(gym.id, setPosts);
   }, [gym?.id]);
 
+  // Staff and Zenith admins can take down anything; rules agree.
+  const canModerate = role === 'owner' || role === 'manager' || role === 'trainer' || isAdmin(user?.uid);
+
   const remove = async (post: GymFeedPost) => {
     if (!gym) return;
-    const ok = await confirm({ title: 'Delete post?', message: 'It disappears from the gym feed.', confirmLabel: 'Delete', tone: 'danger' });
+    const mine = post.uid === user?.uid;
+    const ok = await confirm({
+      title: mine ? 'Delete post?' : `Remove ${post.name}'s post?`,
+      message: mine
+        ? 'It disappears from the gym feed.'
+        : 'It disappears from the gym feed for everyone. They are not told who removed it.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
     if (!ok) return;
     try {
       await deletePost(gym.id, post.id, post.hasImage);
@@ -113,6 +125,7 @@ export function GymFeedView() {
           post={post}
           myUid={user?.uid}
           mine={post.uid === user?.uid}
+          canModerate={canModerate}
           onReact={(emoji) => {
             void toggleReaction(gym.id, post.id, emoji).catch(() => showToast('Could not react.', 'error'));
           }}
@@ -274,10 +287,12 @@ function ComposerSheet({ gymId, mode, onClose, onPosted }: {
 
 // ---------------------------------------------------------------- post card
 
-function PostCard({ gymId, post, mine, myUid, onReact, onDelete }: {
+function PostCard({ gymId, post, mine, canModerate, myUid, onReact, onDelete }: {
   gymId: string;
   post: GymFeedPost;
   mine: boolean;
+  /** Gym staff or a Zenith admin — may remove somebody else's post. */
+  canModerate: boolean;
   myUid?: string;
   onReact: (emoji: string) => void;
   onDelete: () => void;
@@ -333,8 +348,13 @@ function PostCard({ gymId, post, mine, myUid, onReact, onDelete }: {
           <span className="block text-sm font-semibold text-text truncate">{post.name}</span>
           <span className={`${SUB} block truncate`}>{headline(post)} · {timeAgo(post.at)}</span>
         </span>
-        {mine && (
-          <button onClick={onDelete} aria-label="Delete post" className="w-9 h-9 rounded-control flex items-center justify-center text-subtle hover:text-danger shrink-0">
+        {(mine || canModerate) && (
+          <button
+            onClick={onDelete}
+            aria-label={mine ? 'Delete post' : `Remove ${post.name}'s post`}
+            title={mine ? 'Delete' : 'Remove as staff'}
+            className="w-9 h-9 rounded-control flex items-center justify-center text-subtle hover:text-danger shrink-0"
+          >
             <Trash2 className="w-[18px] h-[18px]" strokeWidth={1.75} />
           </button>
         )}

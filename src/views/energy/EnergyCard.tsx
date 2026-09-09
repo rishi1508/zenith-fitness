@@ -8,18 +8,18 @@ import { Card, CAPTION, STAT, SUB } from '../../ui';
  * Today's energy in one line: out, in, and the gap. Cache only — the whole
  * ledger is computed from localStorage, so this costs no reads.
  */
-export function EnergyCard({ onOpen }: { onOpen: () => void }) {
+export function EnergyCard({ onOpen, date }: { onOpen: () => void; date?: string }) {
   const [, bumpVersion] = useState(0);
   useEffect(() => subscribeHealth(() => bumpVersion((n) => n + 1)), []);
 
-  const day = energyForDay();
+  const day = energyForDay(date);
   const balance = day.balanceKcal;
 
   return (
     <Card onClick={onOpen}>
       <div className="flex items-center gap-2 mb-2">
         <Flame className="w-4 h-4 text-accent" strokeWidth={1.75} />
-        <span className={CAPTION}>Energy today</span>
+        <span className={CAPTION}>{date ? 'Energy' : 'Energy today'}</span>
       </div>
       {day.totalKcal == null ? (
         <p className={SUB}>Add your height, age and sex in the health profile and we can work out what you burn.</p>

@@ -6,6 +6,7 @@ import {
 import type { QueryConstraint, DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { deliverPush } from './pushService';
+import { effectiveProfilePhoto } from './profilePhoto';
 import { membershipStatus, localDateISO, addMonthsISO } from './gymStats';
 import type {
   Gym, GymPlan, GymMember, GymPayment, GymCheckin, GymDailyStat, GymClass, GymClassSession, GymAnnouncement,
@@ -667,15 +668,35 @@ export async function markAttendance(gymId: string, classId: string, date: strin
  *  even if push fan-out fails). Tier A has no persistent per-class
  *  roster (only per-session enrolled lists), so a class-scoped audience
  *  still notifies every gym member — a documented limitation. */
-export async function postAnnouncement(gymId: string, text: string, audience: 'all' | { classId: string }): Promise<void> {
+export async function postAnnouncement(
+  gymId: string,
+  text: string,
+  audience: 'all' | { classId: string },
+  imageBase64?: string,
+): Promise<void> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
 
   const id = doc(collection(db, 'gyms', gymId, 'announcements')).id;
   const announcement: GymAnnouncement = {
-    id, text, audience, byUid: user.uid, byName: user.displayName || 'Staff', at: new Date().toISOString(),
+    id,
+    text,
+    audience,
+    byUid: user.uid,
+    byName: user.displayName || 'Staff',
+    byPhotoURL: effectiveProfilePhoto(user.photoURL),
+    at: new Date().toISOString(),
+    ...(imageBase64 ? { hasImage: true } : {}),
   };
   await setDoc(doc(db, 'gyms', gymId, 'announcements', id), announcement);
+  if (imageBase64) {
+    // Same split as the feed: the image lives in a subcollection so listing
+    // announcements stays a handful of small documents.
+    await setDoc(doc(db, 'gyms', gymId, 'announcements', id, 'media', 'image'), {
+      uid: user.uid,
+      dataUrl: `data:image/jpeg;base64,${imageBase64}`,
+    });
+  }
 
   try {
     const members = await listMembers(gymId, { limit: 300 });
@@ -699,4 +720,23 @@ export function listenToAnnouncements(gymId: string, cb: (items: GymAnnouncement
     (snap) => cb(snap.docs.map((d) => d.data() as GymAnnouncement)),
     (err) => console.warn('[Gym] announcements listener error:', err),
   );
+}
+
+/** The image on an announcement, read only when that card renders. */
+export async function getAnnouncementImage(gymId: string, id: string): Promise<string | null> {
+  try {
+    const snap = await getDoc(doc(db, 'gyms', gymId, 'announcements', id, 'media', 'image'));
+    return (snap.data() as { dataUrl?: string } | undefined)?.dataUrl ?? null;
+  } catch (err) {
+    console.warn('[Gym] announcement image read failed:', err);
+    return null;
+  }
+}
+
+/** Staff remove an announcement (and its image, if any). */
+export async function deleteAnnouncement(gymId: string, id: string, hasImage?: boolean): Promise<void> {
+  if (hasImage) {
+    await deleteDoc(doc(db, 'gyms', gymId, 'announcements', id, 'media', 'image')).catch(() => {});
+  }
+  await deleteDoc(doc(db, 'gyms', gymId, 'announcements', id));
 }

@@ -137,7 +137,9 @@ export function AppShell({
           className={`flex-1 overflow-y-auto overflow-x-hidden ${NO_PADDING_VIEWS.has(view) ? 'p-0' : 'px-5 pt-1'}`}
           style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
         >
-          <div ref={contentRef}>
+          {/* Chat and Zen lay themselves out with `h-full`, which only
+              resolves if this wrapper has a definite height too. */}
+          <div ref={contentRef} className={NO_PADDING_VIEWS.has(view) ? 'h-full' : ''}>
           {NO_PADDING_VIEWS.has(view) ? (
             children
           ) : (

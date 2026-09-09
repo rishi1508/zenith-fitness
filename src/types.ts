@@ -555,7 +555,18 @@ export interface GymFeedComment {
   at: string;
 }
 
-export interface GymAnnouncement { id: string; text: string; audience: 'all' | { classId: string }; byUid: string; byName: string; at: string }
+export interface GymAnnouncement {
+  id: string;
+  text: string;
+  audience: 'all' | { classId: string };
+  byUid: string;
+  byName: string;
+  byPhotoURL?: string | null;
+  at: string;
+  /** True when a `media/image` doc hangs off this announcement — same shape
+   *  as a feed post, so a notice can carry a poster or a photo of the board. */
+  hasImage?: boolean;
+}
 
 /** Cached on userProfiles/{uid} so the app knows which gym to load on start. */
 export interface GymContext { gymId: string; gymRole: GymRole; joinedAt: string }

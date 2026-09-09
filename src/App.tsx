@@ -1530,7 +1530,7 @@ function App() {
               exercise"). */}
           <div
             className="flex-1 flex flex-col min-h-0"
-            style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 14px)' }}
+            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)' }}
           >
             {activeSessionId && activeWorkout.sessionId === activeSessionId && (
               <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />

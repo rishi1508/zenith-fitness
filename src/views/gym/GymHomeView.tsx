@@ -11,6 +11,7 @@ import { listenToClasses, listenToAnnouncements, upcomingSessions } from '../../
 import { formatTime12h } from '../../gymMemberHelpers';
 import { MembershipCard } from '../../components';
 import { JoinGymView } from './JoinGymView';
+import { PeakHours } from '../../components/gym/PeakHours';
 import { GymFeedView } from './GymFeedView';
 import { Card, StatTile, ListRow, Button, SegmentedControl, SectionHeader, SUB } from '../../ui';
 
@@ -122,7 +123,7 @@ export function GymHomeView(props: GymViewProps) {
 
           <Card padding="list">
             <ListRow icon={CalendarDays} title="Classes" onClick={() => onNavigate('gym-classes')} />
-            <ListRow icon={Megaphone} title="Announcements" onClick={() => onNavigate('gym-announcements')} />
+            <ListRow icon={Megaphone} title="Announcements" subtitle="What the gym has posted" onClick={() => onNavigate('gym-announcements')} />
             <ListRow icon={CreditCard} title="Membership" onClick={() => onNavigate('gym-membership')} />
           </Card>
         </>
@@ -141,7 +142,7 @@ interface ManageSectionProps {
 /** Manage segment (staff). Owner/manager get the dashboard aggregates
  *  via `useGymDashboard`; trainers get a lighter row list (console,
  *  attendance, read-only members). */
-function ManageSection({ gym, isManagerPlus, onNavigate }: ManageSectionProps) {
+function ManageSection({ gym, isDark, isManagerPlus, onNavigate }: ManageSectionProps) {
   const { stats, loading } = useGymDashboard(gym.id, isManagerPlus);
 
   if (!isManagerPlus) {
@@ -149,6 +150,7 @@ function ManageSection({ gym, isManagerPlus, onNavigate }: ManageSectionProps) {
       <Card padding="list">
         <ListRow icon={MonitorSmartphone} title="Check-in console" onClick={() => onNavigate('gym-console')} />
         <ListRow icon={CalendarDays} title="Classes" subtitle="Attendance" onClick={() => onNavigate('gym-classes-manage')} />
+        <ListRow icon={Megaphone} title="Announcements" subtitle="Post to every member" onClick={() => onNavigate('gym-announcements')} />
         <ListRow icon={Users} title="Members" subtitle="Read-only" onClick={() => onNavigate('gym-members')} />
       </Card>
     );
@@ -166,26 +168,15 @@ function ManageSection({ gym, isManagerPlus, onNavigate }: ManageSectionProps) {
             <StatTile eyebrow="Dues" value={stats.duesOutstanding.length} compact tone={stats.duesOutstanding.length > 0 ? 'danger' : 'default'} />
           </div>
 
-          <Card>
-            <div className="flex items-center justify-between mb-2">
-              <span className={SUB}>Peak hours · 30 days</span>
-            </div>
-            <div className="flex items-end gap-0.5 h-16">
-              {stats.checkinsPerHour.map((count, hour) => {
-                const max = Math.max(1, ...stats.checkinsPerHour);
-                return (
-                  <div key={hour} className="flex-1 h-full flex items-end" title={`${hour}:00 — ${count} check-ins`}>
-                    <div className="w-full rounded-sm bg-accent/70" style={{ height: `${count > 0 ? Math.max((count / max) * 100, 4) : 2}%` }} />
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
+          {/* The same scrubbable chart the dashboard uses — this copy was a
+              static one, which is why holding it did nothing. */}
+          <PeakHours counts={stats.checkinsPerHour} isDark={isDark} />
 
           <Card padding="list">
             <ListRow icon={Users} title="Members" subtitle={`${stats.expiringIn7} expiring this week`} onClick={() => onNavigate('gym-members')} />
             <ListRow icon={MonitorSmartphone} title="Check-in console" subtitle="Today's code · scan · manual" onClick={() => onNavigate('gym-console')} />
             <ListRow icon={ListChecks} title="Classes" onClick={() => onNavigate('gym-classes-manage')} />
+            <ListRow icon={Megaphone} title="Announcements" subtitle="Post to every member" onClick={() => onNavigate('gym-announcements')} />
             <ListRow
               icon={IndianRupee}
               title="Payments"

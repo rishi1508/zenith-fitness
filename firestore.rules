@@ -336,7 +336,20 @@ service cloud.firestore {
                                  allow update: if isGymStaff(gymId) || isAdmin()
                                    || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolled']));
                                  allow delete: if false; } }
-      match /announcements/{id} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow create: if isGymStaff(gymId) || isAdmin(); allow update, delete: if isGymManager(gymId) || isAdmin(); }
+      match /announcements/{id} {
+        allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+        allow create: if isGymStaff(gymId) || isAdmin();
+        allow update: if isGymManager(gymId) || isAdmin();
+        allow delete: if isGymStaff(gymId) || isAdmin();
+
+        // A poster or a photo of the notice board, kept out of the list query.
+        match /media/{mediaId} {
+          allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+          allow create: if (isGymStaff(gymId) || isAdmin()) && request.resource.data.uid == request.auth.uid;
+          allow update: if false;
+          allow delete: if isGymStaff(gymId) || isAdmin();
+        }
+      }
 
       // ---------- gym feed (src/gymFeed.ts) ----------
       // Only this gym's people can read it. A member posts as themselves,

@@ -5,18 +5,18 @@ import { formatSleep } from '../../activity';
 import { Card, CAPTION, STAT, SUB } from '../../ui';
 
 /** Compact today's-activity row for the Health tab. Cache only — no Firestore read. */
-export function ActivityCard({ onOpen }: { onOpen: () => void }) {
+export function ActivityCard({ onOpen, date }: { onOpen: () => void; date?: string }) {
   const [, bumpVersion] = useState(0);
   useEffect(() => subscribeHealth(() => bumpVersion((n) => n + 1)), []);
 
-  const day = getActivityDay(localDateISO());
+  const day = getActivityDay(date ?? localDateISO());
   const empty = day.steps === undefined && day.sleepMin === undefined && day.activeKcal === undefined;
 
   return (
     <Card onClick={onOpen}>
       <div className="flex items-center gap-2 mb-2">
         <Footprints className="w-4 h-4 text-accent" strokeWidth={1.75} />
-        <span className={CAPTION}>Activity today</span>
+        <span className={CAPTION}>{date ? 'Activity' : 'Activity today'}</span>
       </div>
       {empty ? (
         <p className={SUB}>Connect Health Connect or log steps, sleep and calories by hand.</p>

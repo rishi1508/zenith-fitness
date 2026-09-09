@@ -42,6 +42,9 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
   const selectedMessages = messages.filter((m) => selectedIds.has(m.id));
   const allMine = selectedMessages.length > 0 && selectedMessages.every((m) => m.senderId === user?.uid);
 
+  /** Last tap, for the double-tap-to-react shortcut. */
+  const lastTapRef = useRef<{ id: string; at: number }>({ id: '', at: 0 });
+
   const toggleSelection = (msg: ChatMessage) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -230,7 +233,10 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
     // when this view is active so we can take the full content box without
     // overflowing. We re-apply horizontal padding and a bottom pad that
     // clears the fixed bottom nav (h-20 ≈ 80px).
-    <div className="flex flex-col h-full px-4 pt-3 pb-24">
+    <div
+      className="flex flex-col h-full px-4 pb-24"
+      style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
+    >
       {/* Chat Header — swapped for the selection-mode action bar when
           one or more messages are selected (long-press → multi-select). */}
       {inSelectionMode ? (
@@ -261,31 +267,9 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
               <Trash2 className="w-5 h-5" />
             </button>
           </div>
-          {/* Reaction picker — only shown when exactly one message is
-              selected, since reactions apply per-message. */}
-          {selectedIds.size === 1 && (
-            <div className="flex items-center justify-center gap-1 px-2">
-              {['👍', '❤️', '💪', '🔥', '😂', '😢'].map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={async () => {
-                    const targetId = [...selectedIds][0];
-                    await buddyService.toggleMessageReaction(chatId, targetId, emoji);
-                    clearSelection();
-                  }}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-base transition-colors ${
-                    isDark ? 'hover:bg-orange-500/20' : 'hover:bg-orange-100'
-                  }`}
-                  title={`React with ${emoji}`}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       ) : (
-        <div className="flex items-center gap-3 pb-3">
+        <div className="flex-none flex items-center gap-3 pb-3">
           <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -353,7 +337,17 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
                 return (
                   <div
                     key={msg.id}
-                    onClick={() => { if (inSelectionMode) toggleSelection(msg); }}
+                    onClick={() => {
+                      if (inSelectionMode) { toggleSelection(msg); return; }
+                      // Double tap = 👍, the shortcut people already expect.
+                      const now = Date.now();
+                      if (lastTapRef.current.id === msg.id && now - lastTapRef.current.at < 320) {
+                        lastTapRef.current = { id: '', at: 0 };
+                        void buddyService.toggleMessageReaction(chatId, msg.id, '👍');
+                      } else {
+                        lastTapRef.current = { id: msg.id, at: now };
+                      }
+                    }}
                     // WhatsApp-style full-row tint on the selected message
                     // (orange for dark, warmer for light). Covers the entire
                     // row including the gutter, not just the bubble.
@@ -453,6 +447,30 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Reacting to a message. It sits here, above the composer, rather
+          than in the header: the header can be off-screen on a long chat and
+          a picker you cannot see reads as "reactions don't work". */}
+      {selectedIds.size === 1 && (
+        <div className={`mt-2 flex items-center justify-center gap-1 py-1.5 rounded-xl border ${cardBg} ${cardBorder}`}>
+          {['👍', '❤️', '💪', '🔥', '😂', '😢'].map((emoji) => (
+            <button
+              key={emoji}
+              onClick={async () => {
+                const targetId = [...selectedIds][0];
+                await buddyService.toggleMessageReaction(chatId, targetId, emoji);
+                clearSelection();
+              }}
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-lg transition-colors ${
+                isDark ? 'hover:bg-orange-500/20' : 'hover:bg-orange-100'
+              }`}
+              title={`React with ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input Area */}
       <div className="pt-3">
