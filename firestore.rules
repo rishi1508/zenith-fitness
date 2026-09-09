@@ -237,6 +237,25 @@ service cloud.firestore {
     // See docs/GYM_TIER_A_SPEC.md §3-4.
     // Join-code → gymId lookup. Created in the same batch as the gym (by its
     // owner); only that gym's owner or an admin can rotate/remove it.
+    // ---------- gym invites (src/gymStaffHelpers.ts) ----------
+    // Keyed by the invited email address, lower-cased, so the rule can check
+    // the caller really is that person. Staff write them; the invitee reads
+    // and deletes their own on the first sign-in that claims it.
+    match /gymInvites/{email} {
+      allow get:    if signedIn() && (
+        (request.auth.token.email != null && request.auth.token.email.lower() == email)
+        || isAdmin()
+      );
+      allow create: if signedIn() && (isAdmin() || isGymStaff(request.resource.data.gymId));
+      allow update: if signedIn() && (isAdmin() || isGymStaff(resource.data.gymId));
+      // The invitee clears their own invite once they have claimed it.
+      allow delete: if signedIn() && (
+        isAdmin()
+        || isGymStaff(resource.data.gymId)
+        || (request.auth.token.email != null && request.auth.token.email.lower() == email)
+      );
+    }
+
     match /gymJoinCodes/{code} {
       allow get:    if signedIn();
       // Only the owner of the gym the code points at (getAfter: the gym may
@@ -264,8 +283,15 @@ service cloud.firestore {
         // knew a gym id could enrol themselves).
         allow create: if isGymManager(gymId) || isAdmin() || (
           signedIn() && request.auth.uid == uid && request.resource.data.role == 'member'
-          && request.resource.data.joinCode is string
-          && get(/databases/$(database)/documents/gymJoinCodes/$(request.resource.data.joinCode)).data.gymId == gymId
+          && (
+            // A join code the front desk gave them...
+            (request.resource.data.joinCode is string
+              && get(/databases/$(database)/documents/gymJoinCodes/$(request.resource.data.joinCode)).data.gymId == gymId)
+            // ...or an invite the gym already created against their email,
+            // which they are now signing in to claim (src/gymStaffHelpers.ts).
+            || (request.auth.token.email != null
+              && get(/databases/$(database)/documents/gymInvites/$(request.auth.token.email.lower())).data.gymId == gymId)
+          )
         );
         allow update: if isGymManager(gymId) || isAdmin()
                       || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d']))

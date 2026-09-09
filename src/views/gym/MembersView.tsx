@@ -6,6 +6,7 @@ import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { addMember, listenToMembers, membershipStatus, recordPayment } from '../../gymService';
+import { inviteMemberByEmail, searchUserProfiles } from '../../gymStaffHelpers';
 import { localDateISO } from '../../gymStats';
 import { StaffMemberRow } from '../../components/gym/StaffMemberRow';
 import { useToast } from '../../ui';
@@ -168,6 +169,24 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
   const [method, setMethod] = useState<PaymentMethod>('upi');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lookup, setLookup] = useState('');
+  const [found, setFound] = useState<Array<{ uid: string; name: string; email?: string }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [invite, setInvite] = useState(false);
+
+  // Debounced people search — two queries, only once the term is worth it.
+  useEffect(() => {
+    const term = lookup.trim();
+    if (term.length < 2) { setFound([]); setSearching(false); return; }
+    setSearching(true);
+    const t = setTimeout(() => {
+      void searchUserProfiles(term)
+        .then((rows) => setFound(rows))
+        .catch(() => setFound([]))
+        .finally(() => setSearching(false));
+    }, 350);
+    return () => clearTimeout(t);
+  }, [lookup]);
 
   const choosePlan = (id: string) => {
     setPlanId(id);
@@ -179,6 +198,7 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
     isDark ? 'bg-[#0f0f0f] border-[#2e2e2e] text-white placeholder-zinc-600' : 'bg-gray-50 border-gray-200 placeholder-gray-400'
   }`;
   const labelCls = `text-xs font-medium mb-1 block ${isDark ? 'text-zinc-400' : 'text-gray-500'}`;
+  const subtle = isDark ? 'text-zinc-500' : 'text-gray-500';
 
   const handleSubmit = async () => {
     if (!name.trim()) { setError('Name is required'); return; }
@@ -191,14 +211,24 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
       // existing planEnd yet) — passing planId/planStart here too would
       // double the period by having addMember set the dates AND
       // recordPayment's renewal extend them again.
-      const created = await addMember(gymId, {
-        name: name.trim(),
-        phone: phone.trim() || undefined,
-        email: email.trim() || undefined,
-        planId: recordNow ? undefined : (planId || undefined),
-        planStart: recordNow ? undefined : startDate,
-        trainerUid: trainerUid || undefined,
-      });
+      // An invite creates the same membership and a claim record keyed to
+      // the email; anything else is the plain add, which already links to an
+      // existing Zenith account when the address matches one.
+      const created = invite && email.trim()
+        ? { uid: (await inviteMemberByEmail(gymId, {
+          name: name.trim(),
+          email: email.trim(),
+          phone: phone.trim() || undefined,
+          planId: recordNow ? undefined : (planId || undefined),
+        })).uid }
+        : await addMember(gymId, {
+          name: name.trim(),
+          phone: phone.trim() || undefined,
+          email: email.trim() || undefined,
+          planId: recordNow ? undefined : (planId || undefined),
+          planStart: recordNow ? undefined : startDate,
+          trainerUid: trainerUid || undefined,
+        });
       if (recordNow && planId) {
         const plan = plans.find((p) => p.id === planId);
         await recordPayment(gymId, {
@@ -233,9 +263,47 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
         </div>
 
         <div className="p-4 space-y-3">
+          {/* Most people the front desk adds already have Zenith. Look them up
+              rather than retyping what the app already knows. */}
+          <div>
+            <label className={labelCls}>Find them on Zenith</label>
+            <input
+              type="text"
+              value={lookup}
+              onChange={(e) => setLookup(e.target.value)}
+              placeholder="Name or email"
+              className={inputCls}
+            />
+            {searching && <p className={`text-xs mt-1 ${subtle}`}>Searching…</p>}
+            {found.length > 0 && (
+              <div className={`mt-2 rounded-lg border divide-y ${isDark ? 'border-[#2e2e2e] divide-[#2e2e2e]' : 'border-gray-200 divide-gray-100'}`}>
+                {found.map((u) => (
+                  <button
+                    key={u.uid}
+                    type="button"
+                    onClick={() => { setName(u.name); setEmail(u.email ?? ''); setLookup(''); setFound([]); }}
+                    className="w-full px-3 py-2.5 flex items-center gap-2.5 text-left"
+                  >
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium truncate">{u.name}</span>
+                      {u.email && <span className={`block text-xs truncate ${subtle}`}>{u.email}</span>}
+                    </span>
+                    <span className="text-xs font-semibold text-orange-400 shrink-0">Use</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {lookup.trim().length >= 2 && !searching && found.length === 0 && (
+              <p className={`text-xs mt-1 ${subtle}`}>
+                Nobody on Zenith by that name. Fill the details below and tick "invite by email" to
+                set them up — they join by signing in with that address.
+              </p>
+            )}
+          </div>
+
           <div>
             <label className={labelCls}>Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus className={inputCls} />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -247,6 +315,16 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
             </div>
           </div>
+
+          {email.trim() && (
+            <label className="flex items-start gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} className="mt-0.5" />
+              <span className={subtle}>
+                Invite by email — they claim this membership the first time they sign in to Zenith with
+                that address. No password to send: Zenith signs them in by email.
+              </span>
+            </label>
+          )}
 
           <div>
             <label className={labelCls}>Plan</label>

@@ -13,8 +13,9 @@ import {
 } from './autoFinish';
 import {
   SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate,
-  PushPermissionPrompt, SessionInviteBanner,
+  PushPermissionPrompt, SessionInviteBanner, WelcomeTour,
 } from './components';
+import { tourSeen } from './tourState';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { ActiveWorkoutView, LoginView } from './views';
 import type { GymView, GymNavParams } from './views';
@@ -86,6 +87,7 @@ import { isAdmin } from './admin';
 import { levelForVolume } from './levels';
 import { feedback } from './feedback';
 import { startActivityAutoSync } from './activity';
+import { claimGymInvite } from './gymStaffHelpers';
 import { createPost, workoutSummary } from './gymFeed';
 import { workoutEnergy } from './energy';
 import { getHealthProfile } from './health';
@@ -123,6 +125,8 @@ function App() {
   const [zenPrefill, setZenPrefill] = useState<string | null>(null);
   // Pending "Level N unlocked" celebration, set by loadData after a workout.
   const [levelUp, setLevelUp] = useState<{ from: number; to: number; volume: number } | null>(null);
+  // Shown once per device, after the first sign-in settles.
+  const [showTour, setShowTour] = useState(false);
   const { showToast } = useToast();
   const { confirm: confirmDialog } = useConfirm();
   // Which day/meal the food search or plate scan adds to (docs/HEALTH_SPEC.md §7).
@@ -1166,6 +1170,20 @@ function App() {
       autoFinishInFlightRef.current = false;
     }
   };
+  useEffect(() => {
+    if (authLoading || (!user && !isGuest)) return;
+    if (!tourSeen()) setShowTour(true);
+  }, [authLoading, user, isGuest]);
+
+  // A membership a gym set up before this person had an account: claim it on
+  // the first sign-in with that email (src/gymStaffHelpers.ts).
+  useEffect(() => {
+    if (!user?.email) return;
+    void claimGymInvite().then((gymId) => {
+      if (gymId) showToast('You have been added to your gym.');
+    });
+  }, [user?.email, showToast]);
+
   // Health Connect keeps itself current in the background — the energy
   // ledger reads steps and sleep from the cache on every screen, not just
   // the Activity one (src/activity/autoSync.ts).
@@ -1904,6 +1922,9 @@ function App() {
         </Suspense>
       </AppShell>
       )}
+
+      {/* First run: a short guided tour, skippable at every step. */}
+      {showTour && <WelcomeTour onDone={() => setShowTour(false)} />}
 
       {levelUp && (
         <LevelUpModal

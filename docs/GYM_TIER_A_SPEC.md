@@ -279,3 +279,16 @@ The dashboard's hour histogram is scrubbable: press and slide and each bar repor
 count ("142 at 7 PM · 18 of 402 check-ins came in that hour"). The busiest hour is highlighted when
 nothing is held; every bar is a focusable button with a spoken label, and pointer events cover mouse
 and touch alike.
+
+## 13. Adding a member (3.21.0)
+Two ways, both in the Add member sheet:
+- **Search Zenith** (`searchUserProfiles`) — exact email plus a display-name prefix query, two cheap
+  reads. Picking a result fills the form, and `addMember` links the membership to that uid.
+- **Invite by email** (`inviteMemberByEmail`) — creates the membership now, so the owner can set a
+  plan and take payment, plus a `gymInvites/{email}` record. The invitee claims it on their first
+  sign-in with that address (`claimGymInvite`). No temporary password is emailed: Zenith's own email
+  sign-in is the credential.
+
+Rules: `gymInvites` is keyed by the lower-cased email so the rule can check
+`request.auth.token.email.lower() == email`; staff write them, the invitee reads and deletes their
+own. The member self-create rule now accepts either a valid join code **or** a matching invite.

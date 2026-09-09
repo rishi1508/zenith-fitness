@@ -349,3 +349,21 @@ When every model is cooling at once the error says so, with the wait
   `InteractiveLineChart` now takes an array of overlays, and a dashed one reads as projection.
 - **Recalculate targets** shows what it did: the page carries the current targets, refreshes them in
   place, and the toast names the direction and size of the change.
+
+## 19. One food universe (3.21.0, 2026-09-09)
+`sharedFoods` is finally read back. Every food a member creates was published there and never
+fetched, so it existed only on the device that made it — "High Protein Roti" was in the collection
+the whole time while its author could not find it (his own `customFoods` array had been overwritten
+by a whole-array sync from another device).
+
+- `src/nutrition/sharedFoodCache.ts` — one `getDocs` per session at most, capped at 500, cached six
+  hours in localStorage. No listener.
+- `src/nutrition/foodSearchAll.ts` — `searchAllFoods` returns your foods, then the community's, then
+  the static index, deduped. Used by the add-food screen and by the "wrong food?" search inside a
+  plate scan, which previously saw only the static index.
+- `findFoodByName` backs the scan's new behaviour: a dish the model names that nobody has yet is
+  saved as a real food and published, so the next time it is one search away. Never when a food of
+  that name already exists, and never for an item already matched to one.
+
+Editing: the diary's pencil passed no uid to `FoodSheet`, so it always said "Sign in to add or edit
+foods". Fixed, and every logged row carries its own pencil.

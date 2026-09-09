@@ -1,7 +1,8 @@
 import {
-  doc, getDoc, setDoc, deleteDoc, deleteField, updateDoc, collection, getDocs, query, where, limit as fsLimit,
+  doc, getDoc, setDoc, deleteDoc, deleteField, updateDoc, collection, getDocs, query, where,
+  orderBy, startAt, endAt, limit as fsLimit,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import { setStaffRole } from './gymService';
 import type { GymClass, GymClassSession, GymRole } from './types';
 
@@ -120,4 +121,116 @@ export async function regenerateJoinCode(gymId: string, oldCode: string): Promis
     });
   }
   return code;
+}
+
+/**
+ * Everyone on Zenith whose name or email matches — the front desk almost
+ * always wants somebody who already has the app, and typing their email
+ * exactly is a poor way to find them.
+ *
+ * Two cheap queries: an exact email match, and a name prefix. `userProfiles`
+ * is readable by any signed-in user (see firestore.rules).
+ */
+export async function searchUserProfiles(
+  term: string,
+  max = 8,
+): Promise<Array<{ uid: string; name: string; email?: string; photoURL?: string | null }>> {
+  const q = term.trim();
+  if (q.length < 2) return [];
+  const rows = new Map<string, { uid: string; name: string; email?: string; photoURL?: string | null }>();
+
+  const take = (snap: Awaited<ReturnType<typeof getDocs>>) => {
+    for (const d of snap.docs) {
+      const p = d.data() as { displayName?: string; email?: string; photoURL?: string | null };
+      if (!rows.has(d.id)) {
+        rows.set(d.id, { uid: d.id, name: p.displayName || p.email || 'Zenith member', email: p.email, photoURL: p.photoURL });
+      }
+    }
+  };
+
+  const email = q.toLowerCase();
+  const byEmail = await getDocs(query(collection(db, 'userProfiles'), where('email', '==', email), fsLimit(3)));
+  take(byEmail);
+
+  // Prefix match on the display name — Firestore's range trick.
+  const byName = await getDocs(query(
+    collection(db, 'userProfiles'),
+    orderBy('displayName'),
+    startAt(q),
+    endAt(`${q}`),
+    fsLimit(max),
+  )).catch(() => null);
+  if (byName) take(byName);
+
+  return [...rows.values()].slice(0, max);
+}
+
+/** `gymInvites` doc id for an email — the address itself, lower-cased, so
+ *  the security rule can compare it against the caller's own token. */
+export function inviteKey(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Invites somebody who is not on Zenith yet: the membership is created now
+ * (so the owner can set their plan and take payment), and a `gymInvites`
+ * record lets that person claim it the first time they sign in with the same
+ * email — no temporary password to email around, because Zenith's own email
+ * sign-in is the credential.
+ */
+export async function inviteMemberByEmail(
+  gymId: string,
+  input: { name: string; email: string; phone?: string; planId?: string },
+): Promise<{ uid: string; key: string }> {
+  const key = inviteKey(input.email);
+  if (!key.includes('@')) throw new Error('That does not look like an email address');
+
+  const existing = await findUserProfileByEmail(key);
+  if (existing) throw new Error(`${existing.name} already has a Zenith account — add them by search instead.`);
+
+  const { addMember } = await import('./gymService');
+  const member = await addMember(gymId, { name: input.name, email: key, phone: input.phone, planId: input.planId });
+
+  await setDoc(doc(db, 'gymInvites', key), {
+    gymId,
+    memberUid: member.uid,
+    name: input.name,
+    invitedAt: new Date().toISOString(),
+  });
+  return { uid: member.uid, key };
+}
+
+/**
+ * Called once after sign-in: if this account was invited to a gym before it
+ * existed, take over the membership the owner already set up.
+ */
+export async function claimGymInvite(): Promise<string | null> {
+  const user = auth.currentUser;
+  const email = user?.email ? inviteKey(user.email) : null;
+  if (!user || !email) return null;
+  try {
+    const snap = await getDoc(doc(db, 'gymInvites', email));
+    if (!snap.exists()) return null;
+    const { gymId, memberUid, name } = snap.data() as { gymId: string; memberUid: string; name?: string };
+
+    const placeholder = await getDoc(doc(db, 'gyms', gymId, 'members', memberUid));
+    const base = placeholder.exists() ? (placeholder.data() as Record<string, unknown>) : {};
+    await setDoc(doc(db, 'gyms', gymId, 'members', user.uid), {
+      ...base,
+      uid: user.uid,
+      name: user.displayName || name || 'Member',
+      email,
+      photoURL: user.photoURL ?? null,
+      role: 'member',
+      joinedAt: (base.joinedAt as string) ?? new Date().toISOString(),
+    }, { merge: true });
+
+    await setDoc(doc(db, 'userProfiles', user.uid), { gym: { id: gymId, role: 'member' } }, { merge: true });
+    // Best-effort tidy-up; the rules let the claimer delete their own invite.
+    await deleteDoc(doc(db, 'gymInvites', email)).catch(() => {});
+    return gymId;
+  } catch (err) {
+    console.warn('[Gym] invite claim failed:', err);
+    return null;
+  }
 }

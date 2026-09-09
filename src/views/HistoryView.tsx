@@ -3,9 +3,10 @@ import {
   Calendar, ChevronLeft, ChevronRight, Clock,
   Copy, Dumbbell, Trash2, CheckCircle2, Share2, Edit3, Save, X
 } from 'lucide-react';
-import type { Workout, WeeklyPlan } from '../types';
+import type { Exercise, Workout, WeeklyPlan } from '../types';
 import * as storage from '../storage';
 import { ShareWorkout } from '../components';
+import { ExercisePickerSheet } from './exercises/ExercisePickerSheet';
 
 import { useConfirm } from '../ui';
 interface HistoryWorkoutCardProps {
@@ -22,6 +23,9 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editWorkout, setEditWorkout] = useState<Workout>(workout);
+  /** Which exercise the picker is open for, while editing. */
+  const [swapIndex, setSwapIndex] = useState<number | null>(null);
+  const allExercises = swapIndex !== null ? storage.getExercises() : [];
   const isImported = workout.type === 'imported';
   const isRest = workout.type === 'rest';
 
@@ -46,6 +50,21 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
     updated.exercises[exIndex].sets[setIndex][field] = value;
     setEditWorkout(updated);
   };
+
+  /** Logged the wrong movement — keep the sets, change what they were. */
+  const swapExercise = (exIndex: number, replacement: Exercise) => {
+    const updated = JSON.parse(JSON.stringify(editWorkout)) as Workout;
+    updated.exercises[exIndex].exerciseId = replacement.id;
+    updated.exercises[exIndex].exerciseName = replacement.name;
+    setEditWorkout(updated);
+    setSwapIndex(null);
+  };
+
+  const removeExercise = (exIndex: number) => {
+    const updated = JSON.parse(JSON.stringify(editWorkout)) as Workout;
+    updated.exercises.splice(exIndex, 1);
+    setEditWorkout(updated);
+  };
   
   const completedSets = workout.exercises.reduce((acc, ex) => 
     acc + ex.sets.filter(s => s.completed).length, 0
@@ -63,12 +82,15 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
 
   return (
     <div className={`border rounded-xl overflow-hidden ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200 shadow-sm'}`}>
-      <button
-        onClick={() => !isRest && workout.exercises.length > 0 && setExpanded(!expanded)}
-        className={`w-full p-4 text-left ${!isRest && workout.exercises.length > 0 ? 'cursor-pointer' : 'cursor-default'}`}
-      >
+      {/* The row's actions are buttons, so the row itself cannot be one —
+          nested buttons are invalid and React says so on every render. */}
+      <div className="w-full p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => !isRest && workout.exercises.length > 0 && setExpanded(!expanded)}
+            className={`flex items-center gap-3 min-w-0 flex-1 text-left ${!isRest && workout.exercises.length > 0 ? 'cursor-pointer' : 'cursor-default'}`}
+          >
             <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
               isRest 
                 ? 'bg-zinc-500/20' 
@@ -96,8 +118,8 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
                 </div>
               )}
             </div>
-          </div>
-          <div className="flex items-center gap-1">
+          </button>
+          <div className="flex items-center gap-1 shrink-0">
             {!isRest && workout.exercises.length > 0 && (
               <ChevronRight className={`w-5 h-5 text-zinc-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
             )}
@@ -150,7 +172,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
             </button>
           </div>
         </div>
-      </button>
+      </div>
       
       {/* Expanded exercise details */}
       {expanded && workout.exercises.length > 0 && (
@@ -178,7 +200,26 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
               const completedSets = exercise.sets.filter(s => s.completed);
               return (
                 <div key={exIdx}>
-                  <div className={`text-sm font-medium ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>{exercise.exerciseName}</div>
+                  {editing ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSwapIndex(exIdx)}
+                        className={`flex-1 min-w-0 text-left text-sm font-medium flex items-center gap-1.5 ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}
+                      >
+                        <span className="truncate">{exercise.exerciseName}</span>
+                        <Edit3 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                      </button>
+                      <button
+                        onClick={() => removeExercise(exIdx)}
+                        aria-label={`Remove ${exercise.exerciseName}`}
+                        className="p-1.5 text-zinc-500 hover:text-red-400 shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className={`text-sm font-medium ${isDark ? 'text-zinc-300' : 'text-gray-700'}`}>{exercise.exerciseName}</div>
+                  )}
                   {editing ? (
                     <div className="mt-2 space-y-1.5">
                       {exercise.sets.map((set, setIdx) => (
@@ -222,6 +263,15 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
               );
             })}
           </div>
+
+          <ExercisePickerSheet
+            open={swapIndex !== null}
+            title="Change exercise"
+            action="swap"
+            exercises={allExercises}
+            onPick={(ex) => { if (swapIndex !== null) swapExercise(swapIndex, ex); }}
+            onClose={() => setSwapIndex(null)}
+          />
         </div>
       )}
     </div>
