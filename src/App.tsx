@@ -90,6 +90,9 @@ import { levelForVolume } from './levels';
 import { feedback } from './feedback';
 import { startActivityAutoSync } from './activity';
 import { claimGymInvite } from './gymStaffHelpers';
+import { syncBuddyFollows } from './followService';
+import { refreshBadges } from './badgeSync';
+import { badgeById } from './badges';
 import { createPost, workoutSummary } from './gymFeed';
 import { workoutEnergy } from './energy';
 import { getHealthProfile } from './health';
@@ -397,6 +400,17 @@ function App() {
         feedback('levelUp');
       }
     }
+    // Badges are derived from exactly this data, so this is the moment to
+    // re-check them (src/badgeSync.ts). New ones surface as a toast rather
+    // than a modal — a badge is a nod, not an interruption.
+    void refreshBadges().then((added) => {
+      if (added.length === 0) return;
+      const first = badgeById(added[0]);
+      if (!first) return;
+      showToast(added.length === 1
+        ? `${first.icon} ${first.name} — ${first.detail}`
+        : `${first.icon} ${first.name} and ${added.length - 1} more unlocked`);
+    });
     setWorkoutHistory(storage.getWorkouts());
     // Check for missing days after splash
     const missing = storage.getMissingDays();
@@ -422,6 +436,9 @@ function App() {
     
     // Data loaded, hide splash
     setShowSplash(false);
+    // `showToast` is stable (a provider ref), and loadData must NOT change
+    // identity — several effects key off it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1202,6 +1219,17 @@ function App() {
     if (authLoading || (!user && !isGuest)) return;
     if (!tourSeen()) setShowTour(true);
   }, [authLoading, user, isGuest]);
+
+  // Buddies made before following existed still count as follows, and each
+  // side can only write its own edge — so catch up once a day.
+  useEffect(() => {
+    if (!user) return;
+    const unsub = buddyService.listenToBuddies((rels) => {
+      const others = rels.map((r) => r.users.find((u) => u !== user.uid)).filter((u): u is string => !!u);
+      void syncBuddyFollows(others);
+    });
+    return unsub;
+  }, [user]);
 
   // A membership a gym set up before this person had an account: claim it on
   // the first sign-in with that email (src/gymStaffHelpers.ts).

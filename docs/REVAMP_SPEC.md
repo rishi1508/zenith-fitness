@@ -159,3 +159,27 @@ another user's private data.
 **Following** (`src/followService.ts`) is one-way and needs no consent, unlike a buddy — one
 `follows/{follower}__{target}` edge plus denormalised counts. Rules let the follower write only
 their own edge, and let anyone move `followerCount` on another profile by nothing else.
+
+## Badges and follows, 3.24.0 (2026-09-10)
+**A buddy is a follow, both ways.** Accepting a request creates the accepter's follow edge, and
+`syncBuddyFollows` catches up the other half (and every pair made before following existed) once a
+day — each side can only write its own edge, by rule. A buddy's profile shows "Buddy · following"
+rather than offering a follow that is already implied. Removing a buddy does *not* unfollow: that
+is a separate, deliberate act.
+
+**Badges** (`src/badges.ts`, 19 of them, `tests/badges.test.ts`). Principles, from the audit's
+retention research and from what Strava/Hevy/Duolingo get right:
+- earned from data the app already has — never claimed, confirmed or self-reported;
+- the first tier of every family is reachable in week one (an achievement on day one roughly
+  doubles 30-day retention);
+- nothing punishes: no badge for *not* missing, and none can be lost — deleting an old workout does
+  not un-earn a tonne you really lifted (`mergeBadges` keeps the original date);
+- the set stays small. Forty is a checklist, nineteen is a collection.
+
+Families: volume (1/25/100/500 t), sessions (1/25/100/365), streak (4/12/52 weeks), strength (first
+PR, 25 PRs, 5 t in one session), habit (30 days of food logged, 16 check-ins in a month, 10 sessions
+before 6am) and level (10, 25).
+
+`src/badgeSync.ts` recomputes on the same beat as the stats, caches locally so a profile paints
+instantly, and publishes to `userProfiles.badges` — which is how somebody else's profile shows them
+without reading a scrap of private history. A new badge is a toast, not a modal.

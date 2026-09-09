@@ -16,9 +16,14 @@ import { LevelRing } from '../../components/LevelRing';
 import { ActivityHeatmap, StreakModal } from '../../components';
 import { usePremium, PremiumBadge } from '../../premium';
 import type { Tier } from '../../premium';
-import { Card, EmptyState, IconButton, ListRow, Pill, SectionHeader, Skeleton, StatTile, useToast, CAPTION, H2, SUB } from '../../ui';
+import {
+  Card, EmptyState, IconButton, ListRow, Pill, SectionHeader, Sheet, Skeleton, StatTile, useToast, CAPTION, H2, SUB,
+} from '../../ui';
 import type { PillTone } from '../../ui';
 import { formatVolume, levelTitle } from '../../levels';
+import { BADGES, badgeById } from '../../badges';
+import type { BadgeDef } from '../../badges';
+import { getLocalBadges } from '../../badgeSync';
 import * as storage from '../../storage';
 import { ownStats, ownWorkouts, photosBy, postsBy, statsFromProfile, workoutSummaryLine } from './profileData';
 import { PhotoViewer } from './PhotoViewer';
@@ -97,6 +102,8 @@ export function ProfileView({
   const [streakOpen, setStreakOpen] = useState(false);
   const [photoURL, setPhotoURL] = useState<string | null>(() => (self ? effectiveProfilePhoto(user?.photoURL) : null));
   const [uploading, setUploading] = useState(false);
+  const [badgesOpen, setBadgesOpen] = useState(false);
+  const [badgeDetail, setBadgeDetail] = useState<(BadgeDef & { at: string }) | null>(null);
   const [buddyState, setBuddyState] = useState<'unknown' | 'none' | 'requested' | 'buddies'>('unknown');
 
   useEffect(() => {
@@ -126,6 +133,12 @@ export function ProfileView({
   }, [gym?.id]);
 
   const stats = useMemo(() => (self ? ownStats() : statsFromProfile(profile)), [self, profile]);
+  // Your own come from the device (instant); somebody else's from what they
+  // published on their profile.
+  const badges = useMemo(
+    () => (self ? getLocalBadges() : (profile?.badges ?? [])),
+    [self, profile],
+  );
   const myWorkouts = useMemo(() => (self ? ownWorkouts() : []), [self]);
   const theirPosts = useMemo(() => postsBy(posts, targetUid), [posts, targetUid]);
   const theirPhotos = useMemo(() => photosBy(posts, targetUid), [posts, targetUid]);
@@ -225,12 +238,12 @@ export function ProfileView({
         <div className="flex gap-2">
           <button
             onClick={() => { void toggleFollow(); }}
-            disabled={busyFollow}
+            disabled={busyFollow || buddyState === 'buddies'}
             className={`flex-1 min-h-11 rounded-control text-sm font-bold transition-colors disabled:opacity-60 ${
               following ? 'border border-border text-text' : 'bg-accent text-white'
             }`}
           >
-            {following ? 'Following' : 'Follow'}
+            {buddyState === 'buddies' ? 'Buddy · following' : following ? 'Following' : 'Follow'}
           </button>
           <button
             onClick={() => {
@@ -278,6 +291,32 @@ export function ProfileView({
 
       {tab === 'workouts' && !loading && (
         <div className="space-y-4">
+          {badges.length > 0 && (
+            <Card>
+              <SectionHeader
+                caption={`Badges · ${badges.length}`}
+                trailing={badges.length > 8 ? { label: 'All', onClick: () => setBadgesOpen(true) } : undefined}
+              />
+              <div className="mt-2 flex flex-wrap gap-2">
+                {badges.slice(0, 8).map((b) => {
+                  const def = badgeById(b.id);
+                  if (!def) return null;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => setBadgeDetail({ ...def, at: b.at })}
+                      className="w-12 h-12 rounded-full bg-surface-2 border border-border flex items-center justify-center text-xl"
+                      title={`${def.name} — ${def.detail}`}
+                      aria-label={`${def.name}: ${def.detail}`}
+                    >
+                      {def.icon}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
           <Card>
             <div className="flex items-baseline justify-between gap-2">
               <span className={CAPTION}>Level {stats.level} · {levelTitle(stats.level)}</span>
@@ -382,6 +421,49 @@ export function ProfileView({
             <Sparkles className="w-3.5 h-3.5" /> Zenith Fitness v{__APP_VERSION__}
           </p>
         </div>
+      )}
+
+      {badgesOpen && (
+        <Sheet open onClose={() => setBadgesOpen(false)} title={`Badges · ${badges.length}`}>
+          <div className="grid grid-cols-4 gap-3">
+            {badges.map((b) => {
+              const def = badgeById(b.id);
+              if (!def) return null;
+              return (
+                <button key={b.id} onClick={() => { setBadgesOpen(false); setBadgeDetail({ ...def, at: b.at }); }} className="flex flex-col items-center gap-1">
+                  <span className="w-14 h-14 rounded-full bg-surface-2 border border-border flex items-center justify-center text-2xl">{def.icon}</span>
+                  <span className="text-[10px] text-subtle text-center leading-tight">{def.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* What is still out there, so the collection has an edge to it. */}
+          {BADGES.length > badges.length && (
+            <>
+              <span className={CAPTION}>Not yet</span>
+              <div className="grid grid-cols-4 gap-3 opacity-40">
+                {BADGES.filter((d) => !badges.some((b) => b.id === d.id)).map((def) => (
+                  <div key={def.id} className="flex flex-col items-center gap-1">
+                    <span className="w-14 h-14 rounded-full bg-surface-2 border border-border flex items-center justify-center text-2xl grayscale">{def.icon}</span>
+                    <span className="text-[10px] text-subtle text-center leading-tight">{def.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Sheet>
+      )}
+
+      {badgeDetail && (
+        <Sheet open onClose={() => setBadgeDetail(null)} title={badgeDetail.name}>
+          <div className="flex flex-col items-center text-center gap-2 py-2">
+            <span className="w-20 h-20 rounded-full bg-accent-soft flex items-center justify-center text-4xl">{badgeDetail.icon}</span>
+            <p className="text-[15px] font-semibold text-text">{badgeDetail.detail}</p>
+            <p className={SUB}>
+              Earned {new Date(badgeDetail.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+        </Sheet>
       )}
 
       {openPhoto && gym?.id && (

@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { effectiveProfilePhoto } from './profilePhoto';
+import { followBuddy } from './followService';
 import { levelForVolume } from './levels';
 import { deliverPush } from './pushService';
 import { computeStreak } from './streakService';
@@ -332,6 +333,11 @@ export async function acceptBuddyRequest(requestId: string): Promise<void> {
   });
 
   await batch.commit();
+
+  // Buddies follow each other. Only our own edge is ours to write; theirs
+  // appears when their app next syncs (src/followService.ts).
+  const otherUid = request.fromUid === user.uid ? request.toUid : request.fromUid;
+  await followBuddy(otherUid);
 
   // Notify the request sender
   await addNotification(request.fromUid, {

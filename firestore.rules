@@ -61,7 +61,9 @@ service cloud.firestore {
         // counter by one, and nothing else (src/followService.ts).
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followerCount'])
           && request.resource.data.followerCount is int
-          && request.resource.data.followerCount >= 0) ||
+          && request.resource.data.followerCount >= 0
+          && (request.resource.data.followerCount == resource.data.get('followerCount', 0) + 1
+            || request.resource.data.followerCount == resource.data.get('followerCount', 0) - 1)) ||
         isAdmin()
       );
       allow delete: if false;

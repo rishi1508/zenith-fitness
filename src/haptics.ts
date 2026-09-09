@@ -109,7 +109,11 @@ export function hapticCue(cue: HapticCue): void {
   try {
     if (!shouldVibrate(getHapticSettings())) return;
     if (!Capacitor.isNativePlatform()) {
-      navigator.vibrate?.(webPattern(cue));
+      // Browsers refuse (and log) a vibration before the page has been
+      // touched. Nothing is lost by skipping it — there is nobody holding
+      // the phone yet.
+      const activated = navigator.userActivation?.hasBeenActive ?? true;
+      if (activated) navigator.vibrate?.(webPattern(cue));
       return;
     }
     // Native: real amplitude, so play the beats as spaced impacts.

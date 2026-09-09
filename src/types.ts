@@ -261,6 +261,9 @@ export interface UserProfile {
   /** Denormalised follow counts (src/followService.ts). */
   followerCount?: number;
   followingCount?: number;
+  /** Badges earned, oldest first (src/badges.ts). Published so somebody
+   *  else's profile can show them without reading private history. */
+  badges?: Array<{ id: string; at: string }>;
   /** ISO timestamp of the last heartbeat from the user's app.
    *  Used to render the online/offline/busy dot on buddy avatars. */
   lastActive?: string;
