@@ -302,3 +302,42 @@ export function evaluateGoal(settings: PhaseSettings, trend: WeightTrend, weeks:
     suggestedKcalDelta: 0,
   };
 }
+
+/**
+ * The weight the plan says you should be on each of `dates`, given where the
+ * phase started and the rate it asks for. Compounding, because the rate is a
+ * percentage of current body weight, not a fixed number of kilos.
+ *
+ * Returns null for any date before the phase began — there is no plan to
+ * compare against yet, and a flat line back to the start would imply one.
+ */
+export function plannedWeights(
+  settings: PhaseSettings,
+  dates: readonly string[],
+  startWeightKg: number,
+): Array<number | null> {
+  const start = new Date(`${settings.startDate}T00:00:00`).getTime();
+  const weeklyFactor = 1 + settings.targetRatePctPerWeek / 100;
+  return dates.map((date) => {
+    const t = new Date(`${date.slice(0, 10)}T00:00:00`).getTime();
+    if (!Number.isFinite(t) || t < start) return null;
+    const weeks = (t - start) / (7 * 86_400_000);
+    return Math.round(startWeightKg * weeklyFactor ** weeks * 100) / 100;
+  });
+}
+
+/**
+ * How far the scale has drifted from the plan, in kg, right now. Positive
+ * means heavier than planned. Null until the phase has a start weight and at
+ * least one reading after it began.
+ */
+export function planDrift(
+  settings: PhaseSettings,
+  latestDate: string,
+  latestWeightKg: number,
+  startWeightKg: number,
+): number | null {
+  const [planned] = plannedWeights(settings, [latestDate], startWeightKg);
+  if (planned === null) return null;
+  return Math.round((latestWeightKg - planned) * 10) / 10;
+}

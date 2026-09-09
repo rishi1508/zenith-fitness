@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, Scale } from 'lucide-react';
-import type { BodyWeightEntry, HealthProfile, NutritionDay, PhaseGoal, PhaseSettings } from '../../types';
+import type {
+  BodyWeightEntry, HealthProfile, NutritionDay, NutritionTargets, PhaseGoal, PhaseSettings,
+} from '../../types';
 import * as storage from '../../storage';
 import {
   addDaysISO, computeTargets, estimateMaintenanceKcal, fetchNutritionRange, getHealthProfile,
-  getPhaseSettings, listNutritionDays, localDateISO, setPhaseSettings, setTargets, subscribeHealth,
+  getPhaseSettings, getTargets, listNutritionDays, localDateISO, setPhaseSettings, setTargets, subscribeHealth,
 } from '../../health';
-import { adaptiveMaintenance, evaluateGoal, weeksElapsed, weightTrend, MIN_TREND_POINTS } from '../../phase';
+import {
+  adaptiveMaintenance, evaluateGoal, planDrift, plannedWeights, weeksElapsed, weightTrend, MIN_TREND_POINTS,
+} from '../../phase';
 import { InteractiveLineChart } from '../../components';
 import type { ChartPoint } from '../../components';
 import { Button, Card, Chip, EmptyState, IconButton, Pill, SegmentedControl, StatTile, useToast, CAPTION, H1, SUB } from '../../ui';
@@ -17,6 +21,8 @@ import { GOAL_LABEL, STATUS_LABEL, STATUS_TONE, rateBadge, signed } from './stat
 const RATE_WINDOW_DAYS = 14;
 const RAW_COLOR = '#a855f7';
 const EMA_COLOR = '#f97316';
+/** The plan is drawn dashed and cool, so it never reads as measured data. */
+const PLAN_COLOR = '#38bdf8';
 const INPUT_CLS = 'rounded-control px-3 h-11 text-sm bg-surface-2 border border-border text-text focus:outline-none focus:border-accent';
 
 const RATE_PRESETS: Record<PhaseGoal, number[]> = { cut: [-0.5, -0.75], bulk: [0.25, 0.5], maintain: [0] };
@@ -32,6 +38,8 @@ interface PhaseData {
   settings: PhaseSettings | null;
   profile: HealthProfile;
   nutrition: NutritionDay[];
+  /** Shown on this page, so "Recalculate targets" has somewhere to land. */
+  targets: NutritionTargets | null;
 }
 
 function readPhaseData(): PhaseData {
@@ -41,6 +49,7 @@ function readPhaseData(): PhaseData {
     settings: getPhaseSettings(),
     profile: getHealthProfile(),
     nutrition: listNutritionDays(addDaysISO(today, -(RATE_WINDOW_DAYS - 1)), today),
+    targets: getTargets(),
   };
 }
 
@@ -72,7 +81,7 @@ export function PhaseView({ isDark, onBack, onOpenBodyWeight }: PhaseViewProps) 
     void fetchNutritionRange(addDaysISO(today, -(RATE_WINDOW_DAYS - 1)), today).then(() => setData(readPhaseData()));
   }, []);
 
-  const { entries, settings, profile, nutrition } = data;
+  const { entries, settings, profile, nutrition, targets } = data;
   const trend = useMemo(() => weightTrend(entries, { days: RATE_WINDOW_DAYS }), [entries]);
   const chartTrend = useMemo(() => weightTrend(entries, { days: rangeDays }), [entries, rangeDays]);
   const weightKg = trend.latestEma ?? entries[0]?.weight ?? null;
@@ -101,6 +110,39 @@ export function PhaseView({ isDark, onBack, onOpenBodyWeight }: PhaseViewProps) 
     [chartTrend],
   );
 
+  /** What the plan asks for, drawn beside what actually happened. Anchored to
+   *  the weight the phase started at, compounding at the target rate. */
+  const planOverlay = useMemo(() => {
+    if (!settings) return null;
+    const anchor = settings.startWeightKg ?? chartTrend.points[0]?.ema ?? null;
+    if (anchor == null) return null;
+    const values = plannedWeights(settings, chartTrend.points.map((p) => p.date), anchor);
+    return values.some((v) => v !== null)
+      ? { values, color: PLAN_COLOR, label: 'Plan', dashed: true }
+      : null;
+  }, [settings, chartTrend]);
+
+  /** How far off the plan the scale is today, and what that means. */
+  const drift = useMemo(() => {
+    const last = chartTrend.points[chartTrend.points.length - 1];
+    if (!settings || !last || settings.startWeightKg == null) return null;
+    const kg = planDrift(settings, last.date, last.ema, settings.startWeightKg);
+    if (kg === null) return null;
+    const off = Math.abs(kg) >= 0.7;
+    const heavier = kg > 0;
+    const wanted = settings.goal;
+    const behind = wanted === 'cut' ? heavier : wanted === 'bulk' ? !heavier : off;
+    return {
+      kg,
+      off,
+      line: !off
+        ? `On the line — within ${Math.abs(kg).toFixed(1)} kg of where the plan puts you today.`
+        : behind
+          ? `${Math.abs(kg).toFixed(1)} kg ${heavier ? 'above' : 'below'} the plan's line for today — the gap is going the wrong way.`
+          : `${Math.abs(kg).toFixed(1)} kg ${heavier ? 'above' : 'below'} the plan's line, and ahead of schedule.`,
+    };
+  }, [settings, chartTrend]);
+
   const startPhase = (goal: PhaseGoal) => {
     setPhaseSettings({
       goal,
@@ -118,15 +160,22 @@ export function PhaseView({ isDark, onBack, onOpenBodyWeight }: PhaseViewProps) 
 
   const recalculate = () => {
     if (!settings || !weightKg || maintenance.kcal === null) return;
-    const targets = computeTargets({
+    const next = computeTargets({
       maintenanceKcal: maintenance.kcal,
       weightKg,
       goal: settings.goal,
       targetRatePctPerWeek: settings.targetRatePctPerWeek,
       maintenanceBasis: maintenance.basis,
     });
-    setTargets(targets);
-    showToast(`Targets updated — ${targets.kcal} kcal, ${targets.protein} g protein`);
+    const before = data.targets;
+    setTargets(next);
+    setData(readPhaseData());
+    const delta = before ? next.kcal - before.kcal : null;
+    showToast(
+      delta === null || delta === 0
+        ? `Targets set — ${next.kcal} kcal, ${next.protein} g protein`
+        : `Targets ${delta > 0 ? 'raised' : 'lowered'} by ${Math.abs(delta)} kcal — now ${next.kcal} kcal, ${next.protein} g protein`,
+    );
   };
 
   return (
@@ -234,7 +283,9 @@ export function PhaseView({ isDark, onBack, onOpenBodyWeight }: PhaseViewProps) 
             unit="kg"
             minPoints={2}
             emptyMessage={`Log at least 2 weigh-ins in the last ${rangeDays} days.`}
-            overlay={chartPoints.length >= 2 ? emaOverlay : undefined}
+            overlay={chartPoints.length >= 2
+              ? (planOverlay ? [emaOverlay, planOverlay] : [emaOverlay])
+              : undefined}
             headerExtra={
               trend.status === 'ok' ? (
                 <span className="text-xs font-bold tabular-nums" style={{ color: EMA_COLOR }}>
@@ -243,6 +294,26 @@ export function PhaseView({ isDark, onBack, onOpenBodyWeight }: PhaseViewProps) 
               ) : undefined
             }
           />
+
+          {planOverlay && weightKg && settings && (
+            <Card>
+              <span className={CAPTION}>Against the plan</span>
+              <p className="text-[15px] leading-[22px] font-semibold text-text mt-1">
+                {GOAL_LABEL[settings.goal]} at {signed(settings.targetRatePctPerWeek)} %/week —{' '}
+                {signed((settings.targetRatePctPerWeek / 100) * weightKg)} kg a week,{' '}
+                {signed((settings.targetRatePctPerWeek / 100) * weightKg * 4.345, 1)} kg a month.
+              </p>
+              <p className={`${SUB} mt-1`}>
+                {drift ? drift.line : 'The dashed line is where the plan puts you; the orange one is the trend.'}
+              </p>
+              {drift?.off && (
+                <p className={`${SUB} mt-1`}>
+                  A kilo is about 7,700 kcal, so closing that over four weeks is roughly{' '}
+                  {Math.abs(Math.round((drift.kg * 7700) / 28 / 25) * 25)} kcal a day.
+                </p>
+              )}
+            </Card>
+          )}
 
           {evaluation && (
             <Card tone={pillTone === 'warn' || pillTone === 'danger' ? 'warn' : 'default'}>
@@ -276,6 +347,27 @@ export function PhaseView({ isDark, onBack, onOpenBodyWeight }: PhaseViewProps) 
               Recalculate targets
             </Button>
             {!settings && <p className={`${SUB} mt-2`}>Pick a goal above first.</p>}
+
+            {/* Where "Recalculate" lands. Without this the button changed
+                something the user could not see from here. */}
+            {targets && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={CAPTION}>Your daily targets</span>
+                  <span className="text-[11px] text-subtle">
+                    {targets.mode === 'manual' ? 'set by hand' : `updated ${new Date(targets.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`}
+                  </span>
+                </div>
+                <p className="text-[15px] leading-[22px] font-semibold text-text mt-1 tabular-nums">
+                  {targets.kcal.toLocaleString('en-IN')} kcal · P{targets.protein} C{targets.carbs} F{targets.fat} g
+                </p>
+                {targets.mode === 'manual' && (
+                  <p className={`${SUB} mt-1`}>
+                    These are manual, so recalculating replaces them with the figures above.
+                  </p>
+                )}
+              </div>
+            )}
           </Card>
         </>
       )}

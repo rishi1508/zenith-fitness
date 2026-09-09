@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  weightTrend, classifyPhase, adaptiveMaintenance, evaluateGoal, weeksElapsed,
+  weightTrend, classifyPhase, adaptiveMaintenance, evaluateGoal, weeksElapsed, plannedWeights, planDrift,
 } from '../src/phase';
 import type { BodyWeightEntry, NutritionDay, PhaseSettings } from '../src/types';
 
@@ -275,5 +275,33 @@ describe('evaluateGoal', () => {
     const r = evaluateGoal(CUT, trend, weeksElapsed(CUT, NOW));
     expect(r.status).toBe('insufficient');
     expect(r.guidance).toContain('less than 7 days');
+  });
+});
+
+describe('plannedWeights', () => {
+  const settings = { goal: 'bulk', targetRatePctPerWeek: 0.5, startDate: '2026-09-01', startWeightKg: 80 } as PhaseSettings;
+
+  it('starts at the phase weight and compounds weekly', () => {
+    const [d0, d7, d14] = plannedWeights(settings, ['2026-09-01', '2026-09-08', '2026-09-15'], 80);
+    expect(d0).toBe(80);
+    expect(d7).toBeCloseTo(80.4, 1);
+    expect(d14).toBeCloseTo(80.8, 1);
+  });
+
+  it('falls the other way on a cut', () => {
+    const cut = { ...settings, goal: 'cut', targetRatePctPerWeek: -0.5 } as PhaseSettings;
+    const [, week1] = plannedWeights(cut, ['2026-09-01', '2026-09-08'], 80);
+    expect(week1).toBeCloseTo(79.6, 1);
+  });
+
+  it('has nothing to say before the phase began', () => {
+    expect(plannedWeights(settings, ['2026-08-20'], 80)).toEqual([null]);
+  });
+
+  it('measures the gap between the scale and the plan', () => {
+    // A week in at 81.4 kg when the plan wanted 80.4.
+    expect(planDrift(settings, '2026-09-08', 81.4, 80)).toBeCloseTo(1.0, 1);
+    expect(planDrift(settings, '2026-09-08', 79.4, 80)).toBeCloseTo(-1.0, 1);
+    expect(planDrift(settings, '2026-08-01', 80, 80)).toBeNull();
   });
 });
