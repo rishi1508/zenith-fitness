@@ -98,3 +98,19 @@ QA credentials: `scratchpad/qa_creds.json` (owner, member, admin) with the DEV-o
 ## 8. Out of scope now
 
 Nutrition and activity data (Phase N/H), payments, per-class rosters, iOS.
+
+## Navigation and shell, 3.20.0 (2026-09-09)
+- **You tab** is the user's own photo inside a ring that fills with their progress through the
+  current experience level (`src/components/LevelRing.tsx`, `TabItem.render`). Same ring at 72 px on
+  the You screen, with the level number on it.
+- Every stat on You opens something: workouts → history, streak → the streak breakdown, volume →
+  per-exercise progress, and the level bar → a sheet explaining how the level is earned, what is
+  left, and how many sessions that is at the user's own average.
+- **Home** offers the day the plan is owed (`src/planProgress.ts`): the earliest day of this week's
+  cycle not yet done, so finishing Day 1 offers Day 2 and skipping ahead pulls you back. A day
+  chosen by hand wins for the rest of that day. Start workout is 80:20 with **Workout together** —
+  invite up to two buddies, watch them accept, pick the day while waiting, start; it builds the same
+  session the lobby does.
+- **Settings** is an index of categories (Account, Appearance, Workout, Sound & vibration,
+  Notifications, Health sync, Data & backup, About), each with an icon, opening one screen at a
+  time. Back closes the category before leaving settings.

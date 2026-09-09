@@ -328,3 +328,24 @@ ever coming back — the scanner was spending its daily budget on failures. Goog
 When every model is cooling at once the error says so, with the wait
 ("Every model is rate-limited right now. Try again in 30s.") instead of the flatly wrong
 "Try again tomorrow."
+
+## 18. Nutrition and phase, 3.20.0 (2026-09-09)
+- **Macro rings** (`NutritionMacroRings`) replace the macro pills: protein, carbs and fat each get
+  the same circular treatment as calories. Home shows the calorie ring plus the three macros; the
+  Health tab and diary use the larger set.
+- **Saved meals in Add food**: the diary's "Meals" button is no longer the only way in. Your meals
+  sit above the food results, match the same search box by meal name *or* by any item inside, and
+  log every item in one tap. The full sheet (including community meals) is still one button away.
+- **Correcting macros**: an admin can overwrite a logged entry's macros in place (quick adds and
+  plate scans have no editable food behind them). Where there is one, the pencil opens it from the
+  diary too, so the fix lands everywhere. `canEditFood` allows `user` and `dish` sources only —
+  IFCT/USDA/OFF rows are sourced data and editing them would diverge from the citation.
+- **Log food** is a floating action on the diary that picks the meal from the clock, and the Health
+  tab card leads with a button rather than a caption link.
+- **Plan vs actual** (`plannedWeights`, `planDrift` in `src/phase/engine.ts`): the weight chart
+  carries a dashed green line for where the phase says you should be, compounding weekly from its
+  start weight, next to the measured trend. Under it: the rate in kg/week and kg/month, today's
+  drift from the line, and what closing that gap over four weeks costs per day (7,700 kcal/kg).
+  `InteractiveLineChart` now takes an array of overlays, and a dashed one reads as projection.
+- **Recalculate targets** shows what it did: the page carries the current targets, refreshes them in
+  place, and the toast names the direction and size of the change.

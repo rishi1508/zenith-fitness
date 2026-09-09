@@ -273,3 +273,9 @@ the `reactions` map, and `commentCount` by ±1. Staff can remove anything.
   `gymStats.ts` (pure, `tests/gymRenewal.test.ts`) power a renewal card in the staff member detail:
   a wa.me deep link with the message pre-written, and a copyable `upi://pay` link built from
   `Gym.upiVpa`. No API, no fees.
+
+## 12. Peak hours, 3.20.0
+The dashboard's hour histogram is scrubbable: press and slide and each bar reports its hour and its
+count ("142 at 7 PM · 18 of 402 check-ins came in that hour"). The busiest hour is highlighted when
+nothing is held; every bar is a focusable button with a spoken label, and pointer events cover mouse
+and touch alike.
