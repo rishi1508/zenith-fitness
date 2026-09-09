@@ -69,7 +69,7 @@ export function GymHomeView(props: GymViewProps) {
       />
 
       {segment === 'feed' ? (
-        <GymFeedView />
+        <GymFeedView onOpenProfile={props.onOpenProfile} />
       ) : segment === 'manage' && isStaff ? (
         <ManageSection isDark={isDark} gym={gym} isManagerPlus={isManagerPlus} onNavigate={onNavigate} />
       ) : (

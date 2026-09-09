@@ -50,7 +50,7 @@ type Composing = 'text' | 'photo' | 'workout' | null;
  * post is the member's own words, optionally carrying a session, a photo, a
  * PR or an achievement. Nothing posts itself; sharing is always a tap.
  */
-export function GymFeedView() {
+export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) => void } = {}) {
   const { gym, role } = useGym();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -126,6 +126,7 @@ export function GymFeedView() {
           myUid={user?.uid}
           mine={post.uid === user?.uid}
           canModerate={canModerate}
+          onOpenProfile={onOpenProfile}
           onReact={(emoji) => {
             void toggleReaction(gym.id, post.id, emoji).catch(() => showToast('Could not react.', 'error'));
           }}
@@ -287,7 +288,8 @@ function ComposerSheet({ gymId, mode, onClose, onPosted }: {
 
 // ---------------------------------------------------------------- post card
 
-function PostCard({ gymId, post, mine, canModerate, myUid, onReact, onDelete }: {
+function PostCard({ gymId, post, mine, canModerate, myUid, onReact, onDelete, onOpenProfile }: {
+  onOpenProfile?: (uid: string) => void;
   gymId: string;
   post: GymFeedPost;
   mine: boolean;
@@ -343,7 +345,9 @@ function PostCard({ gymId, post, mine, canModerate, myUid, onReact, onDelete }: 
     <Card padding="none" className="overflow-hidden">
       {/* Head */}
       <div className="flex items-center gap-2 px-4 pt-3">
-        <Avatar name={post.name} photoURL={post.photoURL} />
+        <button onClick={() => onOpenProfile?.(post.uid)} aria-label={`${post.name}'s profile`} className="shrink-0">
+          <Avatar name={post.name} photoURL={post.photoURL} />
+        </button>
         <span className="flex-1 min-w-0">
           <span className="block text-sm font-semibold text-text truncate">{post.name}</span>
           <span className={`${SUB} block truncate`}>{headline(post)} · {timeAgo(post.at)}</span>

@@ -1,0 +1,418 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeft, BarChart3, Building2, Camera, ChevronRight, ClipboardList, Dumbbell, Grid3x3, Image as ImageIcon,
+  Library, Loader2, MessageCircle, Settings, Sparkles, TrendingUp, UserCog, UserPlus, Users,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import type { GymFeedPost, UserProfile, Workout } from '../../types';
+import { useAuth } from '../../auth/AuthContext';
+import { useGym } from '../../gym/GymContext';
+import * as buddyService from '../../buddyService';
+import { isAdmin } from '../../admin';
+import { listenToFeed } from '../../gymFeed';
+import { follow, isFollowing, unfollow } from '../../followService';
+import { saveProfilePhoto, effectiveProfilePhoto } from '../../profilePhoto';
+import { LevelRing } from '../../components/LevelRing';
+import { ActivityHeatmap, StreakModal } from '../../components';
+import { usePremium, PremiumBadge } from '../../premium';
+import type { Tier } from '../../premium';
+import { Card, EmptyState, IconButton, ListRow, Pill, SectionHeader, Skeleton, StatTile, useToast, CAPTION, H2, SUB } from '../../ui';
+import type { PillTone } from '../../ui';
+import { formatVolume, levelTitle } from '../../levels';
+import * as storage from '../../storage';
+import { ownStats, ownWorkouts, photosBy, postsBy, statsFromProfile, workoutSummaryLine } from './profileData';
+import { PhotoViewer } from './PhotoViewer';
+
+const TIER_LABEL: Record<Tier, string> = { admin: 'Admin', premium: 'Premium', gym: 'Gym premium', free: 'Free' };
+const TIER_TONE: Record<Tier, PillTone> = { admin: 'info', premium: 'accent', gym: 'accent', free: 'neutral' };
+
+/** Resize + JPEG-compress before it is stored on the profile document. */
+async function compressImageFile(file: File, maxPx = 192, quality = 0.72): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context unavailable');
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+type TabId = 'workouts' | 'photos' | 'more';
+
+const TABS: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
+  { id: 'workouts', label: 'Workouts', icon: Dumbbell },
+  { id: 'photos', label: 'Photos', icon: Grid3x3 },
+  { id: 'more', label: 'More', icon: Settings },
+];
+
+export interface ProfileViewProps {
+  /** Whose profile. Absent = the signed-in user's own. */
+  uid?: string;
+  isDark: boolean;
+  /** Back arrow — only shown when this is somebody else's profile. */
+  onBack?: () => void;
+  onOpenProgress: () => void;
+  onOpenAnalysis: () => void;
+  onOpenHistory: () => void;
+  onOpenBuddies: () => void;
+  onOpenSettings: () => void;
+  onOpenAdminGyms: () => void;
+  onOpenAdminUsers: () => void;
+  onOpenAdminLibrary: () => void;
+  onOpenChat?: (uid: string, name: string, photoURL?: string | null) => void;
+}
+
+/**
+ * One screen for "who is this person", used for the You tab and for anybody
+ * you tap in the app. Strava's shape: an identity header, then Workouts /
+ * Photos, with a third tab of your own settings that only you can see.
+ *
+ * Someone else's numbers come from their profile document and whatever they
+ * shared to the gym feed — the app never pretends to know more about them
+ * than they published.
+ */
+export function ProfileView({
+  uid, isDark, onBack, onOpenProgress, onOpenAnalysis, onOpenHistory, onOpenBuddies, onOpenSettings,
+  onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary, onOpenChat,
+}: ProfileViewProps) {
+  const { user } = useAuth();
+  const { gym } = useGym();
+  const { tier } = usePremium();
+  const { showToast } = useToast();
+
+  const self = !uid || uid === user?.uid;
+  const targetUid = uid ?? user?.uid ?? '';
+
+  const [tab, setTab] = useState<TabId>('workouts');
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(!self);
+  const [following, setFollowing] = useState(false);
+  const [busyFollow, setBusyFollow] = useState(false);
+  const [posts, setPosts] = useState<GymFeedPost[]>([]);
+  const [openPhoto, setOpenPhoto] = useState<GymFeedPost | null>(null);
+  const [streakOpen, setStreakOpen] = useState(false);
+  const [photoURL, setPhotoURL] = useState<string | null>(() => (self ? effectiveProfilePhoto(user?.photoURL) : null));
+  const [uploading, setUploading] = useState(false);
+  const [buddyState, setBuddyState] = useState<'unknown' | 'none' | 'requested' | 'buddies'>('unknown');
+
+  useEffect(() => {
+    if (!targetUid) return;
+    let cancelled = false;
+    setLoading(!self);
+    void buddyService.getUserProfile(targetUid)
+      .then((p) => { if (!cancelled) setProfile(p); })
+      .catch(() => { /* a profile that will not load simply shows less */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [targetUid, self]);
+
+  useEffect(() => {
+    if (self || !targetUid) return;
+    void isFollowing(targetUid).then(setFollowing);
+    void buddyService.areBuddies(user?.uid ?? '', targetUid)
+      .then((yes) => setBuddyState(yes ? 'buddies' : 'none'))
+      .catch(() => setBuddyState('none'));
+  }, [self, targetUid, user?.uid]);
+
+  // The gym feed is the only place anyone's posts live, so a profile reads a
+  // page of it and keeps this person's.
+  useEffect(() => {
+    if (!gym?.id) return;
+    return listenToFeed(gym.id, setPosts, 60);
+  }, [gym?.id]);
+
+  const stats = useMemo(() => (self ? ownStats() : statsFromProfile(profile)), [self, profile]);
+  const myWorkouts = useMemo(() => (self ? ownWorkouts() : []), [self]);
+  const theirPosts = useMemo(() => postsBy(posts, targetUid), [posts, targetUid]);
+  const theirPhotos = useMemo(() => photosBy(posts, targetUid), [posts, targetUid]);
+
+  const name = self ? (user?.displayName || 'You') : (profile?.displayName || 'Zenith member');
+  const avatar = self ? photoURL : (profile?.photoURL ?? null);
+
+  const toggleFollow = useCallback(async () => {
+    if (busyFollow) return;
+    setBusyFollow(true);
+    try {
+      if (following) { await unfollow(targetUid); setFollowing(false); }
+      else { await follow(targetUid); setFollowing(true); }
+      setProfile((p) => (p ? { ...p, followerCount: Math.max(0, (p.followerCount ?? 0) + (following ? -1 : 1)) } : p));
+    } catch {
+      showToast('Could not update that just now.', 'error');
+    } finally {
+      setBusyFollow(false);
+    }
+  }, [busyFollow, following, targetUid, showToast]);
+
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !user) return;
+    setUploading(true);
+    try {
+      const dataUri = await compressImageFile(file);
+      await saveProfilePhoto(dataUri);
+      setPhotoURL(dataUri);
+      showToast('Photo updated');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Photo upload failed', 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const visibleTabs = self ? TABS : TABS.filter((t) => t.id !== 'more');
+  const followers = profile?.followerCount ?? 0;
+  const followingCount = profile?.followingCount ?? 0;
+
+  return (
+    <div className="space-y-4 animate-fadeIn">
+      {onBack && (
+        <div className="flex items-center gap-3">
+          <IconButton icon={ArrowLeft} label="Back" onClick={onBack} />
+          <h1 className={`${H2} truncate`}>{name}</h1>
+        </div>
+      )}
+
+      {/* Identity */}
+      <div className="flex items-start gap-3">
+        <div className="relative shrink-0">
+          <LevelRing size={76} totalVolumeKg={stats.totalVolumeKg} photoURL={avatar} name={name} />
+          {self && (
+            <>
+              {/* Bottom-LEFT: the level badge already owns bottom-right, and
+                  the two used to sit on top of each other. */}
+              <label
+                className="absolute -bottom-0.5 -left-0.5 w-7 h-7 rounded-full bg-accent border-2 border-bg flex items-center justify-center cursor-pointer"
+                title="Change profile picture"
+              >
+                {uploading
+                  ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                  : <Camera className="w-3.5 h-3.5 text-white" />}
+                <input type="file" accept="image/*" className="hidden" onChange={onPickPhoto} disabled={uploading} />
+              </label>
+              <span className="absolute -bottom-1 -right-1 min-w-6 h-6 px-1.5 rounded-full bg-surface border border-border text-[11px] font-bold text-accent tabular-nums flex items-center justify-center">
+                {stats.level}
+              </span>
+            </>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-lg font-bold text-text truncate">{name}</h2>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {self && <Pill tone={TIER_TONE[tier]}>{TIER_LABEL[tier]}</Pill>}
+            {isAdmin(targetUid) && <Pill tone="info">Admin</Pill>}
+            {/* The profile pointer holds an id, not a name — so the only gym
+                we can name is the viewer's own, when they share it. */}
+            {gym?.name && (self || profile?.gym?.gymId === gym.id) && (
+              <Pill tone="neutral">{gym.name} {self ? '' : 'member'}</Pill>
+            )}
+            <Pill tone="accent">Lv {stats.level} · {levelTitle(stats.level)}</Pill>
+          </div>
+
+          <div className="flex items-center gap-4 mt-2">
+            <span className={SUB}><b className="text-text tabular-nums">{followers}</b> followers</span>
+            <span className={SUB}><b className="text-text tabular-nums">{followingCount}</b> following</span>
+          </div>
+        </div>
+      </div>
+
+      {!self && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => { void toggleFollow(); }}
+            disabled={busyFollow}
+            className={`flex-1 min-h-11 rounded-control text-sm font-bold transition-colors disabled:opacity-60 ${
+              following ? 'border border-border text-text' : 'bg-accent text-white'
+            }`}
+          >
+            {following ? 'Following' : 'Follow'}
+          </button>
+          <button
+            onClick={() => {
+              // Already training partners? The useful action is talking to
+              // them, not asking again.
+              if (buddyState === 'buddies') { onOpenChat?.(targetUid, name, avatar); return; }
+              if (buddyState !== 'none') return;
+              setBuddyState('requested');
+              void buddyService.sendBuddyRequest(targetUid, name, avatar ?? undefined)
+                .then(() => showToast(`Buddy request sent to ${name}`))
+                .catch((err) => {
+                  setBuddyState('none');
+                  showToast(err instanceof Error ? err.message : 'Could not send that request.', 'error');
+                });
+            }}
+            disabled={buddyState === 'requested' || buddyState === 'unknown'}
+            className="flex-1 min-h-11 rounded-control border border-border text-sm font-bold text-text flex items-center justify-center gap-1.5 disabled:opacity-60"
+          >
+            {buddyState === 'buddies' ? (
+              <><MessageCircle className="w-4 h-4" strokeWidth={2} /> Message</>
+            ) : (
+              <><UserPlus className="w-4 h-4" strokeWidth={2} /> {buddyState === 'requested' ? 'Requested' : 'Add buddy'}</>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 rounded-control bg-surface-2 border border-border">
+        {visibleTabs.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`flex-1 min-h-10 rounded-[9px] text-[13px] font-bold flex items-center justify-center gap-1.5 transition-colors ${
+              tab === id ? 'bg-surface text-text shadow-sm' : 'text-subtle'
+            }`}
+          >
+            <Icon className="w-4 h-4" strokeWidth={1.75} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <Skeleton className="h-40 w-full" />}
+
+      {tab === 'workouts' && !loading && (
+        <div className="space-y-4">
+          <Card>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className={CAPTION}>Level {stats.level} · {levelTitle(stats.level)}</span>
+              <span className="text-[11px] font-semibold text-subtle tabular-nums">{formatVolume(stats.totalVolumeKg)} lifted</span>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <StatTile eyebrow="Workouts" value={stats.workouts} compact onClick={self ? onOpenHistory : undefined} />
+              <StatTile eyebrow="Streak" value={stats.streak} unit="w" compact onClick={self ? () => setStreakOpen(true) : undefined} />
+              <StatTile eyebrow="Volume" value={formatVolume(stats.totalVolumeKg)} compact onClick={self ? onOpenProgress : undefined} />
+            </div>
+          </Card>
+
+          {self && (
+            <ActivityHeatmap workouts={storage.getWorkouts()} isDark={isDark} />
+          )}
+
+          <SectionHeader caption={self ? 'Your sessions' : 'Shared sessions'} />
+          {self ? (
+            myWorkouts.length === 0
+              ? <EmptyState icon={Dumbbell} title="No sessions yet" body="Finish a workout and it shows up here." />
+              : (
+                <Card padding="list">
+                  {myWorkouts.slice(0, 12).map((w) => (
+                    <SessionRow key={w.id} workout={w} onOpen={onOpenHistory} />
+                  ))}
+                </Card>
+              )
+          ) : theirPosts.filter((p) => p.workout).length === 0 ? (
+            <EmptyState icon={Dumbbell} title="Nothing shared yet" body={`${name} has not posted a session to your gym's feed.`} />
+          ) : (
+            <div className="space-y-2">
+              {theirPosts.filter((p) => p.workout).map((p) => (
+                <Card key={p.id}>
+                  <div className="flex items-center gap-2">
+                    <Dumbbell className="w-4 h-4 text-accent shrink-0" strokeWidth={1.75} />
+                    <span className="flex-1 min-w-0 text-sm font-bold text-text truncate">{p.workout!.name}</span>
+                    <span className={`${SUB} shrink-0`}>{new Date(p.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                  </div>
+                  <p className={`${SUB} mt-1`}>
+                    {(p.workout!.volumeKg / 1000).toFixed(1)} t · {p.workout!.sets} sets
+                    {p.workout!.durationMin ? ` · ${p.workout!.durationMin} min` : ''}
+                    {p.workout!.kcal ? ` · ${p.workout!.kcal} kcal` : ''}
+                  </p>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'photos' && !loading && (
+        theirPhotos.length === 0 ? (
+          <EmptyState
+            icon={ImageIcon}
+            title="No photos yet"
+            body={self ? 'Photos you share to your gym feed collect here.' : `${name} has not shared a photo.`}
+          />
+        ) : (
+          <div className="grid grid-cols-3 gap-1">
+            {theirPhotos.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setOpenPhoto(p)}
+                className="aspect-square rounded-sm overflow-hidden bg-surface-2"
+                aria-label={`Open photo from ${new Date(p.at).toLocaleDateString('en-IN')}`}
+              >
+                <PhotoThumb gymId={gym?.id ?? ''} post={p} />
+              </button>
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === 'more' && self && (
+        <div className="space-y-4">
+          <Card padding="list">
+            <ListRow icon={Users} iconTone="accent" title="Buddies" subtitle="Training partners, invites and requests" onClick={onOpenBuddies} />
+          </Card>
+          <Card padding="list">
+            <ListRow icon={TrendingUp} title="Progress" subtitle="Per-exercise trends and PRs" onClick={onOpenProgress} />
+            <ListRow
+              icon={BarChart3}
+              title="Analysis"
+              subtitle="Muscle balance · deload"
+              onClick={onOpenAnalysis}
+              trailing={<><PremiumBadge /><ChevronRight className="w-[18px] h-[18px] text-subtle shrink-0" strokeWidth={1.75} /></>}
+            />
+            <ListRow icon={ClipboardList} title="Workout history" subtitle={`${stats.workouts} sessions`} onClick={onOpenHistory} />
+          </Card>
+          <ListRow icon={Settings} title="Settings" subtitle="Account, appearance, data and more" onClick={onOpenSettings} />
+          {isAdmin(user?.uid) && (
+            <>
+              <SectionHeader caption="Admin" />
+              <Card padding="list">
+                <ListRow icon={Building2} title="Gyms" subtitle="Create and manage gyms" onClick={onOpenAdminGyms} />
+                <ListRow icon={UserCog} title="Users" subtitle="Accounts, tiers, premium grants" onClick={onOpenAdminUsers} />
+                <ListRow icon={Library} title="Shared library" subtitle="Exercise definitions" onClick={onOpenAdminLibrary} />
+              </Card>
+            </>
+          )}
+          <p className={`${SUB} text-center flex items-center justify-center gap-1.5`}>
+            <Sparkles className="w-3.5 h-3.5" /> Zenith Fitness v{__APP_VERSION__}
+          </p>
+        </div>
+      )}
+
+      {openPhoto && gym?.id && (
+        <PhotoViewer gymId={gym.id} post={openPhoto} onClose={() => setOpenPhoto(null)} />
+      )}
+      {streakOpen && <StreakModal isDark={isDark} onClose={() => setStreakOpen(false)} />}
+    </div>
+  );
+}
+
+function SessionRow({ workout, onOpen }: { workout: Workout; onOpen: () => void }) {
+  return (
+    <ListRow
+      icon={Dumbbell}
+      title={workout.name}
+      subtitle={`${new Date(workout.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · ${workoutSummaryLine(workout)}`}
+      onClick={onOpen}
+    />
+  );
+}
+
+/** Grid thumbnail — one read per photo, and only for the ones on screen. */
+function PhotoThumb({ gymId, post }: { gymId: string; post: GymFeedPost }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void import('../../gymFeed').then(({ getPostImage }) => getPostImage(gymId, post.id))
+      .then((url) => { if (!cancelled) setSrc(url); });
+    return () => { cancelled = true; };
+  }, [gymId, post.id]);
+  return src
+    ? <img src={src} alt="" className="w-full h-full object-cover" />
+    : <span className="block w-full h-full animate-pulse bg-surface-2" />;
+}

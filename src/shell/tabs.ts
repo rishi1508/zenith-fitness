@@ -44,6 +44,7 @@ export const viewToTab: Record<View, Tab> = {
   energy: 'health',
   phase: 'health',
   you: 'you',
+  profile: 'you',
   history: 'you',
   progress: 'you',
   analysis: 'you',

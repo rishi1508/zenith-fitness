@@ -57,6 +57,11 @@ service cloud.firestore {
       allow update: if signedIn() && (
         request.auth.uid == uid ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gym']) && isGymManager(request.resource.data.gym.gymId)) ||
+        // Somebody following or unfollowing this person may move that one
+        // counter by one, and nothing else (src/followService.ts).
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followerCount'])
+          && request.resource.data.followerCount is int
+          && request.resource.data.followerCount >= 0) ||
         isAdmin()
       );
       allow delete: if false;
@@ -254,6 +259,20 @@ service cloud.firestore {
         || isGymStaff(resource.data.gymId)
         || (request.auth.token.email != null && request.auth.token.email.lower() == email)
       );
+    }
+
+    // ---------- follows (src/followService.ts) ----------
+    // One document per (follower, target) pair, id "<follower>__<target>".
+    // Anyone signed in can see who follows whom; only the follower writes
+    // their own edge, so nobody can put words in someone else's mouth.
+    match /follows/{edgeId} {
+      allow read:   if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.follower == request.auth.uid
+        && edgeId == request.auth.uid + '__' + request.resource.data.target
+        && request.resource.data.target != request.auth.uid;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.follower == request.auth.uid;
     }
 
     match /gymJoinCodes/{code} {

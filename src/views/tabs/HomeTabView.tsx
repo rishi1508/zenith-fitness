@@ -38,6 +38,8 @@ interface HomeTabViewProps {
   onOpenNutrition: () => void;
   /** Opens one buddy's profile. Falls back to the buddies list when absent. */
   onOpenBuddy?: (uid: string, name: string, photoURL?: string | null) => void;
+  /** Anyone's face opens their public profile. */
+  onOpenProfile?: (uid: string) => void;
 }
 
 function elapsedLabel(startedAt: string): string {
@@ -53,7 +55,7 @@ function elapsedLabel(startedAt: string): string {
 export function HomeTabView({
   theme, workouts, activeWorkout, showBuddies, onStartWorkout, onSessionStart, onResumeWorkout, onDiscardWorkout,
   onOpenGymCheckin, onOpenGymJoin, onOpenBuddies, onOpenZen,
-  onOpenNutrition, onOpenBuddy,
+  onOpenNutrition, onOpenBuddy, onOpenProfile,
 }: HomeTabViewProps) {
   const [hasTargets, setHasTargets] = useState(() => getTargets() != null);
   useEffect(() => subscribeHealth(() => setHasTargets(getTargets() != null)), []);
@@ -283,7 +285,15 @@ export function HomeTabView({
             {buddyRows.map((b) => (
               <ListRow
                 key={b.uid}
-                leading={<Avatar name={b.name} photoURL={b.photoURL} size="sm" />}
+                leading={(
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onOpenProfile?.(b.uid); }}
+                    aria-label={`${b.name}'s profile`}
+                    className="shrink-0"
+                  >
+                    <Avatar name={b.name} photoURL={b.photoURL} size="sm" />
+                  </button>
+                )}
                 title={b.name}
                 subtitle={b.sub}
                 trailing={b.live ? <Chip on size="md">Live</Chip> : 'chevron'}

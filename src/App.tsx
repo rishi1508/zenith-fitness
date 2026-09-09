@@ -21,7 +21,7 @@ import { useElasticScroll } from './hooks/useElasticScroll';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { ActiveWorkoutView, LoginView } from './views';
 import type { GymView, GymNavParams } from './views';
-import { HomeTabView, TrainTabView, HealthTabView, YouTabView } from './views/tabs';
+import { HomeTabView, TrainTabView, HealthTabView } from './views/tabs';
 import { localDateISO as healthToday } from './health';
 import type { MealSlot } from './types';
 import { AppShell } from './shell/AppShell';
@@ -69,6 +69,7 @@ const FoodScanView = lazyNamed(() => import('./views/nutrition/scan'), 'FoodScan
 const PhaseView = lazyNamed(() => import('./views/phase'), 'PhaseView');
 const ActivityView = lazyNamed(() => import('./views/activity'), 'ActivityView');
 const EnergyView = lazyNamed(() => import('./views/energy'), 'EnergyView');
+const ProfileView = lazyNamed(() => import('./views/profile'), 'ProfileView');
 const AdminGymsView = lazyNamed(() => import('./views/admin'), 'AdminGymsView');
 const AdminUsersView = lazyNamed(() => import('./views/admin'), 'AdminUsersView');
 const AdminLibraryView = lazyNamed(() => import('./views/admin'), 'AdminLibraryView');
@@ -85,7 +86,6 @@ function ViewFallback() {
 }
 import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
-import { isAdmin } from './admin';
 import { levelForVolume } from './levels';
 import { feedback } from './feedback';
 import { startActivityAutoSync } from './activity';
@@ -111,7 +111,7 @@ import { useToast, useConfirm } from './ui';
  *  once the food is in the diary (see `showDiary`). */
 const ADD_FOOD_VIEWS = new Set<View>(['food-search', 'food-scan']);
 
-export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'energy' | 'phase';
+export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'energy' | 'phase' | 'profile';
 export type Theme = 'dark' | 'light';
 
 function App() {
@@ -132,6 +132,8 @@ function App() {
   const [levelUp, setLevelUp] = useState<{ from: number; to: number; volume: number } | null>(null);
   // Shown once per device, after the first sign-in settles.
   const [showTour, setShowTour] = useState(false);
+  /** Whose profile the `profile` route is showing. */
+  const [profileUid, setProfileUid] = useState<string | null>(null);
   // A self-uploaded avatar lives on the profile document, not in Auth
   // (src/profilePhoto.ts) — so the shell reads it from there.
   const [myPhoto, setMyPhoto] = useState<string | null>(() => effectiveProfilePhoto(null));
@@ -320,6 +322,14 @@ function App() {
   }, [view, activeWorkout]);
 
   // Open a group workout session (used by buddy invites and notification toasts)
+  /** Anyone's face, anywhere, opens their profile. */
+  const openProfile = useCallback((uid: string) => {
+    setProfileUid(uid);
+    navigationHistory.current.push('profile');
+    setView('profile');
+    try { window.history.pushState({ zenith: navigationHistory.current.length }, ''); } catch { /* ignore */ }
+  }, []);
+
   const openSession = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
     navigationHistory.current.push('session-lobby');
@@ -1617,6 +1627,7 @@ function App() {
               exercises: session.templateExercises,
             }, session.id)}
             onOpenNutrition={() => { setFoodNav((n) => ({ ...n, date: healthToday() })); navigateTo('nutrition'); }}
+            onOpenProfile={openProfile}
             onOpenBuddy={(uid, name, photoURL) => {
               recordBuddyInteraction(uid, 'profile');
               setBuddyContext({ uid, name, photoURL });
@@ -1648,11 +1659,8 @@ function App() {
           />
         )}
         {view === 'you' && (
-          <YouTabView
-            stats={stats}
-            workouts={workoutHistory}
+          <ProfileView
             isDark={isDark}
-            isAdmin={isAdmin(user?.uid)}
             onOpenProgress={() => navigateTo('progress')}
             onOpenAnalysis={() => navigateTo('analysis')}
             onOpenHistory={() => navigateTo('history')}
@@ -1760,46 +1768,46 @@ function App() {
         )}
         {/* Gym OS lite (Tier A) — placeholder routes, see docs/GYM_TIER_A_SPEC.md §6. */}
         {view === 'gym-join' && (
-          <JoinGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <JoinGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-home' && (
-          <GymHomeView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <GymHomeView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-checkin' && (
-          <CheckinView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <CheckinView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-classes' && (
-          <ClassesView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <ClassesView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-class' && (
-          <ClassDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} classId={gymNav.classId} />
+          <ClassDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} classId={gymNav.classId} />
         )}
         {view === 'gym-announcements' && (
-          <AnnouncementsView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <AnnouncementsView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-membership' && (
-          <MembershipView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <MembershipView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-dashboard' && (
-          <GymDashboardView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <GymDashboardView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-members' && (
-          <MembersView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} membersFilter={gymNav.membersFilter} />
+          <MembersView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} membersFilter={gymNav.membersFilter} />
         )}
         {view === 'gym-member' && (
-          <MemberDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} memberUid={gymNav.memberUid} />
+          <MemberDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} memberUid={gymNav.memberUid} />
         )}
         {view === 'gym-console' && (
-          <CheckinConsoleView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <CheckinConsoleView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-classes-manage' && (
-          <ClassesManageView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <ClassesManageView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-settings' && (
-          <GymSettingsView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} gymId={gym?.id} />
+          <GymSettingsView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-create' && (
-          <CreateGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} />
+          <CreateGymView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} />
         )}
         {view === 'nutrition' && (
           <NutritionTodayView
@@ -1826,6 +1834,25 @@ function App() {
         )}
         {view === 'activity' && (
           <ActivityView onBack={() => goBack()} />
+        )}
+        {view === 'profile' && (
+          <ProfileView
+            uid={profileUid ?? undefined}
+            isDark={isDark}
+            onBack={() => goBack()}
+            onOpenProgress={() => navigateTo('progress')}
+            onOpenAnalysis={() => navigateTo('analysis')}
+            onOpenHistory={() => navigateTo('history')}
+            onOpenBuddies={() => navigateTo('buddies')}
+            onOpenSettings={() => navigateTo('settings')}
+            onOpenAdminGyms={() => navigateTo('admin-gyms')}
+            onOpenAdminUsers={() => navigateTo('admin-users')}
+            onOpenAdminLibrary={() => navigateTo('admin-library')}
+            onOpenChat={(uid, name, photoURL) => {
+              setBuddyContext((prev) => ({ ...prev, uid, name, photoURL }));
+              navigateTo('buddy-profile');
+            }}
+          />
         )}
         {view === 'energy' && (
           <EnergyView onBack={() => goBack()} onAskZen={openZen} />

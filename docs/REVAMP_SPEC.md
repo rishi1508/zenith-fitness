@@ -137,3 +137,25 @@ Nutrition and activity data (Phase N/H), payments, per-class rosters, iOS.
   failed with "photo upload failed, URL too large". Google's own https URL still works as the
   fallback. Everything that writes an avatar (buddy profile, feed post, session participant) reads
   `effectiveProfilePhoto()`.
+
+## Profiles, 3.23.0 (2026-09-10)
+One `ProfileView` serves both the You tab and anybody you tap — an avatar anywhere (feed, buddy
+strip) opens `view: 'profile'` for that uid.
+
+Header: the photo inside its level ring, with the camera control at bottom-**left** and the level
+badge at bottom-right (they used to sit on top of each other). Name, tier/admin/gym/level pills,
+follower and following counts. Somebody else's profile adds **Follow** and **Add buddy** — the
+second sends a real request and becomes "Message" once you are buddies.
+
+Tabs, Strava-style, each with an icon: **Workouts** (level, workouts/streak/volume tiles, the
+26-week heatmap for yourself, then sessions — your own history, or the ones they shared to the gym
+feed), **Photos** (a 3-up grid of their feed photos opening a full viewer with reactions and
+comments), and **More**, which only ever renders on your own profile.
+
+What another person's profile can show is bounded by what they published: their `userProfiles`
+snapshot (level, volume, workouts, streak) plus their gym-feed posts. The app never tries to read
+another user's private data.
+
+**Following** (`src/followService.ts`) is one-way and needs no consent, unlike a buddy — one
+`follows/{follower}__{target}` edge plus denormalised counts. Rules let the follower write only
+their own edge, and let anyone move `followerCount` on another profile by nothing else.

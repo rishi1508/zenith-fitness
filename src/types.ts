@@ -258,6 +258,9 @@ export interface UserProfile {
   activeWorkoutName?: string;
   activeWorkoutStartedAt?: string;
   compareStats?: BuddyCompareStats;
+  /** Denormalised follow counts (src/followService.ts). */
+  followerCount?: number;
+  followingCount?: number;
   /** ISO timestamp of the last heartbeat from the user's app.
    *  Used to render the online/offline/busy dot on buddy avatars. */
   lastActive?: string;

@@ -42,6 +42,8 @@ export interface GymViewProps {
   isDark: boolean;
   onBack: () => void;
   onNavigate: (view: GymView, params?: GymNavParams) => void;
+  /** Opens somebody's public profile from an avatar. */
+  onOpenProfile?: (uid: string) => void;
   gymId?: string;
   classId?: string;
   memberUid?: string;
