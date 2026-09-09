@@ -96,7 +96,7 @@ export function EnergyView({ onBack, onAskZen }: { onBack: () => void; onAskZen?
             value={balance == null || !day.intakeKcal ? '—' : `${balance > 0 ? '+' : ''}${kcal(balance)}`}
             unit={balance != null && day.intakeKcal ? 'kcal' : undefined}
             tone={balance == null || !day.intakeKcal ? 'default' : balanceTone(balance, target)}
-            sub={target ? `Your phase wants ${target > 0 ? '+' : ''}${kcal(target)} a day` : 'Set a phase to get a target'}
+            sub={target ? `Your phase wants ${target > 0 ? '+' : '−'}${kcal(Math.abs(target))} kcal a day` : 'Set a phase to get a target'}
           />
 
           {/* Where the burn comes from. */}

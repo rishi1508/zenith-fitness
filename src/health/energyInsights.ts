@@ -105,7 +105,7 @@ export function buildEnergyInsights(input: {
       headline: goal === 'cut'
         ? `You are eating about ${round50(drift)} kcal a day more than your cut needs.`
         : `You are ${round50(drift)} kcal a day above where you aimed.`,
-      detail: `Average ${avgIntake} kcal in, ${avgOut} out. At this rate you would ${avgBalance > 0 ? 'gain' : 'lose'} about ${Math.abs((avgBalance * 7) / KCAL_PER_KG).toFixed(2)} kg a week instead of ${Math.abs((goalBalance * 7) / KCAL_PER_KG).toFixed(2)}. ${fix}`,
+      detail: `Average ${avgIntake} kcal in, ${avgOut} out. At this rate you would ${avgBalance > 0 ? 'gain' : 'lose'} about ${Math.abs((avgBalance * 7) / KCAL_PER_KG).toFixed(2)} kg a week instead of ${goalBalance > 0 ? 'gaining' : 'losing'} ${Math.abs((goalBalance * 7) / KCAL_PER_KG).toFixed(2)}. ${fix}`,
     });
   } else {
     const shortfall = round50(-drift);
