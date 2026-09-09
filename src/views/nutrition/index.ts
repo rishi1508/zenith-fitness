@@ -10,5 +10,6 @@ export type { FoodEntrySheetProps } from './FoodEntrySheet';
 export { TargetsView } from './TargetsView';
 export type { TargetsViewProps } from './TargetsView';
 export { NutritionRing } from './NutritionRing';
+export { NutritionMacroRings } from './NutritionRing';
 export type { NutritionRingProps } from './NutritionRing';
 export { MEALS, MEAL_LABEL } from './nutritionHelpers';

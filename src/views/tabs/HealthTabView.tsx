@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Ruler, TrendingUp } from 'lucide-react';
+import { Plus, Ruler, TrendingUp } from 'lucide-react';
 import * as storage from '../../storage';
 import { buildCoachReport } from '../../coachService';
 import { ZenCard } from '../zen';
@@ -7,7 +7,7 @@ import { NutritionRing } from '../nutrition';
 import { PhaseCard } from '../phase';
 import { ActivityCard } from '../activity';
 import { EnergyCard } from '../energy';
-import { Card, StatTile, ListRow, SectionHeader } from '../../ui';
+import { Button, Card, StatTile, ListRow, SectionHeader } from '../../ui';
 
 interface HealthTabViewProps {
   onOpenZen: (prompt?: string) => void;
@@ -33,8 +33,11 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
   return (
     <div className="space-y-4 animate-fadeIn">
       <Card>
-        <SectionHeader caption="Today" trailing={{ label: 'Log food', onClick: onOpenNutrition }} />
+        <SectionHeader caption="Today" />
         <div className="mt-2 flex justify-center"><NutritionRing size={132} onClick={onOpenNutrition} /></div>
+        <Button variant="primary" size="md" icon={Plus} full className="mt-3" onClick={onOpenNutrition}>
+          Log food
+        </Button>
       </Card>
 
       <ZenCard onAskZen={onOpenZen} />

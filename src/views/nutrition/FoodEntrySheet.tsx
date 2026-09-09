@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Minus, Pencil, Plus, Trash2 } from 'lucide-react';
-import type { FoodEntry, FoodItem, MealSlot } from '../../types';
+import type { FoodEntry, FoodItem, Macros, MealSlot } from '../../types';
 import { getNutritionDay, pushRecentFood, saveNutritionDay } from '../../health/store';
 import { gramsFor, macrosFor } from '../../nutrition';
 import { Button, Chip, IconButton, Sheet, CAPTION, SUB } from '../../ui';
@@ -28,6 +28,9 @@ export interface FoodEntrySheetProps {
   /** Shown as a pencil next to the title when the viewer may correct this
    *  food's macros or servings (its creator, or an admin). */
   onEditFood?: (food: FoodItem) => void;
+  /** Lets the viewer overwrite this entry's macros outright — admins, for
+   *  fixing a figure a user or a scan got wrong. */
+  canCorrect?: boolean;
 }
 
 /**
@@ -44,7 +47,7 @@ export function FoodEntrySheet(props: FoodEntrySheetProps) {
 }
 
 function EntryForm({
-  onClose, food, date, meal, entry, note, onSaved, onDeleted, onEditFood,
+  onClose, food, date, meal, entry, note, onSaved, onDeleted, onEditFood, canCorrect,
 }: FoodEntrySheetProps & { food: FoodItem }) {
   const raw = basisLabel(food);
   const units = useMemo(() => [...food.units, { label: raw, grams: 1 }], [food, raw]);
@@ -55,7 +58,12 @@ function EntryForm({
   const [qtyText, setQtyText] = useState<string | null>(null);
 
   const grams = gramsFor(food, qty, unitLabel);
-  const macros = macrosFor(food, grams);
+  const computed = macrosFor(food, grams);
+  // An admin correcting a wrong figure edits the entry's macros directly:
+  // quick adds, plate scans and user-created foods all end up here, and some
+  // of them have no editable food behind them to fix instead.
+  const [override, setOverride] = useState<Macros | null>(null);
+  const macros = override ?? computed;
 
   const commitQty = (text: string) => {
     const n = Number(text);
@@ -75,7 +83,12 @@ function EntryForm({
       unit: unitLabel,
       ...(food.basis ? { basis: food.basis } : {}),
       grams: Math.round(grams * 10) / 10,
-      macros,
+      macros: {
+        kcal: Math.round(macros.kcal),
+        protein: Math.round(macros.protein * 10) / 10,
+        carbs: Math.round(macros.carbs * 10) / 10,
+        fat: Math.round(macros.fat * 10) / 10,
+      },
       at: entry?.at ?? new Date().toISOString(),
       approx: food.approx,
     };
@@ -110,6 +123,36 @@ function EntryForm({
         {' · '}{Math.round(food.per100g.kcal)} kcal / 100 {raw}
       </p>
       {note && <p className="text-xs text-subtle">{note}</p>}
+
+      {canCorrect && (
+        override
+          ? (
+            <div className="rounded-control border border-warn/40 bg-warn/10 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className={CAPTION}>Corrected macros · this entry</span>
+                <button onClick={() => setOverride(null)} className="text-[13px] font-bold text-accent">Recalculate</button>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <MacroField label="kcal" value={override.kcal} onChange={(v) => setOverride({ ...override, kcal: v })} />
+                <MacroField label="P" value={override.protein} onChange={(v) => setOverride({ ...override, protein: v })} />
+                <MacroField label="C" value={override.carbs} onChange={(v) => setOverride({ ...override, carbs: v })} />
+                <MacroField label="F" value={override.fat} onChange={(v) => setOverride({ ...override, fat: v })} />
+              </div>
+              <p className="text-[11px] text-subtle">
+                Saved on this entry only. Changing the quantity will not rescale it — fix the food itself to
+                correct it everywhere.
+              </p>
+            </div>
+          )
+          : (
+            <button
+              onClick={() => setOverride({ ...computed })}
+              className="text-[13px] font-bold text-accent self-start"
+            >
+              Correct these macros
+            </button>
+          )
+      )}
 
       <div>
         <span className={CAPTION}>Quantity</span>
@@ -194,5 +237,20 @@ function Macro({ label, value, suffix }: { label: string; value: number; suffix?
         {Math.round(value * 10) / 10}{suffix ? ` ${suffix}` : ''}
       </div>
     </div>
+  );
+}
+
+function MacroField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="block">
+      <span className={CAPTION}>{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        value={String(value)}
+        onChange={(e) => { const n = Number(e.target.value); onChange(Number.isFinite(n) && n >= 0 ? n : 0); }}
+        className="mt-1 w-full h-9 px-2 rounded-control border border-border bg-surface-2 text-text text-sm text-center tabular-nums outline-none focus:border-accent/50"
+      />
+    </label>
   );
 }

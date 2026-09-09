@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Camera, Plus, ScanBarcode, Search, Star, Zap } from 'lucide-react';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { ArrowLeft, Camera, Plus, ScanBarcode, Search, Star, UtensilsCrossed, Zap } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
-import type { FoodEntry, FoodItem, FoodSource, Macros, MealSlot } from '../../types';
+import type { FoodEntry, FoodItem, FoodSource, Macros, MealSlot, SavedMeal } from '../../types';
 import {
-  getCustomFoods, getFavouriteFoodIds, getNutritionDay, getRecentFoods, replaceCachedFood,
+  getCustomFoods, getFavouriteFoodIds, getMeals, getNutritionDay, getRecentFoods, replaceCachedFood,
   saveCustomFood, saveNutritionDay, subscribeHealth, toggleFavouriteFood,
 } from '../../health/store';
-import { isAdmin } from '../../admin';
-import { FoodForm } from './FoodForm';
-import type { FoodFormValues } from './FoodForm';
 import { getFood, loadFoodIndex, lookupBarcode, OFF_ATTRIBUTION, searchFoods } from '../../nutrition';
 import {
   Button, Card, EmptyState, IconButton, SegmentedControl, Sheet, Skeleton, useToast,
@@ -18,7 +13,9 @@ import {
 } from '../../ui';
 import { BarcodeScanView } from './BarcodeScanView';
 import { FoodEntrySheet } from './FoodEntrySheet';
-import { MEAL_LABEL, basisLabel, sourceLabel, upsertEntry } from './nutritionHelpers';
+import { MEAL_LABEL, basisLabel, canEditFood, publishSharedFood, sourceLabel, upsertEntry } from './nutritionHelpers';
+import { MealsSheet } from './MealsSheet';
+import { FoodSheet } from './foodEditing';
 
 export interface FoodSearchViewProps {
   /** Diary day the entry lands on (YYYY-MM-DD). */
@@ -74,27 +71,6 @@ async function resolveFood(id: string): Promise<FoodItem | null> {
   return await Promise.resolve(getFood(id));
 }
 
-/** Publishes a member-created food to `sharedFoods/{id}` — a create only, no
- *  listener (docs/COST_CONTROLS.md). Failures are non-fatal: the food is
- *  already saved locally. */
-function publishSharedFood(item: FoodItem): void {
-  const payload: Record<string, unknown> = {
-    id: item.id, name: item.name, source: 'user',
-    per100g: item.per100g, units: item.units,
-    createdBy: item.createdBy, createdByName: item.createdByName ?? null, createdAt: item.createdAt,
-  };
-  if (item.brand) payload.brand = item.brand;
-  if (item.basis) payload.basis = item.basis;
-  setDoc(doc(db, 'sharedFoods', item.id), payload, { merge: true })
-    .catch((e) => console.warn('[Nutrition] sharedFoods publish failed', e));
-}
-
-/** A member may correct the foods they created; an admin may correct any of
- *  them (rules mirror this on `sharedFoods`). */
-function canEditFood(food: FoodItem | null, uid: string | undefined): boolean {
-  return !!food && !!uid && food.source === 'user' && (food.createdBy === uid || isAdmin(uid));
-}
-
 /**
  * Food picker for one meal (docs/HEALTH_SPEC.md §3): debounced client-side
  * search over the static food index, Recents / Favourites / All segments, a
@@ -118,6 +94,7 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<FoodItem | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [mealsOpen, setMealsOpen] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -130,10 +107,30 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
 
   // `tick` is the health-store change signal — re-read everything on it.
   const stored = useMemo(() => ({
-    favouriteIds: getFavouriteFoodIds(), recents: getRecentFoods(), customFoods: getCustomFoods(),
+    favouriteIds: getFavouriteFoodIds(), recents: getRecentFoods(), customFoods: getCustomFoods(), meals: getMeals(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [tick]);
-  const { favouriteIds, recents, customFoods } = stored;
+  const { favouriteIds, recents, customFoods, meals } = stored;
+
+  /** A saved meal is the fastest thing to log, so it sits above the foods and
+   *  answers the same search box. */
+  const matchingMeals = useMemo(() => {
+    const q = debounced.trim().toLowerCase();
+    const rowsForQuery = q
+      ? meals.filter((m) => m.name.toLowerCase().includes(q) || m.items.some((i) => i.name.toLowerCase().includes(q)))
+      : meals;
+    return rowsForQuery.slice(0, 4);
+  }, [meals, debounced]);
+
+  /** Everything in a saved meal, into today's diary in one go. */
+  const logMeal = useCallback((saved: SavedMeal) => {
+    const now = new Date().toISOString();
+    const day = getNutritionDay(date);
+    const added: FoodEntry[] = saved.items.map((item) => ({ ...item, id: crypto.randomUUID(), at: now, meal }));
+    saveNutritionDay({ ...day, entries: [...day.entries, ...added] });
+    showToast(`Added ${saved.name} (${added.length} item${added.length === 1 ? '' : 's'}).`);
+    if (onAdded) onAdded(added[0]); else onBack();
+  }, [date, meal, onAdded, onBack, showToast]);
   const favouriteKey = favouriteIds.join(',');
 
   const [favourites, setFavourites] = useState<FoodItem[]>([]);
@@ -237,6 +234,37 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
         />
       </div>
 
+      {/* Saved meals first — logging "my usual breakfast" should never mean
+          re-adding four foods. */}
+      {matchingMeals.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className={CAPTION}>Your meals</span>
+            <button onClick={() => setMealsOpen(true)} className="text-[13px] font-bold text-accent">See all</button>
+          </div>
+          <Card padding="list">
+            {matchingMeals.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => logMeal(m)}
+                className="w-full min-h-14 px-1 flex items-center gap-3 text-left"
+              >
+                <span className="w-9 h-9 rounded-control bg-accent-soft text-accent flex items-center justify-center shrink-0">
+                  <UtensilsCrossed className="w-[18px] h-[18px]" strokeWidth={1.75} />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[15px] leading-[22px] font-semibold text-text truncate">{m.name}</span>
+                  <span className={`${SUB} block truncate`}>
+                    Saved meal · {m.items.length} item{m.items.length === 1 ? '' : 's'} · {Math.round(m.kcal)} kcal
+                  </span>
+                </span>
+                <Plus className="w-[18px] h-[18px] text-subtle shrink-0" strokeWidth={1.75} />
+              </button>
+            ))}
+          </Card>
+        </div>
+      )}
+
       <SegmentedControl options={SEGMENTS} value={segment} onChange={setSegment} label="Food list" />
 
       {segment === 'all' && searching && listed.length === 0 ? (
@@ -271,14 +299,25 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
         </Card>
       )}
 
-      <div className="flex gap-2">
+      <div className="grid grid-cols-3 gap-2">
+        <Button variant="secondary" size="md" icon={UtensilsCrossed} full onClick={() => setMealsOpen(true)}>
+          Meals
+        </Button>
         <Button variant="secondary" size="md" icon={Plus} full onClick={() => setCreateOpen(true)}>
-          Create food
+          Create
         </Button>
         <Button variant="secondary" size="md" icon={Zap} full onClick={() => setQuickOpen(true)}>
           Quick add
         </Button>
       </div>
+
+      {mealsOpen && (
+        <MealsSheet
+          meal={meal}
+          onClose={() => setMealsOpen(false)}
+          onPick={(saved) => { setMealsOpen(false); logMeal(saved); }}
+        />
+      )}
 
       <FoodEntrySheet
         open={!!selected} onClose={() => setSelected(null)}
@@ -392,32 +431,6 @@ function NumField({ label, value, onChange, suffix }: {
 /** Create/edit wrapper around the shared `FoodForm`. Mounted only while open,
  *  so the fields seed once from `initial` and no reset effect is needed.
  *  `busy` blocks the double-taps that used to create the same food twice. */
-function FoodSheet({ title, submitLabel, initial, createdBy, onClose, onSubmit }: {
-  title: string;
-  submitLabel: string;
-  initial?: FoodItem;
-  createdBy?: string;
-  onClose: () => void;
-  onSubmit: (values: FoodFormValues) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <Sheet open onClose={onClose} title={title}>
-      {!createdBy && <p className="text-xs text-danger">Sign in to add or edit a food.</p>}
-      <FoodForm
-        initial={initial}
-        submitLabel={submitLabel}
-        busy={busy || !createdBy}
-        onSubmit={(values) => {
-          if (busy || !createdBy) return;
-          setBusy(true);
-          onSubmit(values);
-        }}
-      />
-    </Sheet>
-  );
-}
-
 /** Mounted only while open — see `FoodSheet`. */
 function QuickAddSheet({ onClose, meal, onAdd }: {
   onClose: () => void; meal: MealSlot; onAdd: (entry: FoodEntry) => void;

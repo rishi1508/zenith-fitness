@@ -14,7 +14,7 @@ import { listenToClasses, upcomingSessions } from '../../gymService';
 import { formatTime12h } from '../../gymMemberHelpers';
 import { ZenCard } from '../zen';
 import { Card, Button, Chip, Sheet, SectionHeader, WeekDots, ListRow, H2, SUB, CAPTION } from '../../ui';
-import { NutritionRing } from '../nutrition';
+import { NutritionRing, NutritionMacroRings } from '../nutrition';
 import { getTargets, subscribeHealth } from '../../health';
 import { rankByAffinity } from '../../buddyAffinity';
 import { suggestNextDay } from '../../planProgress';
@@ -243,12 +243,15 @@ export function HomeTabView({
       </Card>
 
       {hasTargets && (
-        <Card onClick={onOpenNutrition} className="flex items-center justify-between gap-3 text-left">
-          <div>
+        <Card onClick={onOpenNutrition} className="text-left">
+          <div className="flex items-center justify-between gap-2">
             <span className={CAPTION}>Nutrition today</span>
-            <p className={`${SUB} mt-1`}>Tap to log food</p>
+            <span className="text-[13px] font-bold text-accent">Log food</span>
           </div>
-          <NutritionRing size={64} showMacros={false} />
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <NutritionRing size={84} showMacros={false} />
+            <NutritionMacroRings size={50} className="flex-1" />
+          </div>
         </Card>
       )}
 

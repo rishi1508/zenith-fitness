@@ -7,16 +7,22 @@ import {
 } from '../../health/store';
 import { getFood } from '../../nutrition';
 import { hapticImpact } from '../../haptics';
-import { Button, Card, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, SUB, useConfirm } from '../../ui';
+import {
+  Button, Card, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, SUB, useConfirm, TAB_BAR_HEIGHT,
+} from '../../ui';
 import { NutritionRing } from './NutritionRing';
 import { FoodEntrySheet } from './FoodEntrySheet';
 import {
-  GLASS_ML, MEALS, MEAL_LABEL, canGoForward, copyDayEntries, dayLabel, entriesForMeal, foodFromEntry,
-  basisLabel, formatQty, glassesFor, mealKcal, removeEntry, shiftDate, toSavedItem,
+  GLASS_ML, MEALS, MEAL_LABEL, canEditFood, canGoForward, copyDayEntries, dayLabel, entriesForMeal,
+  foodFromEntry, basisLabel, formatQty, glassesFor, mealKcal, publishSharedFood, removeEntry, shiftDate,
+  toSavedItem,
 } from './nutritionHelpers';
 import { MealsSheet, SaveMealSheet } from './MealsSheet';
 import { publishMeal } from './sharedMeals';
 import { useAuth } from '../../auth/AuthContext';
+import { isAdmin } from '../../admin';
+import { FoodSheet } from './foodEditing';
+import { replaceCachedFood, saveCustomFood } from '../../health/store';
 
 export interface NutritionTodayViewProps {
   onBack: () => void;
@@ -34,6 +40,16 @@ export interface NutritionTodayViewProps {
  * every write goes back through `saveNutritionDay`, and `subscribeHealth`
  * re-renders when anything in the health store changes.
  */
+/** breakfast before 11, lunch before 16, dinner before 21, else snacks —
+ *  the same guess the plate scanner makes. */
+function mealForNow(now: Date = new Date()): MealSlot {
+  const h = now.getHours();
+  if (h < 11) return 'breakfast';
+  if (h < 16) return 'lunch';
+  if (h < 21) return 'dinner';
+  return 'snacks';
+}
+
 export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDate }: NutritionTodayViewProps) {
   const { showToast } = useToast();
   const { user } = useAuth();
@@ -69,6 +85,8 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
     saveNutritionDay(removeEntry(getNutritionDay(date), entry.id));
     showToast(`${entry.name} removed.`);
   };
+
+  const [editingFood, setEditingFood] = useState<FoodItem | null>(null);
 
   const openEntry = async (entry: FoodEntry) => {
     const local = getCustomFoods().find((f) => f.id === entry.foodId)
@@ -205,6 +223,17 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
         );
       })}
 
+      {/* The diary's job is to be added to, so the way in is a button you
+          cannot miss rather than a small "+ Add" beside a meal heading. */}
+      <button
+        onClick={() => onAddFood(date, mealForNow())}
+        className="fixed right-4 z-30 h-14 pl-4 pr-5 rounded-full bg-accent text-white font-bold text-[15px] shadow-lg shadow-accent/30 flex items-center gap-2 active:scale-95 transition-transform"
+        style={{ bottom: `calc(${TAB_BAR_HEIGHT}px + env(safe-area-inset-bottom, 0px) + 16px)` }}
+      >
+        <Plus className="w-5 h-5" strokeWidth={2.5} />
+        Log food
+      </button>
+
       {mealPicker && (
         <MealsSheet
           meal={mealPicker}
@@ -268,7 +297,28 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
         entry={editing?.entry ?? null}
         date={date}
         meal={editing?.entry.meal ?? 'breakfast'}
+        canCorrect={isAdmin(user?.uid)}
+        onEditFood={editing && canEditFood(editing.food, user?.uid)
+          ? (f) => { setEditing(null); setEditingFood(f); }
+          : undefined}
       />
+
+      {editingFood && (
+        <FoodSheet
+          title={`Edit ${editingFood.name}`}
+          submitLabel="Save food"
+          initial={editingFood}
+          onClose={() => setEditingFood(null)}
+          onSubmit={(values) => {
+            const next: FoodItem = { ...editingFood, ...values };
+            saveCustomFood(next);
+            replaceCachedFood(next);
+            if (next.createdBy) publishSharedFood(next);
+            setEditingFood(null);
+            showToast(`Saved ${next.name}. New logs use the corrected figures.`);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,3 +1,6 @@
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { isAdmin } from '../../admin';
 /**
  * Pure helpers behind the nutrition diary (docs/HEALTH_SPEC.md §3).
  * Everything here is side-effect free and unit-tested in
@@ -202,4 +205,28 @@ export function explainTargets(input: {
   const sign = input.ratePctPerWeek > 0 ? '+' : '−';
   return `${base}; ${input.goal} at ${sign}${Math.abs(input.ratePctPerWeek)} %/week `
     + `(${sign}${Math.abs(weeklyKg).toFixed(2)} kg) → ${input.kcal} kcal/day.`;
+}
+
+/** A member may correct the foods they created; an admin may correct any
+ *  member-created one (rules mirror this on `sharedFoods`). Sourced
+ *  reference data — IFCT, USDA, Open Food Facts — is not ours to edit. */
+export function canEditFood(food: FoodItem | null, uid: string | undefined): boolean {
+  if (!food || !uid) return false;
+  if (food.source !== 'user' && food.source !== 'dish') return false;
+  return food.createdBy === uid || isAdmin(uid);
+}
+
+/** Publishes a member-created food to `sharedFoods/{id}` — a create only, no
+ *  listener (docs/COST_CONTROLS.md). Failures are non-fatal: the food is
+ *  already saved locally. */
+export function publishSharedFood(item: FoodItem): void {
+  const payload: Record<string, unknown> = {
+    id: item.id, name: item.name, source: 'user',
+    per100g: item.per100g, units: item.units,
+    createdBy: item.createdBy, createdByName: item.createdByName ?? null, createdAt: item.createdAt,
+  };
+  if (item.brand) payload.brand = item.brand;
+  if (item.basis) payload.basis = item.basis;
+  setDoc(doc(db, 'sharedFoods', item.id), payload, { merge: true })
+    .catch((e) => console.warn('[Nutrition] sharedFoods publish failed', e));
 }
