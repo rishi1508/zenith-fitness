@@ -8,6 +8,7 @@ import { checkinMember, dailyCodeHashIfValid, memberQrPayload, parseQrPayload, l
 import { localDateISO, addDaysISO } from '../../gymStats';
 import { startOfWeekISO } from '../../gymMemberHelpers';
 import { hapticNotification } from '../../haptics';
+import { DEFAULT_GEOFENCE_M, formatDistance, positionFailureMessage, requestPosition, withinGeofence } from '../../geo';
 import { QrCode, QrScanner, MemberCodeInput } from '../../components';
 import { useToast } from '../../ui';
 
@@ -23,6 +24,7 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
   const [tab, setTab] = useState<Tab>('scan');
   const [digits, setDigits] = useState<string[]>(Array(6).fill(''));
   const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [weekCheckins, setWeekCheckins] = useState<GymCheckin[] | null>(null);
   const { showToast } = useToast();
 
@@ -63,11 +65,36 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
     }
     setBusy(true);
     try {
-      await checkinMember(gym.id, user.uid, 'member-qr');
+      // The poster QR is a photo away from being everywhere, so when the
+      // owner has set a check-in area the phone has to actually be in it.
+      // Note this is an honesty check, not proof: it runs on the member's
+      // device. The distance is stored on the check-in so staff can see it.
+      let distanceM: number | undefined;
+      if (gym.location) {
+        setLocating(true);
+        const pos = await requestPosition();
+        setLocating(false);
+        if (!pos.ok) {
+          showToast(positionFailureMessage(pos.reason), 'error');
+          setTab('code');
+          return;
+        }
+        // A poor fix shouldn't lock a member out: allow their own accuracy
+        // circle on top of the gym's radius.
+        const radius = (gym.geofenceM ?? DEFAULT_GEOFENCE_M) + Math.min(pos.accuracyM, 100);
+        const fence = withinGeofence(pos.coords, gym.location, radius);
+        if (!fence.ok) {
+          showToast(`You're about ${formatDistance(fence.distanceM)} from ${gym.name}. Check in when you get there.`, 'error');
+          return;
+        }
+        distanceM = fence.distanceM;
+      }
+      await checkinMember(gym.id, user.uid, 'member-qr', distanceM !== undefined ? { distanceM } : undefined);
       await afterSuccess();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Check-in failed.', 'error');
     } finally {
+      setLocating(false);
       setBusy(false);
     }
   };
@@ -164,7 +191,15 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
         </div>
 
         {tab === 'scan' && (
-          <QrScanner isDark={isDark} onResult={handleScan} active={!busy} hint="Point at the gym's check-in QR" />
+          <div className="space-y-2">
+            <QrScanner isDark={isDark} onResult={handleScan} active={!busy} hint="Point at the gym's check-in QR" />
+            {locating && <p className={`text-sm text-center ${subtle}`}>Confirming you're at the gym…</p>}
+            {gym.location && !locating && (
+              <p className={`text-xs text-center ${subtle}`}>
+                Scanning checks you're within {gym.geofenceM ?? DEFAULT_GEOFENCE_M} m of the gym.
+              </p>
+            )}
+          </div>
         )}
 
         {tab === 'code' && (

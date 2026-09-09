@@ -220,7 +220,7 @@ export async function createGym(input: { name: string; address?: string; phone?:
  *  AdminGymsView's edit sheet. */
 export async function updateGym(
   gymId: string,
-  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
+  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'location' | 'geofenceM' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
 ): Promise<void> {
   await updateDoc(doc(db, 'gyms', gymId), stripUndefined({ ...patch }));
 }
@@ -480,7 +480,7 @@ export async function listPayments(gymId: string, opts?: { uid?: string; sinceIS
  *  A repeat call for the same member/day returns the existing check-in
  *  untouched instead of creating a duplicate or re-bumping the
  *  denormalised counters. */
-export async function checkinMember(gymId: string, uid: string, method: CheckinMethod, opts?: { codeHash?: string }): Promise<{ created: boolean; checkin: GymCheckin }> {
+export async function checkinMember(gymId: string, uid: string, method: CheckinMethod, opts?: { codeHash?: string; distanceM?: number }): Promise<{ created: boolean; checkin: GymCheckin }> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
 
@@ -501,7 +501,11 @@ export async function checkinMember(gymId: string, uid: string, method: CheckinM
     if ((err as { code?: string }).code !== 'permission-denied') throw err;
   }
 
-  const checkin: GymCheckin = { id: checkinId, uid, at: new Date().toISOString(), date, method, byUid: user.uid, ...(opts?.codeHash ? { codeHash: opts.codeHash } : {}) };
+  const checkin: GymCheckin = {
+    id: checkinId, uid, at: new Date().toISOString(), date, method, byUid: user.uid,
+    ...(opts?.codeHash ? { codeHash: opts.codeHash } : {}),
+    ...(typeof opts?.distanceM === 'number' ? { distanceM: Math.round(opts.distanceM) } : {}),
+  };
   await setDoc(ref, checkin, { merge: true });
 
   try {

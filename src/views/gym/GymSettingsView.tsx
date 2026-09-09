@@ -6,7 +6,8 @@ import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { updateGym, setStaffRole, listenToMembers } from '../../gymService';
-import { addStaffByEmail, clearGymAccentColor, regenerateJoinCode } from '../../gymStaffHelpers';
+import { DEFAULT_GEOFENCE_M, positionFailureMessage, requestPosition } from '../../geo';
+import { addStaffByEmail, clearGymAccentColor, clearGymLocation, regenerateJoinCode } from '../../gymStaffHelpers';
 import { QrCode } from '../../components';
 import { useToast, useConfirm } from '../../ui';
 
@@ -55,6 +56,10 @@ export function GymSettingsView({ isDark, onBack }: GymViewProps) {
 
 function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: React.ReactNode; gym: Gym }) {
   const [name, setName] = useState(gym.name);
+  const [location, setLocation] = useState(gym.location ?? null);
+  const [geofenceM, setGeofenceM] = useState(String(gym.geofenceM ?? DEFAULT_GEOFENCE_M));
+  const [locating, setLocating] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
   const [address, setAddress] = useState(gym.address ?? '');
   const [phone, setPhone] = useState(gym.phone ?? '');
   const [logoUrl, setLogoUrl] = useState(gym.logoUrl ?? '');
@@ -98,6 +103,35 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       showToast(err instanceof Error ? err.message : 'Failed to save', 'error');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  /** Stand at the front desk and press the button — that fix becomes the
+   *  centre of the geofence. */
+  const captureLocation = async () => {
+    setLocating(true);
+    try {
+      const pos = await requestPosition();
+      if (!pos.ok) { showToast(positionFailureMessage(pos.reason), 'error'); return; }
+      setLocation(pos.coords);
+      showToast(`Location captured (±${Math.round(pos.accuracyM)} m). Save to apply.`);
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  const handleSaveLocation = async () => {
+    setSavingLocation(true);
+    try {
+      const radius = Math.max(30, Math.min(1000, Math.round(Number(geofenceM) || DEFAULT_GEOFENCE_M)));
+      if (!location && gym.location) await clearGymLocation(gym.id);
+      await updateGym(gym.id, { location: location ?? undefined, geofenceM: radius });
+      setGeofenceM(String(radius));
+      showToast(location ? 'Check-in area saved' : 'Check-in area cleared');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to save', 'error');
+    } finally {
+      setSavingLocation(false);
     }
   };
 
@@ -226,6 +260,57 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
             className="w-full py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white disabled:opacity-50"
           >
             {savingProfile ? 'Saving…' : 'Save profile'}
+          </button>
+        </div>
+      </div>
+
+      {/* Check-in area — stops the poster QR working from the car park. */}
+      <div className={cardCls}>
+        <div className="text-sm font-medium mb-1">Check-in area</div>
+        <p className={`text-xs mb-3 ${subtle}`}>
+          Members scanning the poster QR must be inside this circle. Stand at the front desk and
+          capture the spot. Today's 6-digit code always works, wherever they are — that is the
+          fallback when a phone cannot get a fix.
+        </p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Centre</label>
+              <div className={`text-sm ${location ? '' : subtle}`}>
+                {location ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}` : 'Not set'}
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Radius (m)</label>
+              <input
+                type="number" min="30" max="1000" value={geofenceM}
+                onChange={(e) => setGeofenceM(e.target.value)} className={inputCls}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { void captureLocation(); }}
+              disabled={locating}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-medium border disabled:opacity-50 ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}
+            >
+              {locating ? 'Finding…' : location ? 'Re-capture here' : 'Use my location'}
+            </button>
+            {location && (
+              <button
+                onClick={() => setLocation(null)}
+                className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => { void handleSaveLocation(); }}
+            disabled={savingLocation}
+            className="w-full py-2.5 rounded-lg text-sm font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white disabled:opacity-50"
+          >
+            {savingLocation ? 'Saving…' : 'Save check-in area'}
           </button>
         </div>
       </div>

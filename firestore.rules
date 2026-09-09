@@ -281,6 +281,10 @@ service cloud.firestore {
                                  signedIn() && request.auth.uid == request.resource.data.uid
                                  && id == request.auth.uid + '_' + request.resource.data.date
                                  && (
+                                   // 'member-qr' is self-reported: the client checks the gym's
+                                   // geofence (src/geo.ts) and writes the distance, but rules
+                                   // cannot verify a location. The daily code below is the
+                                   // verified path — staff rotate it and rules check the hash.
                                    request.resource.data.method == 'member-qr' ||
                                    (request.resource.data.method == 'code'
                                      && request.resource.data.codeHash == gymDoc(gymId).dailyCodeHash

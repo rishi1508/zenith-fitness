@@ -97,6 +97,12 @@ export async function clearGymAccentColor(gymId: string): Promise<void> {
   await updateDoc(doc(db, 'gyms', gymId), { accentColor: deleteField() });
 }
 
+/** Clears a gym's check-in geofence, so the poster QR works anywhere
+ *  again. Same field-delete gap as clearGymAccentColor. */
+export async function clearGymLocation(gymId: string): Promise<void> {
+  await updateDoc(doc(db, 'gyms', gymId), { location: deleteField() });
+}
+
 /** Owner: rotates a gym's join code — writes the new gymJoinCodes doc and
  *  points the gym at it first, then best-effort deletes the old code doc
  *  (a stray old code left behind if the delete fails is harmless: it's

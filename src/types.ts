@@ -448,6 +448,11 @@ export interface Gym {
   accentColor?: string;          // hex, applied to --accent when set
   address?: string;
   phone?: string;
+  /** Where the gym physically is. Set by the owner from the front desk;
+   *  poster-QR check-ins are only accepted within `geofenceM` of it. */
+  location?: { lat: number; lng: number };
+  /** Geofence radius in metres. Absent = DEFAULT_GEOFENCE_M (src/geo.ts). */
+  geofenceM?: number;
   ownerUid: string;
   staff: Record<string, Exclude<GymRole, 'member'>>;
   joinCode: string;              // 6 chars A–Z0–9, members enter this to join
@@ -485,7 +490,7 @@ export interface GymMember {
 }
 
 export interface GymPayment { id: string; uid: string; amount: number; method: PaymentMethod; paidAt: string; months: number; planId?: string; note?: string; recordedBy: string }
-export interface GymCheckin { id: string; uid: string; at: string; date: string /* YYYY-MM-DD local */; method: CheckinMethod; byUid: string; codeHash?: string /* method 'code': sha256(code:date:gymId), checked by rules */ }
+export interface GymCheckin { id: string; uid: string; at: string; date: string /* YYYY-MM-DD local */; method: CheckinMethod; byUid: string; codeHash?: string /* method 'code': sha256(code:date:gymId), checked by rules */; distanceM?: number /* method 'member-qr': metres from the gym when the phone checked in */ }
 /** Per-day check-in aggregate (doc id = date), denormalised on each
  *  check-in so the dashboard can read ~30 docs instead of ~thousands of
  *  raw checkins. See docs/REVAMP_SPEC.md §7 R4. */
