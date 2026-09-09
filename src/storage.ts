@@ -274,6 +274,14 @@ export function getLastUsedDay(): number | null {
 
 export function setLastUsedDay(dayNumber: number): void {
   setItem(STORAGE_KEYS.LAST_DAY, dayNumber);
+  // The date of the choice, so the home card can tell "the user picked this
+  // day today" from "this is just the last day they happened to train".
+  try { localStorage.setItem('zenith_last_day_at', new Date().toISOString().slice(0, 10)); } catch { /* private mode */ }
+}
+
+/** YYYY-MM-DD the user last chose a day by hand, or null. */
+export function getLastUsedDayDate(): string | null {
+  try { return localStorage.getItem('zenith_last_day_at'); } catch { return null; }
 }
 
 // Default weekly plan (4 Full Body + 1 Arms)

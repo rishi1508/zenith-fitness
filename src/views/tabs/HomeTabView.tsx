@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Clock, Dumbbell, ScanLine, Trash2 } from 'lucide-react';
-import type { Workout, WorkoutTemplate, GymClass } from '../../types';
+import { Building2, Clock, Dumbbell, ScanLine, Trash2, Users } from 'lucide-react';
+import type { Workout, WorkoutTemplate, GymClass, WorkoutSession } from '../../types';
 import type { Theme } from '../../App';
 import * as storage from '../../storage';
 import * as buddyService from '../../buddyService';
@@ -17,6 +17,8 @@ import { Card, Button, Chip, Sheet, SectionHeader, WeekDots, ListRow, H2, SUB, C
 import { NutritionRing } from '../nutrition';
 import { getTargets, subscribeHealth } from '../../health';
 import { rankByAffinity } from '../../buddyAffinity';
+import { suggestNextDay } from '../../planProgress';
+import { WorkoutTogetherSheet } from './WorkoutTogetherSheet';
 import type { WeekDotState } from '../../ui';
 
 interface HomeTabViewProps {
@@ -25,6 +27,8 @@ interface HomeTabViewProps {
   activeWorkout: Workout | null;
   showBuddies: boolean;
   onStartWorkout: (template: WorkoutTemplate) => void;
+  /** Host started a group session from the home card. */
+  onSessionStart: (session: WorkoutSession) => void;
   onResumeWorkout: () => void;
   onDiscardWorkout: () => void;
   onOpenGymCheckin: () => void;
@@ -47,7 +51,7 @@ function elapsedLabel(startedAt: string): string {
  *  streak nudge, paused-workout banner, deload suggestion, gym card
  *  (or "join a gym" prompt), buddies strip. */
 export function HomeTabView({
-  theme, workouts, activeWorkout, showBuddies, onStartWorkout, onResumeWorkout, onDiscardWorkout,
+  theme, workouts, activeWorkout, showBuddies, onStartWorkout, onSessionStart, onResumeWorkout, onDiscardWorkout,
   onOpenGymCheckin, onOpenGymJoin, onOpenBuddies, onOpenZen,
   onOpenNutrition, onOpenBuddy,
 }: HomeTabViewProps) {
@@ -57,6 +61,7 @@ export function HomeTabView({
   const { gym } = useGym();
   const { user } = useAuth();
   const [dayPickerOpen, setDayPickerOpen] = useState(false);
+  const [togetherOpen, setTogetherOpen] = useState(false);
   // Bumped whenever the day/plan picker closes so the today-card re-reads
   // storage (WeeklyPlanSelector writes lastUsedDay/activePlanId directly).
   const [refreshTick, setRefreshTick] = useState(0);
@@ -70,13 +75,23 @@ export function HomeTabView({
     return () => clearInterval(t);
   }, [activeWorkout?.startedAt]);
 
+  /**
+   * Which day to offer. A day the user picked by hand *today* wins — they
+   * said what they wanted. Otherwise the plan decides (src/planProgress.ts):
+   * the earliest day of this week's cycle they have not done, so finishing
+   * Day 1 offers Day 2, and skipping ahead pulls them back to what is owed.
+   */
   const today = useMemo(() => {
     const plan = storage.getActivePlan();
-    const dayNum = storage.getLastUsedDay() ?? plan?.days.find((d) => !d.isRestDay)?.dayNumber ?? null;
-    const day = plan && dayNum != null ? plan.days.find((d) => d.dayNumber === dayNum) : null;
-    return { plan, day };
+    const pickedToday = storage.getLastUsedDayDate() === localIso(new Date());
+    const chosen = pickedToday ? storage.getLastUsedDay() : null;
+    const suggestion = suggestNextDay(plan, workouts);
+    const day = chosen != null
+      ? plan?.days.find((d) => d.dayNumber === chosen) ?? suggestion?.day ?? null
+      : suggestion?.day ?? null;
+    return { plan, day, reason: chosen != null ? null : suggestion?.reason ?? null };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshTick]);
+  }, [refreshTick, workouts]);
 
   const lastTime = useMemo(() => {
     if (!today.day) return null;
@@ -183,20 +198,34 @@ export function HomeTabView({
           <p className={`${SUB} mb-3 line-clamp-1`}>
             {today.day.exercises.map((e) => e.exerciseName).join(' · ')}
           </p>
-          <Button
-            variant="primary" size="lg" full icon={Dumbbell}
-            onClick={() => onStartWorkout({
-              id: `${today.plan!.id}_day_${today.day!.dayNumber}`,
-              name: `${today.plan!.name} - ${today.day!.name}`,
-              type: 'custom',
-              exercises: today.day!.exercises,
-              weeklyPlanId: today.plan!.id,
-            })}
-          >
-            Start workout
-          </Button>
-          <div className="flex items-center justify-between mt-3">
-            <span className={SUB}>{lastTime ? `Last time ${lastTime}` : 'No sessions logged yet'}</span>
+          {/* Start alone, or bring someone — the second is one tap, not a
+              trip through the Buddies screen. */}
+          <div className="flex gap-2">
+            <Button
+              variant="primary" size="lg" icon={Dumbbell} className="flex-1 min-w-0"
+              onClick={() => onStartWorkout({
+                id: `${today.plan!.id}_day_${today.day!.dayNumber}`,
+                name: `${today.plan!.name} - ${today.day!.name}`,
+                type: 'custom',
+                exercises: today.day!.exercises,
+                weeklyPlanId: today.plan!.id,
+              })}
+            >
+              Start workout
+            </Button>
+            <button
+              onClick={() => setTogetherOpen(true)}
+              aria-label="Work out together"
+              title="Work out together"
+              className="w-[52px] shrink-0 rounded-control border border-border text-accent flex items-center justify-center hover:border-accent/50 transition-colors"
+            >
+              <Users className="w-5 h-5" strokeWidth={1.75} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between mt-3 gap-2">
+            <span className={`${SUB} min-w-0 truncate`}>
+              {today.reason ?? (lastTime ? `Last time ${lastTime}` : 'No sessions logged yet')}
+            </span>
             <button onClick={() => setDayPickerOpen(true)} className="text-[13px] font-bold text-accent">Change day</button>
           </div>
         </Card>
@@ -259,6 +288,15 @@ export function HomeTabView({
             ))}
           </Card>
         </div>
+      )}
+
+      {togetherOpen && (
+        <WorkoutTogetherSheet
+          plan={today.plan}
+          initialDay={today.day}
+          onClose={() => { setTogetherOpen(false); setRefreshTick((n) => n + 1); }}
+          onStart={(session) => { setTogetherOpen(false); onSessionStart(session); }}
+        />
       )}
 
       <Sheet open={dayPickerOpen} onClose={() => { setDayPickerOpen(false); setRefreshTick((n) => n + 1); }} title="Change day">

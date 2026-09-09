@@ -413,6 +413,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function syncHostTemplate(
   sessionId: string,
   exercises: TemplateExercise[],
+  workoutName?: string,
 ): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;
@@ -423,7 +424,11 @@ export async function syncHostTemplate(
     const session = snap.data() as WorkoutSession;
     if (session.hostUid !== user.uid) return;
     if (session.status !== 'active' && session.status !== 'waiting') return;
-    await updateDoc(ref, { currentTemplateExercises: exercises });
+    await updateDoc(ref, {
+      currentTemplateExercises: exercises,
+      // The host may still be choosing which day to do while buddies join.
+      ...(workoutName ? { workoutName, templateExercises: exercises } : {}),
+    });
   } catch (err) {
     console.warn('[Session] syncHostTemplate failed:', err);
   }

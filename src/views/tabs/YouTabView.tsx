@@ -9,13 +9,17 @@ import { Card, StatTile, ListRow, Pill, SectionHeader, useToast } from '../../ui
 import type { PillTone } from '../../ui';
 import { usePremium, PremiumBadge } from '../../premium';
 import { LevelPill, LevelProgressCard } from '../../components/LevelBadge';
-import { levelForVolume } from '../../levels';
+import { LevelRing } from '../../components/LevelRing';
+import { StreakModal } from '../../components';
+import { levelForVolume, levelTitle, formatVolume, stepKgFor } from '../../levels';
+import { Sheet, SUB, CAPTION } from '../../ui';
 import type { Tier } from '../../premium';
 
 interface YouTabViewProps {
   stats: UserStats | null;
   workouts: Workout[];
   isAdmin: boolean;
+  isDark: boolean;
   onOpenProgress: () => void;
   onOpenAnalysis: () => void;
   onOpenHistory: () => void;
@@ -49,7 +53,7 @@ async function compressImageFile(file: File, maxPx = 256, quality = 0.8): Promis
  *  3 stat tiles, rows to every "about me" screen, and an Admin section
  *  (§5) when the signed-in user is a Zenith admin. */
 export function YouTabView({
-  stats, workouts, isAdmin, onOpenProgress, onOpenAnalysis, onOpenHistory, onOpenBuddies, onOpenSettings,
+  stats, workouts, isAdmin, isDark, onOpenProgress, onOpenAnalysis, onOpenHistory, onOpenBuddies, onOpenSettings,
   onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary,
 }: YouTabViewProps) {
   const { user } = useAuth();
@@ -57,6 +61,8 @@ export function YouTabView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [photoURL, setPhotoURL] = useState(user?.photoURL || null);
+  const [levelOpen, setLevelOpen] = useState(false);
+  const [streakOpen, setStreakOpen] = useState(false);
 
   const { showToast } = useToast();
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,13 +91,8 @@ export function YouTabView({
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-3">
         <div className="relative shrink-0">
-          {photoURL ? (
-            <img src={photoURL} alt="" className="w-16 h-16 rounded-full object-cover" referrerPolicy="no-referrer" />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-accent-soft text-accent flex items-center justify-center font-display text-2xl font-bold">
-              {user?.displayName?.charAt(0).toUpperCase() || '?'}
-            </div>
-          )}
+          {/* The ring is the level: how far through it you are, at a glance. */}
+          <LevelRing size={72} totalVolumeKg={volume} photoURL={photoURL} name={user?.displayName ?? undefined} showLevel />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
@@ -111,14 +112,16 @@ export function YouTabView({
         </div>
       </div>
 
-      <Card>
+      {/* Every number here goes somewhere — a stat you can't open is a
+          dead end. */}
+      <Card onClick={() => setLevelOpen(true)}>
         <LevelProgressCard totalVolumeKg={volume} />
       </Card>
 
       <div className="grid grid-cols-3 gap-2">
-        <StatTile eyebrow="Workouts" value={completedCount} compact />
-        <StatTile eyebrow="Streak" value={stats?.currentStreak ?? 0} unit="w" compact />
-        <StatTile eyebrow="Volume" value={volumeLabel} compact />
+        <StatTile eyebrow="Workouts" value={completedCount} compact onClick={onOpenHistory} />
+        <StatTile eyebrow="Streak" value={stats?.currentStreak ?? 0} unit="w" compact onClick={() => setStreakOpen(true)} />
+        <StatTile eyebrow="Volume" value={volumeLabel} compact onClick={onOpenProgress} />
       </div>
 
       <Card padding="list">
@@ -141,6 +144,11 @@ export function YouTabView({
 
       <ListRow icon={ClipboardList} title="Settings" subtitle="Theme, data, sync and more" onClick={onOpenSettings} />
 
+      {levelOpen && (
+        <LevelDetailSheet volume={volume} completedCount={completedCount} onClose={() => setLevelOpen(false)} />
+      )}
+      {streakOpen && <StreakModal isDark={isDark} onClose={() => setStreakOpen(false)} />}
+
       {isAdmin && (
         <>
           <SectionHeader caption="Admin" />
@@ -152,5 +160,54 @@ export function YouTabView({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * What the level actually means, since the bar on its own does not say.
+ * Volume is the only input: every completed set adds weight × reps, and the
+ * steps get longer as you climb, so the early levels come quickly and the
+ * later ones are earned.
+ */
+function LevelDetailSheet({ volume, completedCount, onClose }: { volume: number; completedCount: number; onClose: () => void }) {
+  const p = levelForVolume(volume);
+  const perSession = completedCount > 0 ? volume / completedCount : 0;
+  const sessionsToGo = p.remainingKg != null && perSession > 0 ? Math.ceil(p.remainingKg / perSession) : null;
+
+  return (
+    <Sheet open onClose={onClose} title={`Level ${p.level} · ${levelTitle(p.level)}`}>
+      <div>
+        <div className="flex items-baseline justify-between">
+          <span className={CAPTION}>Progress through level {p.level}</span>
+          <span className="text-xs font-semibold text-subtle tabular-nums">{Math.round(p.fraction * 100)}%</span>
+        </div>
+        <div className="mt-2 h-2.5 rounded-full bg-surface-2 overflow-hidden">
+          <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round(p.fraction * 100)}%` }} />
+        </div>
+        <div className="mt-1.5 flex justify-between text-[11px] text-subtle tabular-nums">
+          <span>{formatVolume(p.startKg)}</span>
+          <span>{p.nextKg == null ? 'max' : formatVolume(p.nextKg)}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <StatTile eyebrow="Lifted all time" value={formatVolume(volume)} compact />
+        <StatTile eyebrow="Sessions" value={completedCount} compact />
+        <StatTile eyebrow="To next level" value={p.remainingKg == null ? '—' : formatVolume(p.remainingKg)} compact />
+        <StatTile
+          eyebrow="At your pace"
+          value={sessionsToGo == null ? '—' : sessionsToGo}
+          unit={sessionsToGo == null ? undefined : sessionsToGo === 1 ? 'session' : 'sessions'}
+          compact
+        />
+      </div>
+
+      <p className={SUB}>
+        Your level comes from lifetime volume — weight × reps of every completed set, ever. Level{' '}
+        {p.level} spans {formatVolume(stepKgFor(p.level))}; each level after it is a little longer than
+        the last, so the climb keeps pace with you. Rest days, cardio and unfinished sets add nothing,
+        and nothing you have already lifted is ever taken away.
+      </p>
+    </Sheet>
   );
 }

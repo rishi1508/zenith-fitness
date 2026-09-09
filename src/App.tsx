@@ -1510,6 +1510,7 @@ function App() {
         userName={user?.displayName || 'Anonymous'}
         userSub={user?.email ?? undefined}
         userAvatar={user?.photoURL ? <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" /> : undefined}
+        userPhotoURL={user?.photoURL}
         onOpenProfile={() => navigateToTab('you')}
         banner={activeSessionId && view !== 'session-lobby' ? (
           <div className="px-5 pt-2">
@@ -1542,6 +1543,12 @@ function App() {
             onOpenGymJoin={() => navigateToGym('gym-join')}
             onOpenBuddies={() => navigateTo('buddies')}
             onOpenZen={openZen}
+            onSessionStart={(session) => startWorkout({
+              id: `session_${session.id}`,
+              name: session.workoutName,
+              type: session.workoutType,
+              exercises: session.templateExercises,
+            }, session.id)}
             onOpenNutrition={() => { setFoodNav((n) => ({ ...n, date: healthToday() })); navigateTo('nutrition'); }}
             onOpenBuddy={(uid, name, photoURL) => {
               recordBuddyInteraction(uid, 'profile');
@@ -1577,6 +1584,7 @@ function App() {
           <YouTabView
             stats={stats}
             workouts={workoutHistory}
+            isDark={isDark}
             isAdmin={isAdmin(user?.uid)}
             onOpenProgress={() => navigateTo('progress')}
             onOpenAnalysis={() => navigateTo('analysis')}

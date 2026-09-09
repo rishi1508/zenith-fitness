@@ -1,6 +1,9 @@
+import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface TabItem<T extends string = string> {
+  /** Replaces the icon entirely — used for the avatar-with-level tab. */
+  render?: (active: boolean) => ReactNode;
   id: T;
   label: string;
   icon: LucideIcon;
@@ -33,7 +36,7 @@ export function TabBar<T extends string>({ items, active, onChange }: TabBarProp
       }}
       aria-label="Primary"
     >
-      {items.map(({ id, label, icon: Icon, center }) => {
+      {items.map(({ id, label, icon: Icon, center, render }) => {
         const on = id === active;
         return (
           <button
@@ -44,7 +47,7 @@ export function TabBar<T extends string>({ items, active, onChange }: TabBarProp
               on ? 'text-accent' : 'text-subtle hover:text-muted'
             } ${center ? '-mt-[30px]' : ''}`}
           >
-            {center ? (
+            {render ? render(on) : center ? (
               <span className="w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center border-4 border-bg shadow-lg shadow-accent/35">
                 <Icon className="w-[26px] h-[26px]" strokeWidth={2} />
               </span>

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { Settings, Users } from 'lucide-react';
 import { AppBar, TabBar, Sidebar, IconButton, TAB_BAR_HEIGHT } from '../ui';
 import { StreakButton } from '../components';
+import { LevelRing } from '../components/LevelRing';
 import { TABS, viewToTab } from './tabs';
 import type { Tab } from './tabs';
 import { GetAppBanner } from './GetAppBanner';
@@ -50,6 +51,8 @@ interface AppShellProps {
   userName: string;
   userSub?: string;
   userAvatar?: ReactNode;
+  /** Raw photo URL, so the You tab can wear it inside its level ring. */
+  userPhotoURL?: string | null;
   onOpenProfile: () => void;
   /** Pinned group-session reminder — sits between the AppBar and the
    *  routed content, above everything else. */
@@ -68,10 +71,19 @@ interface AppShellProps {
 export function AppShell({
   view, onTabChange, hasGym, gymName, isGymOwner, firstName, stats, isDark,
   showBuddiesIcon, buddyAlertCount, onOpenBuddies, onOpenSettings, onOpenGymSettings,
-  userName, userSub, userAvatar, onOpenProfile, banner, children,
+  userName, userSub, userAvatar, userPhotoURL, onOpenProfile, banner, children,
 }: AppShellProps) {
   const tab = viewToTab[view];
-  const items = hasGym ? TABS : TABS.filter((t) => t.id !== 'gym');
+  const base = hasGym ? TABS : TABS.filter((t) => t.id !== 'gym');
+  // "You" is the user's own face, ringed by their experience level.
+  const items = base.map((t) => (t.id === 'you'
+    ? {
+      ...t,
+      render: (active: boolean) => (
+        <LevelRing size={26} totalVolumeKg={stats?.totalVolume ?? 0} photoURL={userPhotoURL} name={userName} muted={!active} />
+      ),
+    }
+    : t));
   const { title, eyebrow } = barContent(view, gymName, firstName);
 
   // `main` is one persistent scroll container for every route, so without
