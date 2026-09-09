@@ -33,3 +33,6 @@ export { MembershipCard } from './gym/MembershipCard';
 export { ClassSessionRow } from './gym/ClassSessionRow';
 export { SessionInviteBanner } from './SessionInviteBanner';
 export { WelcomeTour } from './WelcomeTour';
+export { BadgeArt } from './BadgeArt';
+export { BadgeUnlockModal } from './BadgeUnlockModal';
+export { AvatarPeek } from './AvatarPeek';

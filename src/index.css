@@ -147,6 +147,35 @@ body {
   .animate-scanSweep { animation: none; opacity: 0.35; }
 }
 
+/* Badge unlock (src/components/BadgeUnlockModal.tsx): the badge springs in
+   past its final size, and a glow blooms behind it and fades. */
+@keyframes badge-pop {
+  0%   { transform: scale(0.3) rotate(-12deg); opacity: 0; }
+  60%  { transform: scale(1.08) rotate(3deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes badge-glow {
+  0%   { opacity: 0; transform: scale(0.6); }
+  40%  { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 0.35; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes badge-pop { 0%, 100% { transform: none; opacity: 1; } }
+  @keyframes badge-glow { 0%, 100% { opacity: 0.3; transform: none; } }
+}
+
+/* Long-press avatar peek (src/components/AvatarPeek.tsx). */
+@keyframes avatar-peek {
+  from { transform: scale(0.72); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes avatar-peek { from, to { transform: none; opacity: 1; } }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

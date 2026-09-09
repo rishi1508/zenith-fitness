@@ -42,7 +42,12 @@ export function StatTile({ eyebrow, value, unit, sub, tone = 'default', compact,
   const body = (
     <>
       <span className={`${CAPTION} truncate`}>{eyebrow}</span>
-      <span className={`${STAT} ${VALUE_TONE[tone]} truncate`}>
+      {/* A long value (1,221 t) gets a size down rather than an ellipsis —
+          a number cut off mid-digit is worse than a smaller number. */}
+      <span
+        className={`${STAT} ${VALUE_TONE[tone]} truncate`}
+        style={String(value).length > 5 ? { fontSize: String(value).length > 7 ? '1.05rem' : '1.3rem' } : undefined}
+      >
         {value}
         {unit !== undefined && <span className="font-sans text-sm font-medium text-muted tracking-normal"> {unit}</span>}
       </span>

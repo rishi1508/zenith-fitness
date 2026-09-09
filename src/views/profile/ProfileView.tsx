@@ -10,10 +10,10 @@ import { useGym } from '../../gym/GymContext';
 import * as buddyService from '../../buddyService';
 import { isAdmin } from '../../admin';
 import { listenToFeed } from '../../gymFeed';
-import { follow, isFollowing, unfollow } from '../../followService';
+import { follow, isFollowing, listFollowers, listFollowing, unfollow } from '../../followService';
 import { saveProfilePhoto, effectiveProfilePhoto } from '../../profilePhoto';
 import { LevelRing } from '../../components/LevelRing';
-import { ActivityHeatmap, StreakModal } from '../../components';
+import { ActivityHeatmap, AvatarPeek, BadgeArt, StreakModal } from '../../components';
 import { usePremium, PremiumBadge } from '../../premium';
 import type { Tier } from '../../premium';
 import {
@@ -69,6 +69,11 @@ export interface ProfileViewProps {
   onOpenAdminUsers: () => void;
   onOpenAdminLibrary: () => void;
   onOpenChat?: (uid: string, name: string, photoURL?: string | null) => void;
+  /** Opens another profile from the follower / following lists. */
+  onOpenProfileUid?: (uid: string) => void;
+  /** Buddy-only actions, shown once the two of you are buddies. */
+  onCompare?: (uid: string, name: string, photoURL?: string | null) => void;
+  onStartSession?: (uid: string, name: string, photoURL?: string | null) => void;
 }
 
 /**
@@ -82,10 +87,10 @@ export interface ProfileViewProps {
  */
 export function ProfileView({
   uid, isDark, onBack, onOpenProgress, onOpenAnalysis, onOpenHistory, onOpenBuddies, onOpenSettings,
-  onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary, onOpenChat,
+  onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary, onOpenChat, onOpenProfileUid, onCompare, onStartSession,
 }: ProfileViewProps) {
   const { user } = useAuth();
-  const { gym } = useGym();
+  const { gym, role: gymRole } = useGym();
   const { tier } = usePremium();
   const { showToast } = useToast();
 
@@ -103,6 +108,7 @@ export function ProfileView({
   const [photoURL, setPhotoURL] = useState<string | null>(() => (self ? effectiveProfilePhoto(user?.photoURL) : null));
   const [uploading, setUploading] = useState(false);
   const [badgesOpen, setBadgesOpen] = useState(false);
+  const [people, setPeople] = useState<'followers' | 'following' | null>(null);
   const [badgeDetail, setBadgeDetail] = useState<(BadgeDef & { at: string }) | null>(null);
   const [buddyState, setBuddyState] = useState<'unknown' | 'none' | 'requested' | 'buddies'>('unknown');
 
@@ -144,6 +150,15 @@ export function ProfileView({
   const theirPhotos = useMemo(() => photosBy(posts, targetUid), [posts, targetUid]);
 
   const name = self ? (user?.displayName || 'You') : (profile?.displayName || 'Zenith member');
+
+  /** "The Sweat Zone · owner" — the gym's own vocabulary, not the app's. */
+  const gymRoleLabel = useMemo(() => {
+    const sameGym = self || profile?.gym?.gymId === gym?.id;
+    if (!gym?.name || !sameGym) return null;
+    const role = self ? gymRole : profile?.gym?.gymRole;
+    const word = role === 'owner' ? 'owner' : role === 'manager' ? 'manager' : role === 'trainer' ? 'trainer' : 'member';
+    return `${gym.name} · ${word}`;
+  }, [self, gym, gymRole, profile]);
   const avatar = self ? photoURL : (profile?.photoURL ?? null);
 
   const toggleFollow = useCallback(async () => {
@@ -193,7 +208,9 @@ export function ProfileView({
       {/* Identity */}
       <div className="flex items-start gap-3">
         <div className="relative shrink-0">
-          <LevelRing size={76} totalVolumeKg={stats.totalVolumeKg} photoURL={avatar} name={name} />
+          <AvatarPeek photoURL={avatar} name={name}>
+            <LevelRing size={76} totalVolumeKg={stats.totalVolumeKg} photoURL={avatar} name={name} />
+          </AvatarPeek>
           {self && (
             <>
               {/* Bottom-LEFT: the level badge already owns bottom-right, and
@@ -217,22 +234,47 @@ export function ProfileView({
         <div className="min-w-0 flex-1">
           <h2 className="font-display text-lg font-bold text-text truncate">{name}</h2>
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
-            {self && <Pill tone={TIER_TONE[tier]}>{TIER_LABEL[tier]}</Pill>}
-            {isAdmin(targetUid) && <Pill tone="info">Admin</Pill>}
-            {/* The profile pointer holds an id, not a name — so the only gym
-                we can name is the viewer's own, when they share it. */}
-            {gym?.name && (self || profile?.gym?.gymId === gym.id) && (
-              <Pill tone="neutral">{gym.name} {self ? '' : 'member'}</Pill>
-            )}
+            {/* "Admin" means Zenith admin and nothing else. A gym has owners,
+                trainers and members — never admins — so the two can no longer
+                both print "Admin" next to each other. */}
+            {isAdmin(targetUid)
+              ? <Pill tone="info">Admin</Pill>
+              : self && tier !== 'free' && <Pill tone={TIER_TONE[tier]}>{TIER_LABEL[tier]}</Pill>}
+            {gymRoleLabel && <Pill tone="neutral">{gymRoleLabel}</Pill>}
             <Pill tone="accent">Lv {stats.level} · {levelTitle(stats.level)}</Pill>
           </div>
 
           <div className="flex items-center gap-4 mt-2">
-            <span className={SUB}><b className="text-text tabular-nums">{followers}</b> followers</span>
-            <span className={SUB}><b className="text-text tabular-nums">{followingCount}</b> following</span>
+            <button onClick={() => setPeople('followers')} className={SUB}>
+              <b className="text-text tabular-nums">{followers}</b> followers
+            </button>
+            <button onClick={() => setPeople('following')} className={SUB}>
+              <b className="text-text tabular-nums">{followingCount}</b> following
+            </button>
           </div>
         </div>
       </div>
+
+      {!self && buddyState === 'buddies' && (onCompare || onStartSession) && (
+        <div className="flex gap-2">
+          {onStartSession && (
+            <button
+              onClick={() => onStartSession(targetUid, name, avatar)}
+              className="flex-1 min-h-11 rounded-control border border-border text-sm font-bold text-text flex items-center justify-center gap-1.5"
+            >
+              <Dumbbell className="w-4 h-4" strokeWidth={2} /> Train together
+            </button>
+          )}
+          {onCompare && (
+            <button
+              onClick={() => onCompare(targetUid, name, avatar)}
+              className="flex-1 min-h-11 rounded-control border border-border text-sm font-bold text-text flex items-center justify-center gap-1.5"
+            >
+              <BarChart3 className="w-4 h-4" strokeWidth={2} /> Compare
+            </button>
+          )}
+        </div>
+      )}
 
       {!self && (
         <div className="flex gap-2">
@@ -291,32 +333,6 @@ export function ProfileView({
 
       {tab === 'workouts' && !loading && (
         <div className="space-y-4">
-          {badges.length > 0 && (
-            <Card>
-              <SectionHeader
-                caption={`Badges · ${badges.length}`}
-                trailing={badges.length > 8 ? { label: 'All', onClick: () => setBadgesOpen(true) } : undefined}
-              />
-              <div className="mt-2 flex flex-wrap gap-2">
-                {badges.slice(0, 8).map((b) => {
-                  const def = badgeById(b.id);
-                  if (!def) return null;
-                  return (
-                    <button
-                      key={b.id}
-                      onClick={() => setBadgeDetail({ ...def, at: b.at })}
-                      className="w-12 h-12 rounded-full bg-surface-2 border border-border flex items-center justify-center text-xl"
-                      title={`${def.name} — ${def.detail}`}
-                      aria-label={`${def.name}: ${def.detail}`}
-                    >
-                      {def.icon}
-                    </button>
-                  );
-                })}
-              </div>
-            </Card>
-          )}
-
           <Card>
             <div className="flex items-baseline justify-between gap-2">
               <span className={CAPTION}>Level {stats.level} · {levelTitle(stats.level)}</span>
@@ -329,8 +345,33 @@ export function ProfileView({
             </div>
           </Card>
 
-          {self && (
-            <ActivityHeatmap workouts={storage.getWorkouts()} isDark={isDark} />
+          {self && <ActivityHeatmap workouts={storage.getWorkouts()} isDark={isDark} />}
+
+          {/* Below the heatmap on purpose: badges are a nice thing to find,
+              not the headline of a profile. */}
+          {badges.length > 0 && (
+            <Card>
+              <SectionHeader
+                caption={`Badges · ${badges.length} of ${BADGES.length}`}
+                trailing={{ label: 'All', onClick: () => setBadgesOpen(true) }}
+              />
+              <div className="mt-2 flex flex-wrap gap-2.5">
+                {badges.slice(0, 8).map((b) => {
+                  const def = badgeById(b.id);
+                  if (!def) return null;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => setBadgeDetail({ ...def, at: b.at })}
+                      title={`${def.name} — ${def.detail}`}
+                      aria-label={`${def.name}: ${def.detail}`}
+                    >
+                      <BadgeArt badge={def} size={48} />
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
           )}
 
           <SectionHeader caption={self ? 'Your sessions' : 'Shared sessions'} />
@@ -423,6 +464,15 @@ export function ProfileView({
         </div>
       )}
 
+      {people && (
+        <PeopleSheet
+          uid={targetUid}
+          mode={people}
+          onClose={() => setPeople(null)}
+          onOpen={(u) => { setPeople(null); onOpenProfileUid?.(u); }}
+        />
+      )}
+
       {badgesOpen && (
         <Sheet open onClose={() => setBadgesOpen(false)} title={`Badges · ${badges.length}`}>
           <div className="grid grid-cols-4 gap-3">
@@ -431,7 +481,7 @@ export function ProfileView({
               if (!def) return null;
               return (
                 <button key={b.id} onClick={() => { setBadgesOpen(false); setBadgeDetail({ ...def, at: b.at }); }} className="flex flex-col items-center gap-1">
-                  <span className="w-14 h-14 rounded-full bg-surface-2 border border-border flex items-center justify-center text-2xl">{def.icon}</span>
+                  <BadgeArt badge={def} size={56} />
                   <span className="text-[10px] text-subtle text-center leading-tight">{def.name}</span>
                 </button>
               );
@@ -441,10 +491,10 @@ export function ProfileView({
           {BADGES.length > badges.length && (
             <>
               <span className={CAPTION}>Not yet</span>
-              <div className="grid grid-cols-4 gap-3 opacity-40">
+              <div className="grid grid-cols-4 gap-3 text-subtle">
                 {BADGES.filter((d) => !badges.some((b) => b.id === d.id)).map((def) => (
                   <div key={def.id} className="flex flex-col items-center gap-1">
-                    <span className="w-14 h-14 rounded-full bg-surface-2 border border-border flex items-center justify-center text-2xl grayscale">{def.icon}</span>
+                    <BadgeArt badge={def} size={56} locked />
                     <span className="text-[10px] text-subtle text-center leading-tight">{def.detail}</span>
                   </div>
                 ))}
@@ -457,7 +507,7 @@ export function ProfileView({
       {badgeDetail && (
         <Sheet open onClose={() => setBadgeDetail(null)} title={badgeDetail.name}>
           <div className="flex flex-col items-center text-center gap-2 py-2">
-            <span className="w-20 h-20 rounded-full bg-accent-soft flex items-center justify-center text-4xl">{badgeDetail.icon}</span>
+            <BadgeArt badge={badgeDetail} size={96} />
             <p className="text-[15px] font-semibold text-text">{badgeDetail.detail}</p>
             <p className={SUB}>
               Earned {new Date(badgeDetail.at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
@@ -497,4 +547,49 @@ function PhotoThumb({ gymId, post }: { gymId: string; post: GymFeedPost }) {
   return src
     ? <img src={src} alt="" className="w-full h-full object-cover" />
     : <span className="block w-full h-full animate-pulse bg-surface-2" />;
+}
+
+/** Who follows this person, or who they follow. Names resolved on open —
+ *  a handful of profile reads, and only when somebody asks. */
+function PeopleSheet({ uid, mode, onClose, onOpen }: {
+  uid: string;
+  mode: 'followers' | 'following';
+  onClose: () => void;
+  onOpen: (uid: string) => void;
+}) {
+  const [rows, setRows] = useState<Array<{ uid: string; name: string; photoURL?: string | null }> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const uids = mode === 'followers' ? await listFollowers(uid) : await listFollowing(uid);
+      const people = await Promise.all(uids.map(async (u) => {
+        const p = await buddyService.getUserProfile(u).catch(() => null);
+        return { uid: u, name: p?.displayName ?? 'Zenith member', photoURL: p?.photoURL };
+      }));
+      if (!cancelled) setRows(people);
+    })();
+    return () => { cancelled = true; };
+  }, [uid, mode]);
+
+  return (
+    <Sheet open onClose={onClose} title={mode === 'followers' ? 'Followers' : 'Following'}>
+      {rows === null && <Skeleton className="h-12 w-full" />}
+      {rows?.length === 0 && (
+        <p className={SUB}>{mode === 'followers' ? 'Nobody yet.' : 'Not following anyone yet.'}</p>
+      )}
+      {rows && rows.length > 0 && (
+        <Card padding="list">
+          {rows.map((r) => (
+            <ListRow
+              key={r.uid}
+              leading={<LevelRing size={32} totalVolumeKg={0} photoURL={r.photoURL} name={r.name} />}
+              title={r.name}
+              onClick={() => onOpen(r.uid)}
+            />
+          ))}
+        </Card>
+      )}
+    </Sheet>
+  );
 }

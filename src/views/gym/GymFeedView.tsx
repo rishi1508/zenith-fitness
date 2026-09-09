@@ -14,6 +14,7 @@ import {
 import { prepareScanImage } from '../../nutrition/scan';
 import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
 import { Button, Card, EmptyState, Sheet, Skeleton, useConfirm, useToast, CAPTION, SUB } from '../../ui';
+import { getUserProfile } from '../../buddyService';
 
 /** Three reactions, not twenty: a nod across the floor, not a taxonomy. */
 const REACTIONS = ['👊', '🔥', '💪'];
@@ -304,6 +305,10 @@ function PostCard({ gymId, post, mine, canModerate, myUid, onReact, onDelete, on
   const [showComments, setShowComments] = useState(false);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [whoReacted, setWhoReacted] = useState<string | null>(null);
+  const holdRef = useRef<number | null>(null);
+  /** Set by a completed hold, so the release does not also toggle. */
+  const heldRef = useRef(false);
 
   // The photo is a separate read, made only for posts that have one and only
   // when this card renders.
@@ -417,9 +422,17 @@ function PostCard({ gymId, post, mine, canModerate, myUid, onReact, onDelete, on
           return (
             <button
               key={emoji}
-              onClick={() => onReact(emoji)}
+              onClick={() => { if (!heldRef.current) onReact(emoji); heldRef.current = false; }}
+              // Hold to see who — a count with no names is a dead end.
+              onPointerDown={() => {
+                if (count === 0) return;
+                holdRef.current = window.setTimeout(() => { heldRef.current = true; setWhoReacted(emoji); }, 400);
+              }}
+              onPointerUp={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
+              onPointerLeave={() => { if (holdRef.current) { clearTimeout(holdRef.current); holdRef.current = null; } }}
+              onContextMenu={(e) => e.preventDefault()}
               aria-pressed={on}
-              aria-label={`React ${emoji}`}
+              aria-label={`React ${emoji}${count > 0 ? ` — hold to see who` : ''}`}
               className={`h-9 px-2.5 rounded-full border text-sm flex items-center gap-1 shrink-0 transition-colors ${
                 on ? 'border-accent bg-accent-soft text-accent' : 'border-border text-subtle'
               }`}
@@ -437,6 +450,14 @@ function PostCard({ gymId, post, mine, canModerate, myUid, onReact, onDelete, on
           {commentCount > 0 && <span className="text-xs font-semibold tabular-nums">{commentCount}</span>}
         </button>
       </div>
+
+      {whoReacted && (
+        <ReactedBySheet
+          emoji={whoReacted}
+          uids={Object.entries(post.reactions ?? {}).filter(([, e]) => e === whoReacted).map(([uid]) => uid)}
+          onClose={() => setWhoReacted(null)}
+        />
+      )}
 
       {showComments && (
         <div className="px-4 pb-3 space-y-2 border-t border-border pt-2.5">
@@ -511,5 +532,32 @@ function Avatar({ name, photoURL, small }: { name: string; photoURL?: string | n
     <span className={`${cls} bg-surface-2 border border-border flex items-center justify-center ${small ? 'text-[10px]' : 'text-xs'} font-bold text-subtle`}>
       {name.slice(0, 1).toUpperCase()}
     </span>
+  );
+}
+
+/** Everyone who left this reaction. Names resolved on open — a few profile
+ *  reads, and only when somebody actually asks who. */
+function ReactedBySheet({ emoji, uids, onClose }: { emoji: string; uids: string[]; onClose: () => void }) {
+  const [rows, setRows] = useState<Array<{ uid: string; name: string; photoURL?: string | null }> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(uids.map(async (uid) => {
+      const p = await getUserProfile(uid).catch(() => null);
+      return { uid, name: p?.displayName ?? 'A member', photoURL: p?.photoURL };
+    })).then((people) => { if (!cancelled) setRows(people); });
+    return () => { cancelled = true; };
+  }, [uids]);
+
+  return (
+    <Sheet open onClose={onClose} title={`${emoji}  ${uids.length} ${uids.length === 1 ? 'person' : 'people'}`}>
+      {rows === null && <Skeleton className="h-12 w-full" />}
+      {rows?.map((r) => (
+        <div key={r.uid} className="flex items-center gap-2.5 min-h-12">
+          <Avatar name={r.name} photoURL={r.photoURL} small />
+          <span className="text-sm font-semibold text-text truncate">{r.name}</span>
+        </div>
+      ))}
+    </Sheet>
   );
 }

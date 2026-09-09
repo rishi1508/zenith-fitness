@@ -128,17 +128,27 @@ export function GymProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, [user, isGuest, authLoading, refreshTick]);
 
-  // Subscribe to the gym doc + my membership doc once we know which gym.
+  /**
+   * Subscribe to the gym doc + my membership doc once we know which gym AND
+   * who is asking.
+   *
+   * `user` is in the deps for a reason: the gym id is now seeded from the
+   * device hint on the very first render, before auth has resolved, and
+   * `listenToMyMembership` returns a no-op when there is no signed-in user.
+   * Without re-running when auth lands, membership stayed null forever —
+   * "Loading your membership…", and no role, so the Manage segment
+   * disappeared for owners and admins too (reported 2026-09-10).
+   */
   useEffect(() => {
-    if (!gymId) {
-      const reset = () => { setGym(null); setMembership(null); };
-      reset();
+    if (!gymId || !user || isGuest) {
+      setGym(null);
+      setMembership(null);
       return;
     }
     const unsubGym = listenToGym(gymId, setGym);
     const unsubMembership = listenToMyMembership(gymId, setMembership);
     return () => { unsubGym(); unsubMembership(); };
-  }, [gymId]);
+  }, [gymId, user, isGuest]);
 
   // Remember the gym for the next launch, so the shell never has to guess.
   useEffect(() => {

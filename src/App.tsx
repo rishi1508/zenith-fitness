@@ -13,7 +13,7 @@ import {
 } from './autoFinish';
 import {
   SplashScreen, NotificationToast, GroupSessionBar, PostWorkoutComparison, OfflineBanner, OfflineGate,
-  PushPermissionPrompt, SessionInviteBanner, WelcomeTour,
+  PushPermissionPrompt, SessionInviteBanner, WelcomeTour, BadgeUnlockModal,
 } from './components';
 import { tourSeen } from './tourState';
 import { effectiveProfilePhoto } from './profilePhoto';
@@ -39,7 +39,6 @@ const WeeklyOverviewView = lazyNamed(() => import('./views/WeeklyOverviewView'),
 const AnalysisView = lazyNamed(() => import('./views/AnalysisView'), 'AnalysisView');
 const ComparisonView = lazyNamed(() => import('./views/ComparisonView'), 'ComparisonView');
 const BuddyView = lazyNamed(() => import('./views/BuddyView'), 'BuddyView');
-const BuddyProfileView = lazyNamed(() => import('./views/BuddyProfileView'), 'BuddyProfileView');
 const BuddyChatView = lazyNamed(() => import('./views/BuddyChatView'), 'BuddyChatView');
 const SessionLobbyView = lazyNamed(() => import('./views/SessionLobbyView'), 'SessionLobbyView');
 const BuddyComparisonView = lazyNamed(() => import('./views/BuddyComparisonView'), 'BuddyComparisonView');
@@ -93,6 +92,7 @@ import { claimGymInvite } from './gymStaffHelpers';
 import { syncBuddyFollows } from './followService';
 import { refreshBadges } from './badgeSync';
 import { badgeById } from './badges';
+import type { BadgeDef } from './badges';
 import { createPost, workoutSummary } from './gymFeed';
 import { workoutEnergy } from './energy';
 import { getHealthProfile } from './health';
@@ -137,6 +137,8 @@ function App() {
   const [showTour, setShowTour] = useState(false);
   /** Whose profile the `profile` route is showing. */
   const [profileUid, setProfileUid] = useState<string | null>(null);
+  /** Badges earned just now, celebrated one after another. */
+  const [unlocked, setUnlocked] = useState<BadgeDef[]>([]);
   // A self-uploaded avatar lives on the profile document, not in Auth
   // (src/profilePhoto.ts) — so the shell reads it from there.
   const [myPhoto, setMyPhoto] = useState<string | null>(() => effectiveProfilePhoto(null));
@@ -404,12 +406,8 @@ function App() {
     // re-check them (src/badgeSync.ts). New ones surface as a toast rather
     // than a modal — a badge is a nod, not an interruption.
     void refreshBadges().then((added) => {
-      if (added.length === 0) return;
-      const first = badgeById(added[0]);
-      if (!first) return;
-      showToast(added.length === 1
-        ? `${first.icon} ${first.name} — ${first.detail}`
-        : `${first.icon} ${first.name} and ${added.length - 1} more unlocked`);
+      const defs = added.map(badgeById).filter((b): b is NonNullable<typeof b> => !!b);
+      if (defs.length > 0) setUnlocked(defs);
     });
     setWorkoutHistory(storage.getWorkouts());
     // Check for missing days after splash
@@ -436,9 +434,6 @@ function App() {
     
     // Data loaded, hide splash
     setShowSplash(false);
-    // `showToast` is stable (a provider ref), and loadData must NOT change
-    // identity — several effects key off it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1697,6 +1692,7 @@ function App() {
             onOpenAdminGyms={() => navigateTo('admin-gyms')}
             onOpenAdminUsers={() => navigateTo('admin-users')}
             onOpenAdminLibrary={() => navigateTo('admin-library')}
+            onOpenProfileUid={openProfile}
           />
         )}
         {view === 'history' && (
@@ -1876,6 +1872,7 @@ function App() {
             onOpenAdminGyms={() => navigateTo('admin-gyms')}
             onOpenAdminUsers={() => navigateTo('admin-users')}
             onOpenAdminLibrary={() => navigateTo('admin-library')}
+            onOpenProfileUid={openProfile}
             onOpenChat={(uid, name, photoURL) => {
               setBuddyContext((prev) => ({ ...prev, uid, name, photoURL }));
               navigateTo('buddy-profile');
@@ -1937,22 +1934,36 @@ function App() {
           />
         )}
         {view === 'buddy-profile' && buddyContext.uid && (
-          <BuddyProfileView
-            buddyUid={buddyContext.uid}
-            buddyName={buddyContext.name}
+          <ProfileView
+            uid={buddyContext.uid}
             isDark={isDark}
             onBack={() => goBack()}
-            onOpenChat={(uid, chatId, name) => {
-              setBuddyContext((prev) => ({ ...prev, uid, chatId, name, photoURL: prev.photoURL }));
-              navigateTo('buddy-chat');
-            }}
-            onStartSession={(sessionId) => {
-              setActiveSessionId(sessionId);
-              navigateTo('session-lobby');
+            onOpenProgress={() => navigateTo('progress')}
+            onOpenAnalysis={() => navigateTo('analysis')}
+            onOpenHistory={() => navigateTo('history')}
+            onOpenBuddies={() => navigateTo('buddies')}
+            onOpenSettings={() => navigateTo('settings')}
+            onOpenAdminGyms={() => navigateTo('admin-gyms')}
+            onOpenAdminUsers={() => navigateTo('admin-users')}
+            onOpenAdminLibrary={() => navigateTo('admin-library')}
+            onOpenProfileUid={openProfile}
+            onOpenChat={(uid, name, photoURL) => {
+              // The chat id is on the buddy relationship, which is the only
+              // place it is authoritative.
+              void buddyService.getBuddies().then((rels) => {
+                const rel = rels.find((r) => r.users.includes(uid));
+                if (!rel) { showToast('Add them as a buddy to chat.', 'error'); return; }
+                setBuddyContext({ uid, name, photoURL, chatId: rel.chatId });
+                navigateTo('buddy-chat');
+              }).catch(() => showToast('Could not open that chat.', 'error'));
             }}
             onCompare={(uid, name, photoURL) => {
               setBuddyContext({ uid, name, photoURL });
               navigateTo('buddy-compare');
+            }}
+            onStartSession={(uid, name, photoURL) => {
+              setBuddyContext({ uid, name, photoURL });
+              navigateTo('buddies');
             }}
           />
         )}
@@ -2007,6 +2018,8 @@ function App() {
           onGoToTab={(tab) => navigateToTab(tab)}
         />
       )}
+
+      {unlocked.length > 0 && <BadgeUnlockModal badges={unlocked} onClose={() => setUnlocked([])} />}
 
       {levelUp && (
         <LevelUpModal

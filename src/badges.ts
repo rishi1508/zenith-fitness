@@ -28,9 +28,16 @@ export interface BadgeDef {
   name: string;
   /** What it took, in the user's own terms. */
   detail: string;
-  /** Emoji, so a badge costs no bytes and reads at any size. */
-  icon: string;
+  /** Which glyph the artwork draws. Resolved to a real icon in the UI layer
+   *  (src/components/BadgeArt.tsx) so this module stays free of React. */
+  iconKey: BadgeIcon;
+  /** 1–4 within its family. Drives the pips around the badge. */
+  tier: 1 | 2 | 3 | 4;
 }
+
+export type BadgeIcon =
+  | 'weight' | 'mountain' | 'calendar' | 'flame' | 'trophy' | 'star'
+  | 'salad' | 'building' | 'sunrise' | 'medal' | 'zap' | 'crown';
 
 export interface EarnedBadge {
   id: string;
@@ -52,35 +59,35 @@ export interface BadgeInput {
 
 export const BADGES: BadgeDef[] = [
   // Volume — the number that only ever goes up.
-  { id: 'volume-1t', family: 'volume', name: 'First tonne', detail: '1 tonne lifted', icon: '🪨' },
-  { id: 'volume-25t', family: 'volume', name: 'Quarter century', detail: '25 tonnes lifted', icon: '🗿' },
-  { id: 'volume-100t', family: 'volume', name: 'Century', detail: '100 tonnes lifted', icon: '🏔️' },
-  { id: 'volume-500t', family: 'volume', name: 'Half a kiloton', detail: '500 tonnes lifted', icon: '🌋' },
+  { id: 'volume-1t', family: 'volume', name: 'First tonne', detail: '1 tonne lifted', iconKey: 'weight', tier: 1 },
+  { id: 'volume-25t', family: 'volume', name: 'Quarter century', detail: '25 tonnes lifted', iconKey: 'weight', tier: 2 },
+  { id: 'volume-100t', family: 'volume', name: 'Century', detail: '100 tonnes lifted', iconKey: 'mountain', tier: 3 },
+  { id: 'volume-500t', family: 'volume', name: 'Half a kiloton', detail: '500 tonnes lifted', iconKey: 'mountain', tier: 4 },
 
   // Sessions — showing up.
-  { id: 'sessions-1', family: 'sessions', name: 'Day one', detail: 'First session logged', icon: '🌱' },
-  { id: 'sessions-25', family: 'sessions', name: 'Regular', detail: '25 sessions', icon: '💪' },
-  { id: 'sessions-100', family: 'sessions', name: 'Hundred club', detail: '100 sessions', icon: '💯' },
-  { id: 'sessions-365', family: 'sessions', name: 'Lifer', detail: '365 sessions', icon: '🏛️' },
+  { id: 'sessions-1', family: 'sessions', name: 'Day one', detail: 'First session logged', iconKey: 'calendar', tier: 1 },
+  { id: 'sessions-25', family: 'sessions', name: 'Regular', detail: '25 sessions', iconKey: 'calendar', tier: 2 },
+  { id: 'sessions-100', family: 'sessions', name: 'Hundred club', detail: '100 sessions', iconKey: 'calendar', tier: 3 },
+  { id: 'sessions-365', family: 'sessions', name: 'Lifer', detail: '365 sessions', iconKey: 'crown', tier: 4 },
 
   // Streak — weeks that met the commitment.
-  { id: 'streak-4', family: 'streak', name: 'A month of weeks', detail: '4-week streak', icon: '🔥' },
-  { id: 'streak-12', family: 'streak', name: 'A season', detail: '12-week streak', icon: '🌠' },
-  { id: 'streak-52', family: 'streak', name: 'A year unbroken', detail: '52-week streak', icon: '👑' },
+  { id: 'streak-4', family: 'streak', name: 'A month of weeks', detail: '4-week streak', iconKey: 'flame', tier: 1 },
+  { id: 'streak-12', family: 'streak', name: 'A season', detail: '12-week streak', iconKey: 'flame', tier: 2 },
+  { id: 'streak-52', family: 'streak', name: 'A year unbroken', detail: '52-week streak', iconKey: 'crown', tier: 4 },
 
   // Strength — the lifts themselves.
-  { id: 'pr-first', family: 'strength', name: 'First record', detail: 'Set a personal record', icon: '⭐' },
-  { id: 'pr-25', family: 'strength', name: 'Record collector', detail: '25 personal records', icon: '🏆' },
-  { id: 'session-5t', family: 'strength', name: 'Big day', detail: '5 tonnes in one session', icon: '🚚' },
+  { id: 'pr-first', family: 'strength', name: 'First record', detail: 'Set a personal record', iconKey: 'star', tier: 1 },
+  { id: 'pr-25', family: 'strength', name: 'Record collector', detail: '25 personal records', iconKey: 'trophy', tier: 3 },
+  { id: 'session-5t', family: 'strength', name: 'Big day', detail: '5 tonnes in one session', iconKey: 'zap', tier: 2 },
 
   // Habits — the things around the training.
-  { id: 'nutrition-30', family: 'habit', name: 'Kitchen discipline', detail: '30 days of food logged', icon: '🥗' },
-  { id: 'checkins-16', family: 'habit', name: 'Gym regular', detail: '16 check-ins in a month', icon: '🏋️' },
-  { id: 'early-10', family: 'habit', name: 'Before the world', detail: '10 sessions started before 6am', icon: '🌅' },
+  { id: 'nutrition-30', family: 'habit', name: 'Kitchen discipline', detail: '30 days of food logged', iconKey: 'salad', tier: 2 },
+  { id: 'checkins-16', family: 'habit', name: 'Gym regular', detail: '16 check-ins in a month', iconKey: 'building', tier: 2 },
+  { id: 'early-10', family: 'habit', name: 'Before the world', detail: '10 sessions started before 6am', iconKey: 'sunrise', tier: 2 },
 
   // Level — the composite one.
-  { id: 'level-10', family: 'level', name: 'Level 10', detail: 'Reached experience level 10', icon: '🎖️' },
-  { id: 'level-25', family: 'level', name: 'Level 25', detail: 'Reached experience level 25', icon: '🎗️' },
+  { id: 'level-10', family: 'level', name: 'Level 10', detail: 'Reached experience level 10', iconKey: 'medal', tier: 2 },
+  { id: 'level-25', family: 'level', name: 'Level 25', detail: 'Reached experience level 25', iconKey: 'medal', tier: 4 },
 ];
 
 const BY_ID = new Map(BADGES.map((b) => [b.id, b]));

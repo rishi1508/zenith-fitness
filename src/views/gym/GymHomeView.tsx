@@ -6,6 +6,8 @@ import {
 import type { GymViewProps } from './types';
 import type { GymClass, GymAnnouncement } from '../../types';
 import { useGym } from '../../gym/GymContext';
+import { useAuth } from '../../auth/AuthContext';
+import { isAdmin } from '../../admin';
 import { useGymDashboard } from '../../gym/useGymDashboard';
 import { listenToClasses, listenToAnnouncements, upcomingSessions } from '../../gymService';
 import { formatTime12h } from '../../gymMemberHelpers';
@@ -17,6 +19,9 @@ import { Card, StatTile, ListRow, Button, SegmentedControl, SectionHeader, SUB }
 
 type Segment = 'feed' | 'member' | 'manage';
 
+/** Survives the component unmounting while a gym sub-screen is open. */
+let lastSegment: Segment = 'feed';
+
 /** Member home: membership card + QR, big Check in button, today's
  *  classes, latest announcements, and quick links. Staff (trainer/
  *  manager/owner) get a Member | Manage segmented control (docs/
@@ -27,12 +32,15 @@ type Segment = 'feed' | 'member' | 'manage';
 export function GymHomeView(props: GymViewProps) {
   const { isDark, onNavigate } = props;
   const { gym, membership, role, loading } = useGym();
+  const { user } = useAuth();
 
   const [classes, setClasses] = useState<GymClass[] | null>(null);
   const [announcements, setAnnouncements] = useState<GymAnnouncement[] | null>(null);
   // The feed is what a member opens My Gym for on most days; the card, plan
-  // and QR are one tap away and rarely change.
-  const [segment, setSegment] = useState<Segment>('feed');
+  // and QR are one tap away and rarely change. Remembered across a trip into
+  // a pushed screen — coming back from Members used to dump you on Feed.
+  const [segment, setSegmentState] = useState<Segment>(() => lastSegment);
+  const setSegment = (next: Segment) => { lastSegment = next; setSegmentState(next); };
 
   useEffect(() => {
     if (!gym?.id) return;
@@ -52,8 +60,9 @@ export function GymHomeView(props: GymViewProps) {
 
   if (!gym) return <JoinGymView {...props} />;
 
-  const isStaff = role === 'trainer' || role === 'manager' || role === 'owner';
-  const isManagerPlus = role === 'manager' || role === 'owner';
+  // A Zenith admin can manage any gym, membership role or not.
+  const isStaff = role === 'trainer' || role === 'manager' || role === 'owner' || isAdmin(user?.uid);
+  const isManagerPlus = role === 'manager' || role === 'owner' || isAdmin(user?.uid);
 
   return (
     <div className="space-y-4 animate-fadeIn">

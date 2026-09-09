@@ -64,6 +64,13 @@ service cloud.firestore {
           && request.resource.data.followerCount >= 0
           && (request.resource.data.followerCount == resource.data.get('followerCount', 0) + 1
             || request.resource.data.followerCount == resource.data.get('followerCount', 0) - 1)) ||
+        // The buddy follow-back bumps the buddy's `followingCount` by one.
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followingCount'])
+          && request.resource.data.followingCount is int
+          && request.resource.data.followingCount >= 0
+          && areBuddies(request.auth.uid, uid)
+          && (request.resource.data.followingCount == resource.data.get('followingCount', 0) + 1
+            || request.resource.data.followingCount == resource.data.get('followingCount', 0) - 1)) ||
         isAdmin()
       );
       allow delete: if false;
@@ -267,12 +274,25 @@ service cloud.firestore {
     // One document per (follower, target) pair, id "<follower>__<target>".
     // Anyone signed in can see who follows whom; only the follower writes
     // their own edge, so nobody can put words in someone else's mouth.
+    function buddyPairId(a, b) { return a < b ? a + '_' + b : b + '_' + a; }
+    function areBuddies(a, b) {
+      return exists(/databases/$(database)/documents/buddies/$(buddyPairId(a, b)));
+    }
+
     match /follows/{edgeId} {
       allow read:   if signedIn();
       allow create: if signedIn()
-        && request.resource.data.follower == request.auth.uid
-        && edgeId == request.auth.uid + '__' + request.resource.data.target
-        && request.resource.data.target != request.auth.uid;
+        && edgeId == request.resource.data.follower + '__' + request.resource.data.target
+        && request.resource.data.target != request.resource.data.follower
+        && (
+          // Your own edge, always.
+          request.resource.data.follower == request.auth.uid
+          // Or the reciprocal half of a buddy pair: the buddy document is
+          // proof both people agreed, so either side may write both edges
+          // rather than leaving one hanging until the other opens the app.
+          || (request.resource.data.target == request.auth.uid
+            && areBuddies(request.auth.uid, request.resource.data.follower))
+        );
       allow update: if false;
       allow delete: if signedIn() && resource.data.follower == request.auth.uid;
     }

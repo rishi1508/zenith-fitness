@@ -4,6 +4,7 @@ import type { GymFeedComment, GymFeedPost } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
 import { addComment, getPostImage, listComments, toggleReaction } from '../../gymFeed';
 import { Skeleton, SUB } from '../../ui';
+import { registerBackHandler } from '../../backHandlerRegistry';
 
 const REACTIONS = ['👊', '🔥', '💪'];
 
@@ -31,7 +32,10 @@ export function PhotoViewer({ gymId, post, onClose }: { gymId: string; post: Gym
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // The phone's back button closes it too — every other overlay in the app
+    // registers here, and one that does not is a trap.
+    const unregister = registerBackHandler(() => { onClose(); return true; });
+    return () => { window.removeEventListener('keydown', onKey); unregister(); };
   }, [onClose]);
 
   const react = (emoji: string) => {
