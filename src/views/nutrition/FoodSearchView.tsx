@@ -26,6 +26,9 @@ export interface FoodSearchViewProps {
   /** Meal preselected in the entry sheet. */
   meal: MealSlot;
   onBack: () => void;
+  /** Fired once an entry is in the diary — the caller shows the day itself
+   *  rather than leaving the user on the add screen. */
+  onAdded?: (entry: FoodEntry) => void;
   /** Opens the premium plate scan (docs/HEALTH_SPEC.md §6) for the same day/meal. */
   onOpenScan?: () => void;
 }
@@ -98,7 +101,7 @@ function canEditFood(food: FoodItem | null, uid: string | undefined): boolean {
  * barcode scanner, "Create food" (also published to `sharedFoods`) and a
  * macros-only "Quick add".
  */
-export function FoodSearchView({ date, meal, onBack, onOpenScan }: FoodSearchViewProps) {
+export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: FoodSearchViewProps) {
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -189,7 +192,7 @@ export function FoodSearchView({ date, meal, onBack, onOpenScan }: FoodSearchVie
 
   const afterAdd = (entry: FoodEntry) => {
     showToast(`Added ${entry.name} to ${MEAL_LABEL[entry.meal].toLowerCase()}.`);
-    onBack();
+    if (onAdded) onAdded(entry); else onBack();
   };
 
   if (scanning) {

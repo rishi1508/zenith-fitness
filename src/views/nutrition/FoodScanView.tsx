@@ -8,6 +8,7 @@ import type { MealSlot } from '../../types';
 import { prepareScanImage, scaleScanItem, ScanError, scanItemToEntry, scanPreparedImage } from '../../nutrition/scan';
 import type { ScanErrorKind, ScanItem } from '../../nutrition/scan';
 import { ScanItemSheet } from './ScanItemSheet';
+import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
 
 export interface FoodScanViewProps {
   onBack: () => void;
@@ -90,7 +91,7 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
-  const runScan = useCallback(async (file: File) => {
+  const runScan = useCallback(async (file: Blob) => {
     if (!user) { setError('Please sign in again to scan food.'); return; }
     setError(null);
     // Two visible stages: shrinking the photo on-device (a second or two on a
@@ -124,6 +125,23 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
   const onPick = (file: File | undefined) => {
     if (!file) return;
     void runScan(file);
+  };
+
+  /** Android goes through the camera plugin, which owns the permission and
+   *  survives the activity being recycled behind the camera app. The web
+   *  keeps the file input. */
+  const openCamera = async (source: 'camera' | 'gallery') => {
+    if (!nativePhotoCapture()) {
+      (source === 'camera' ? fileRef : galleryRef).current?.click();
+      return;
+    }
+    try {
+      const blob = await capturePhoto(source);
+      await runScan(blob);
+    } catch (err) {
+      if (err instanceof PhotoCancelled) return;
+      setError(err instanceof Error ? err.message : 'The camera could not be opened.');
+    }
   };
 
   const reset = () => {
@@ -211,10 +229,10 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
                     placeholder="Optional: what is it? e.g. 2 rotis, home dal"
                     className="px-3 py-2.5 rounded-control border border-border bg-surface-2 text-text placeholder:text-subtle text-sm outline-none focus:border-accent/50"
                   />
-                  <Button variant="primary" size="lg" icon={Camera} full onClick={() => fileRef.current?.click()}>
+                  <Button variant="primary" size="lg" icon={Camera} full onClick={() => { void openCamera('camera'); }}>
                     Take a photo
                   </Button>
-                  <Button variant="secondary" size="md" icon={ImagePlus} full onClick={() => galleryRef.current?.click()}>
+                  <Button variant="secondary" size="md" icon={ImagePlus} full onClick={() => { void openCamera('gallery'); }}>
                     Choose an existing photo
                   </Button>
                 </div>

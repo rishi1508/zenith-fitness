@@ -51,8 +51,22 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- QR scanning for gym check-in (qr-scanner via getUserMedia). -->
+    <!--
+      QR scanning for gym check-in (qr-scanner via getUserMedia) AND the
+      plate-scan / progress-photo capture through @capacitor/camera.
+
+      Because this permission is DECLARED here, Android requires the runtime
+      grant before any image-capture intent may start — a `<input capture>`
+      that skipped the grant is what used to take the app down. The camera
+      plugin owns that prompt now (src/nativeCamera.ts).
+    -->
     <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Picking an existing photo on Android 12 and below. Android 13+ uses
+         the system photo picker, which needs no permission at all. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <!--
       POST_NOTIFICATIONS (Android 13 / API 33+) — REQUIRED for push to

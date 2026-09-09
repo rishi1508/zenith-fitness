@@ -125,3 +125,14 @@ export async function markExhausted(db: Firestore, model: string, now?: Date): P
 export function isExhaustedStatus(status: number): boolean {
   return status === 429 || status === 404 || status === 503;
 }
+
+/**
+ * A failure that says nothing about the model's daily quota — the API's own
+ * "Internal error encountered", a bad gateway, or a request that timed out.
+ * The next model in the cascade usually answers the same request fine, which
+ * is what "it failed a few times, then it worked" looked like from the
+ * outside (reported 2026-09-09). The model is NOT written off for the day.
+ */
+export function isTransientStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 504;
+}

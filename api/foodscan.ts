@@ -26,7 +26,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { assertPremium, consumeLimit, DAY_MS, HttpError } from './_limits.js';
-import { isExhaustedStatus, markExhausted, MAX_MODEL_ATTEMPTS, pickModel } from './_modelRouter.js';
+import { isExhaustedStatus, isTransientStatus, markExhausted, MAX_MODEL_ATTEMPTS, pickModel } from './_modelRouter.js';
 import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js';
 
 // A vision call on a flash model answers in 2–8 s; the ceiling is here for
@@ -128,7 +128,9 @@ async function callGemini(
   } catch (err) {
     const aborted = (err as Error).name === 'AbortError';
     console.error('[foodscan] Gemini fetch failed', aborted ? 'timeout' : (err as Error).message);
-    throw new HttpError(504, 'The scan took too long. Please try again.', { reason: 'busy' });
+    // Reported as a status rather than thrown, so the cascade can take the
+    // next model instead of failing the whole scan on one slow model.
+    return { status: aborted ? 504 : 502, body: {} };
   } finally {
     clearTimeout(timer);
   }
@@ -159,6 +161,12 @@ async function scan(
   if (!apiKey) throw new HttpError(503, 'Scanning is not configured on the server yet.');
   const startedAt = Date.now();
 
+  // What went wrong last, so the user gets the real reason if every attempt
+  // fails rather than a generic "busy".
+  let lastFailure: HttpError | null = null;
+  const canRetry = (attempt: number) =>
+    attempt + 1 < MAX_MODEL_ATTEMPTS && Date.now() - startedAt < RETRY_DEADLINE_MS;
+
   for (let attempt = 0; attempt < MAX_MODEL_ATTEMPTS; attempt++) {
     const { model } = await pickModel(db, { purpose: 'foodscan' });
     let r = await callGemini(model, prompt, image, apiKey, true);
@@ -167,7 +175,15 @@ async function scan(
     }
     if (isExhaustedStatus(r.status)) {
       await markExhausted(db, model);
-      if (attempt + 1 < MAX_MODEL_ATTEMPTS && Date.now() - startedAt < RETRY_DEADLINE_MS) continue;
+      if (canRetry(attempt)) continue;
+      break;
+    }
+    if (isTransientStatus(r.status)) {
+      console.warn(`[foodscan] ${model} returned ${r.status} — trying the next model`);
+      lastFailure = r.status === 504
+        ? new HttpError(504, 'The scan took too long. Please try again.', { reason: 'busy' })
+        : new HttpError(502, "The scan didn't work. Please try again.", { reason: 'busy' });
+      if (canRetry(attempt)) continue;
       break;
     }
     if (r.status < 200 || r.status >= 300) {
@@ -177,14 +193,18 @@ async function scan(
     const text = extractText(r.body);
     const payload = parseScanPayload(text);
     if (!payload) {
+      // A garbled reply is the model's problem, not the photo's — give the
+      // next one a go before telling the user to retake it.
       console.warn('[foodscan] unparseable reply', model, r.body.candidates?.[0]?.finishReason, text.slice(0, 200));
-      throw new HttpError(502, "Couldn't read that plate. Try a clearer, closer photo.", { reason: 'busy' });
+      lastFailure = new HttpError(502, "Couldn't read that plate. Try a clearer, closer photo.", { reason: 'busy' });
+      if (canRetry(attempt)) continue;
+      break;
     }
     const u = r.body.usageMetadata;
     console.log(`[foodscan] model=${model} items=${payload.items.length} prompt=${u?.promptTokenCount ?? '?'} out=${u?.candidatesTokenCount ?? '?'}`);
     return { payload, model };
   }
-  throw new HttpError(429, 'Scanning is busy today. Try again tomorrow.', { reason: 'quota' });
+  throw lastFailure ?? new HttpError(429, 'Scanning is busy today. Try again tomorrow.', { reason: 'quota' });
 }
 
 // ----- Handler -------------------------------------------------------------

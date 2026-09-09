@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { clampItem, MAX_ITEMS, parseScanPayload, repairJson } from '../api/_scanParse';
+import { isExhaustedStatus, isTransientStatus } from '../api/_modelRouter';
 import { scaleScanItem, scanItemToEntry, slugifyFood } from '../src/nutrition/scan';
 
 describe('repairJson', () => {
@@ -100,5 +101,53 @@ describe('scan → diary mapping', () => {
       at: '2026-09-07T19:30:00.000Z',
     });
     expect(entry.macros).toEqual({ kcal: 400, protein: 14, carbs: 18, fat: 30 });
+  });
+});
+
+describe('cascade status classification', () => {
+  it('writes a model off for the day only on a quota-shaped failure', () => {
+    for (const s of [429, 404, 503]) expect(isExhaustedStatus(s)).toBe(true);
+    for (const s of [200, 400, 500, 502, 504]) expect(isExhaustedStatus(s)).toBe(false);
+  });
+
+  it('takes the next model on a transient failure without burning the quota', () => {
+    for (const s of [500, 502, 504]) {
+      expect(isTransientStatus(s)).toBe(true);
+      expect(isExhaustedStatus(s)).toBe(false);
+    }
+    // A 400 is our fault, not the model's — retrying it elsewhere is pointless.
+    expect(isTransientStatus(400)).toBe(false);
+    expect(isTransientStatus(200)).toBe(false);
+  });
+});
+
+describe('scan items matched to a database food', () => {
+  const base = {
+    name: 'Rajma', grams: 200, kcal: 280, protein: 14, carbs: 40, fat: 6, confidence: 0.6,
+  };
+
+  it('re-scales a matched food from its real per-100 g figures', () => {
+    const matched = { ...base, foodId: 'ifct_rajma', source: 'ifct' as const, per100g: { kcal: 140, protein: 7, carbs: 20, fat: 3 } };
+    const scaled = scaleScanItem(matched, 300);
+    expect(scaled.kcal).toBe(420);
+    expect(scaled.protein).toBe(21);
+    expect(scaled.foodId).toBe('ifct_rajma');
+  });
+
+  it('keeps scaling the model\'s own estimate proportionally', () => {
+    const scaled = scaleScanItem(base, 100);
+    expect(scaled.kcal).toBe(140);
+    expect(scaled.foodId).toBeUndefined();
+  });
+
+  it('links the diary entry to the matched food and drops the approx flag', () => {
+    const matched = { ...base, foodId: 'ifct_rajma', source: 'ifct' as const, per100g: { kcal: 140, protein: 7, carbs: 20, fat: 3 } };
+    const entry = scanItemToEntry(matched, 'lunch');
+    expect(entry.foodId).toBe('ifct_rajma');
+    expect(entry.source).toBe('ifct');
+    expect(entry.approx).toBe(false);
+    // An unmatched item stays an estimate behind a scan: id.
+    expect(scanItemToEntry(base, 'lunch').approx).toBe(true);
+    expect(scanItemToEntry(base, 'lunch').foodId).toBe('scan:rajma');
   });
 });

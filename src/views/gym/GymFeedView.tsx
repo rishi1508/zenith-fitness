@@ -6,6 +6,7 @@ import * as storage from '../../storage';
 import type { GymFeedPost, Workout } from '../../types';
 import { createPost, deletePost, getPostImage, listenToFeed, toggleReaction, workoutSummary } from '../../gymFeed';
 import { prepareScanImage } from '../../nutrition/scan';
+import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
 import { Button, Card, EmptyState, IconButton, Skeleton, useConfirm, useToast, CAPTION, SUB } from '../../ui';
 
 /** The reactions a member can leave. Small set on purpose: a feed with
@@ -74,7 +75,7 @@ export function GymFeedView() {
     }
   };
 
-  const sharePhoto = async (file: File | undefined) => {
+  const sharePhoto = async (file: Blob | undefined) => {
     if (!gym || !file) return;
     setPosting(true);
     try {
@@ -122,7 +123,18 @@ export function GymFeedView() {
           >
             {recent ? `Share "${recent.name}"` : 'No recent session'}
           </Button>
-          <Button variant="secondary" size="md" icon={Camera} full disabled={posting} onClick={() => fileRef.current?.click()}>
+          <Button
+            variant="secondary" size="md" icon={Camera} full disabled={posting}
+            onClick={() => {
+              // Same reason as the plate scanner: on Android the file input
+              // hands the screen to the camera app and the WebView may not
+              // survive it (src/nativeCamera.ts).
+              if (!nativePhotoCapture()) { fileRef.current?.click(); return; }
+              void capturePhoto('camera')
+                .then((blob) => sharePhoto(blob))
+                .catch((err) => { if (!(err instanceof PhotoCancelled)) showToast(err instanceof Error ? err.message : 'The camera could not be opened.', 'error'); });
+            }}
+          >
             Progress photo
           </Button>
         </div>

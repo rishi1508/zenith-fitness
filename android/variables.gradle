@@ -1,6 +1,11 @@
 ext {
     // Health Connect requires Android 8.0 / API 26 (@capgo/capacitor-health).
     minSdkVersion = 26
+    // One Kotlin plugin version for the whole build. @capgo/capacitor-health
+    // hard-pins 2.4.10; @capacitor/camera honours this property and would
+    // otherwise load 2.2.20 in its own subproject, and Gradle warns that a
+    // Kotlin plugin loaded twice at different versions may break the build.
+    kotlin_version = '2.4.10'
     compileSdkVersion = 36
     targetSdkVersion = 36
     androidxActivityVersion = '1.11.0'

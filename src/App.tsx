@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
-import { Calendar, PartyPopper, Trophy, TimerOff, X } from 'lucide-react';
+import { Calendar, PartyPopper, Trophy, TimerOff, Users, X } from 'lucide-react';
 import type { Workout, WorkoutTemplate, UserStats, WorkoutSession } from './types';
 import * as storage from './storage';
 import { UpdateChecker } from './UpdateChecker';
@@ -83,6 +83,7 @@ import { isAdmin } from './admin';
 import { levelForVolume } from './levels';
 import { feedback } from './feedback';
 import { startActivityAutoSync } from './activity';
+import { createPost, workoutSummary } from './gymFeed';
 import { workoutEnergy } from './energy';
 import { getHealthProfile } from './health';
 import { recordBuddyInteraction } from './buddyAffinity';
@@ -99,6 +100,10 @@ import { useAuth } from './auth/AuthContext';
 import { useGym } from './gym/GymContext';
 
 import { useToast, useConfirm } from './ui';
+/** The screens an "add food" flow passes through — popped off the history
+ *  once the food is in the diary (see `showDiary`). */
+const ADD_FOOD_VIEWS = new Set<View>(['food-search', 'food-scan']);
+
 export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'energy' | 'phase';
 export type Theme = 'dark' | 'light';
 
@@ -147,7 +152,11 @@ function App() {
     kcal?: number;
     /** True when the profile was too thin for a personalised figure. */
     kcalEstimated?: boolean;
+    /** The saved session, so it can be shared to the gym feed from here. */
+    workout?: Workout;
   } | null>(null);
+  /** null = not offered yet, 'sharing' | 'shared' once the user has tapped. */
+  const [shareState, setShareState] = useState<null | 'sharing' | 'shared'>(null);
   const [theme, setTheme] = useState<Theme>(() => {
     try { return storage.getEffectiveTheme(); } 
     catch { return 'dark'; }
@@ -238,6 +247,18 @@ function App() {
     setGymNav(params ?? {});
     navigateTo(target);
   }, [navigateTo]);
+
+  // Where every "add food" flow ends: the diary for that day, not the
+  // screen you added from. Rewinds the history past the add screens so
+  // back from the diary goes where the flow started, not into it again.
+  const showDiary = useCallback((date: string) => {
+    setFoodNav((n) => ({ ...n, date }));
+    const history = navigationHistory.current;
+    while (history.length > 1 && ADD_FOOD_VIEWS.has(history[history.length - 1])) history.pop();
+    if (history[history.length - 1] !== 'nutrition') history.push('nutrition');
+    setView('nutrition');
+    try { window.history.pushState({ zenith: history.length }, ''); } catch { /* ignore */ }
+  }, []);
 
   // Open Zen, optionally pre-filling the composer with a follow-up
   // prompt from a ZenCard daily note (src/views/zen/ZenChatView.tsx).
@@ -1018,7 +1039,9 @@ function App() {
         prs: sessionPRs,
         kcal: burn.activeKcal > 0 ? burn.activeKcal : undefined,
         kcalEstimated: burn.estimated,
+        workout: finished,
       });
+      setShareState(null);
       setShowCelebration(true);
       feedback('workoutComplete');
       
@@ -1398,6 +1421,32 @@ function App() {
               </div>
             )}
 
+            {/* Offer the gym feed here, where the session is fresh — but
+                only ever as an offer: nothing posts on its own. */}
+            {gym && celebrationData.workout && (
+              <button
+                onClick={() => {
+                  const workout = celebrationData.workout;
+                  if (!workout || shareState) return;
+                  setShareState('sharing');
+                  createPost(gym.id, { workout: workoutSummary(workout) })
+                    .then(() => { setShareState('shared'); showToast(`Shared with ${gym.name}`); })
+                    .catch(() => { setShareState(null); showToast('Could not share that — try the Feed tab.', 'error'); });
+                }}
+                disabled={shareState !== null}
+                className={`w-full py-3 rounded-xl font-medium border transition-colors flex items-center justify-center gap-2 ${
+                  shareState === 'shared'
+                    ? 'border-emerald-500/40 text-emerald-400'
+                    : isDark ? 'border-[#3e3e3e] text-zinc-200 hover:bg-[#252525]' : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                } disabled:opacity-70`}
+              >
+                <Users className="w-4 h-4" />
+                {shareState === 'shared' ? `Shared with ${gym.name}`
+                  : shareState === 'sharing' ? 'Sharing…'
+                    : `Share with ${gym.name}`}
+              </button>
+            )}
+
             <button
               onClick={() => setShowCelebration(false)}
               className="w-full py-3 rounded-xl font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity"
@@ -1685,10 +1734,19 @@ function App() {
           />
         )}
         {view === 'food-search' && (
-          <FoodSearchView date={foodNav.date} meal={foodNav.meal} onBack={() => goBack()} onOpenScan={() => navigateTo('food-scan')} />
+          <FoodSearchView
+            date={foodNav.date} meal={foodNav.meal}
+            onBack={() => goBack()}
+            onAdded={() => showDiary(foodNav.date)}
+            onOpenScan={() => navigateTo('food-scan')}
+          />
         )}
         {view === 'food-scan' && (
-          <FoodScanView date={foodNav.date} meal={foodNav.meal} onBack={() => goBack()} onAdded={() => goBack()} />
+          <FoodScanView
+            date={foodNav.date} meal={foodNav.meal}
+            onBack={() => goBack()}
+            onAdded={() => showDiary(foodNav.date)}
+          />
         )}
         {view === 'activity' && (
           <ActivityView onBack={() => goBack()} />
