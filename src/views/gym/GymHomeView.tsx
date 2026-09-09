@@ -11,9 +11,10 @@ import { listenToClasses, listenToAnnouncements, upcomingSessions } from '../../
 import { formatTime12h } from '../../gymMemberHelpers';
 import { MembershipCard } from '../../components';
 import { JoinGymView } from './JoinGymView';
+import { GymFeedView } from './GymFeedView';
 import { Card, StatTile, ListRow, Button, SegmentedControl, SectionHeader, SUB } from '../../ui';
 
-type Segment = 'member' | 'manage';
+type Segment = 'member' | 'feed' | 'manage';
 
 /** Member home: membership card + QR, big Check in button, today's
  *  classes, latest announcements, and quick links. Staff (trainer/
@@ -53,16 +54,20 @@ export function GymHomeView(props: GymViewProps) {
 
   return (
     <div className="space-y-4 animate-fadeIn">
-      {isStaff && (
-        <SegmentedControl
-          label="My Gym section"
-          options={[{ value: 'member', label: 'Member' }, { value: 'manage', label: 'Manage' }]}
-          value={segment}
-          onChange={setSegment}
-        />
-      )}
+      <SegmentedControl
+        label="My Gym section"
+        options={[
+          { value: 'member', label: 'Member' },
+          { value: 'feed', label: 'Feed' },
+          ...(isStaff ? [{ value: 'manage' as const, label: 'Manage' }] : []),
+        ]}
+        value={segment}
+        onChange={setSegment}
+      />
 
-      {segment === 'manage' && isStaff ? (
+      {segment === 'feed' ? (
+        <GymFeedView />
+      ) : segment === 'manage' && isStaff ? (
         <ManageSection isDark={isDark} gym={gym} isManagerPlus={isManagerPlus} onNavigate={onNavigate} />
       ) : (
         <>

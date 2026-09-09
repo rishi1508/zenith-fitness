@@ -497,6 +497,27 @@ export interface GymCheckin { id: string; uid: string; at: string; date: string 
 export interface GymDailyStat { date: string; count: number; hours: Record<string, number> }
 export interface GymClass { id: string; name: string; weekday: number /* 0=Sun..6 */; startTime: string /* HH:mm */; durationMin: number; trainerUid?: string; capacity?: number /* undefined = uncapped */; active: boolean }
 export interface GymClassSession { id: string /* `${classId}_${YYYY-MM-DD}` */; classId: string; date: string; enrolled: string[]; attended: string[] }
+/** One post in a gym's feed (docs/GYM_TIER_A_SPEC.md §9). Deliberately
+ *  small: the image, when there is one, lives in the post's `media`
+ *  subcollection so listing the feed doesn't pull megabytes of base64. */
+export interface GymFeedPost {
+  id: string;
+  uid: string;
+  name: string;
+  photoURL?: string | null;
+  at: string;                    // ISO
+  date: string;                  // YYYY-MM-DD local
+  kind: 'workout' | 'photo';
+  /** The member's own caption. */
+  text?: string;
+  /** kind 'workout': the summary, denormalised so the feed is one query. */
+  workout?: { name: string; sets: number; volumeKg: number; durationMin?: number; prs?: number };
+  /** True when a `media/image` doc exists for this post. */
+  hasImage?: boolean;
+  /** uid → emoji. Rules let a member add or remove only their own key. */
+  reactions?: Record<string, string>;
+}
+
 export interface GymAnnouncement { id: string; text: string; audience: 'all' | { classId: string }; byUid: string; byName: string; at: string }
 
 /** Cached on userProfiles/{uid} so the app knows which gym to load on start. */

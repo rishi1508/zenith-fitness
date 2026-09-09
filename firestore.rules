@@ -311,6 +311,33 @@ service cloud.firestore {
                                    || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolled']));
                                  allow delete: if false; } }
       match /announcements/{id} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow create: if isGymStaff(gymId) || isAdmin(); allow update, delete: if isGymManager(gymId) || isAdmin(); }
+
+      // ---------- gym feed (src/gymFeed.ts) ----------
+      // Only this gym's people can read it. A member posts as themselves,
+      // deletes their own, and may otherwise touch nothing but their own
+      // key in the reactions map — so a fist-bump can never rewrite the
+      // post it is attached to. Staff can remove anything.
+      match /feed/{postId} {
+        allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+        allow create: if (isGymMember(gymId) || isGymStaff(gymId))
+          && request.resource.data.uid == request.auth.uid
+          && postId.matches(request.auth.uid + '_.*');
+        allow update: if isGymStaff(gymId) || isAdmin()
+          || (resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid)
+          || ((isGymMember(gymId) || isGymStaff(gymId))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+            && request.resource.data.reactions.diff(resource.data.reactions).affectedKeys().hasOnly([request.auth.uid]));
+        allow delete: if isGymStaff(gymId) || isAdmin() || resource.data.uid == request.auth.uid;
+
+        // The post's photo, kept out of the list query so opening the feed
+        // does not download every image in it.
+        match /media/{mediaId} {
+          allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+          allow create: if (isGymMember(gymId) || isGymStaff(gymId)) && request.resource.data.uid == request.auth.uid;
+          allow update: if false;
+          allow delete: if isGymStaff(gymId) || isAdmin() || resource.data.uid == request.auth.uid;
+        }
+      }
     }
   }
 }
