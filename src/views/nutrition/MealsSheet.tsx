@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { collection, deleteDoc, doc, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { Trash2, Upload, Users } from 'lucide-react';
+import { Pencil, Trash2, Upload, Users } from 'lucide-react';
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthContext';
+import { isAdmin } from '../../admin';
 import type { MealSlot, SavedMeal } from '../../types';
 import { deleteMeal, getMeals, saveMeal } from '../../health/store';
 import {
   Button, Card, Chip, EmptyState, IconButton, Sheet, Skeleton, useConfirm, useToast, CAPTION, SUB,
 } from '../../ui';
 import { MEAL_LABEL } from './nutritionHelpers';
+import { MealEditSheet } from './MealEditSheet';
 import { publishMeal } from './sharedMeals';
 
 export interface MealsSheetProps {
@@ -33,6 +35,8 @@ export function MealsSheet({ meal, onClose, onPick }: MealsSheetProps) {
   const [mine, setMine] = useState<SavedMeal[]>(() => getMeals());
   const [community, setCommunity] = useState<SavedMeal[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState<SavedMeal | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadCommunity = useCallback(async () => {
     setLoading(true);
@@ -73,59 +77,121 @@ export function MealsSheet({ meal, onClose, onPick }: MealsSheetProps) {
     }
   };
 
+  /** Own meals are always the viewer's to correct; a community meal needs its
+   *  creator or an admin — the same test `firestore.rules` applies. */
+  const canEdit = (m: SavedMeal) => tab === 'mine' || m.createdBy === user?.uid || isAdmin(user?.uid);
+
+  /** Writes the corrected meal back where it lives: the user's own store when
+   *  it is theirs, `sharedMeals` when it is published (an admin fixing
+   *  somebody else's meal only touches the shared copy). */
+  const applyEdit = async (next: SavedMeal) => {
+    setSavingEdit(true);
+    const own = getMeals().some((m) => m.id === next.id);
+    if (own) { saveMeal(next); setMine(getMeals()); }
+    const published = !!next.shared || !!community?.some((m) => m.id === next.id);
+    if (published) {
+      try {
+        await publishMeal(next);
+      } catch {
+        showToast(own ? 'Saved here, but the shared copy did not update.' : 'Could not update that meal.', 'error');
+        setSavingEdit(false);
+        return;
+      }
+      setCommunity((prev) => prev?.map((m) => (m.id === next.id ? next : m)) ?? prev);
+    }
+    setSavingEdit(false);
+    setEditing(null);
+    showToast(`Updated ${next.name}.`);
+  };
+
   const list = tab === 'mine' ? mine : community ?? [];
 
   return (
-    <Sheet open onClose={onClose} title={`Add a meal to ${MEAL_LABEL[meal].toLowerCase()}`}>
-      <div className="flex gap-2">
-        <Chip on={tab === 'mine'} onClick={() => setTab('mine')}>My meals</Chip>
-        <Chip on={tab === 'community'} onClick={() => setTab('community')}>
-          <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" strokeWidth={2.5} /> Community</span>
-        </Chip>
-      </div>
+    <>
+      <Sheet open onClose={onClose} title={`Add a meal to ${MEAL_LABEL[meal].toLowerCase()}`}>
+        <div className="flex gap-2">
+          <Chip on={tab === 'mine'} onClick={() => setTab('mine')}>My meals</Chip>
+          <Chip on={tab === 'community'} onClick={() => setTab('community')}>
+            <span className="inline-flex items-center gap-1"><Users className="w-3 h-3" strokeWidth={2.5} /> Community</span>
+          </Chip>
+        </div>
 
-      {tab === 'community' && loading && (
-        <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>
-      )}
+        {tab === 'community' && loading && (
+          <div className="space-y-2"><Skeleton className="h-14 w-full" /><Skeleton className="h-14 w-full" /></div>
+        )}
 
-      {!loading && list.length === 0 && (
-        <EmptyState
-          icon={Users}
-          title={tab === 'mine' ? 'No saved meals yet' : 'Nothing shared yet'}
-          body={tab === 'mine'
-            ? 'Log a meal the way you like it, then tap "Save as meal" on that section of the diary.'
-            : 'Meals other members publish will show up here.'}
+        {!loading && list.length === 0 && (
+          <EmptyState
+            icon={Users}
+            title={tab === 'mine' ? 'No saved meals yet' : 'Nothing shared yet'}
+            body={tab === 'mine'
+              ? 'Log a meal the way you like it, then tap "Save as meal" on that section of the diary.'
+              : 'Meals other members publish will show up here.'}
+          />
+        )}
+
+        {!loading && list.length > 0 && (
+          <Card padding="list">
+            {list.map((m) => (
+              <MealRow
+                key={m.id}
+                meal={m}
+                subtitle={
+                  `${m.items.length} item${m.items.length === 1 ? '' : 's'} · ${Math.round(m.kcal)} kcal`
+                  + (tab === 'community' && m.createdByName ? ` · by ${m.createdByName}` : '')
+                  + (tab === 'mine' && m.shared ? ' · shared' : '')
+                }
+                own={tab === 'mine'}
+                canEdit={canEdit(m)}
+                onPick={() => onPick(m)}
+                onEdit={() => setEditing(m)}
+                onShare={() => { void share(m); }}
+                onRemove={() => { void remove(m); }}
+              />
+            ))}
+          </Card>
+        )}
+
+        <p className={CAPTION}>Adding a meal copies its foods — editing them afterwards only changes today.</p>
+        <Button variant="secondary" size="lg" full onClick={onClose}>Close</Button>
+      </Sheet>
+
+      {editing && (
+        <MealEditSheet
+          meal={editing}
+          busy={savingEdit}
+          onClose={() => setEditing(null)}
+          onSave={(next) => { void applyEdit(next); }}
         />
       )}
+    </>
+  );
+}
 
-      {!loading && list.length > 0 && (
-        <Card padding="list">
-          {list.map((m) => (
-            <div key={m.id} className="flex items-center gap-2 min-h-14 px-1 border-b border-border last:border-b-0">
-              <button onClick={() => onPick(m)} className="flex-1 min-w-0 flex flex-col items-start text-left py-2">
-                <span className="text-[15px] leading-[22px] font-semibold text-text truncate w-full">{m.name}</span>
-                <span className="text-[13px] leading-[18px] text-muted truncate w-full">
-                  {m.items.length} item{m.items.length === 1 ? '' : 's'} · {Math.round(m.kcal)} kcal
-                  {tab === 'community' && m.createdByName ? ` · by ${m.createdByName}` : ''}
-                  {tab === 'mine' && m.shared ? ' · shared' : ''}
-                </span>
-              </button>
-              {tab === 'mine' && (
-                <>
-                  {!m.shared && (
-                    <IconButton icon={Upload} label={`Publish ${m.name}`} size="sm" onClick={() => { void share(m); }} />
-                  )}
-                  <IconButton icon={Trash2} label={`Delete ${m.name}`} size="sm" onClick={() => { void remove(m); }} />
-                </>
-              )}
-            </div>
-          ))}
-        </Card>
+/** One meal in the list: tap to add it, plus the actions the viewer is
+ *  allowed — Edit (creator or admin), Publish and Delete (own meals). */
+function MealRow({ meal, subtitle, own, canEdit, onPick, onEdit, onShare, onRemove }: {
+  meal: SavedMeal;
+  subtitle: string;
+  own: boolean;
+  canEdit: boolean;
+  onPick: () => void;
+  onEdit: () => void;
+  onShare: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 min-h-14 px-1 border-b border-border last:border-b-0">
+      <button onClick={onPick} className="flex-1 min-w-0 flex flex-col items-start text-left py-2">
+        <span className="text-[15px] leading-[22px] font-semibold text-text truncate w-full">{meal.name}</span>
+        <span className="text-[13px] leading-[18px] text-muted truncate w-full">{subtitle}</span>
+      </button>
+      {canEdit && <IconButton icon={Pencil} label={`Edit ${meal.name}`} size="sm" onClick={onEdit} />}
+      {own && !meal.shared && (
+        <IconButton icon={Upload} label={`Publish ${meal.name}`} size="sm" onClick={onShare} />
       )}
-
-      <p className={CAPTION}>Adding a meal copies its foods — editing them afterwards only changes today.</p>
-      <Button variant="secondary" size="lg" full onClick={onClose}>Close</Button>
-    </Sheet>
+      {own && <IconButton icon={Trash2} label={`Delete ${meal.name}`} size="sm" onClick={onRemove} />}
+    </div>
   );
 }
 

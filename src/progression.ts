@@ -193,3 +193,28 @@ export function buildProgression({ sessions, equipment, targetReps }: {
     },
   };
 }
+
+/**
+ * The most recent top set for every exercise the user has ever logged, keyed
+ * by exercise id AND by lower-cased name (workouts from a buddy session carry
+ * the host's ids). One pass over history so a list of 150 exercises can show
+ * "last: 80 kg × 5" without 150 scans.
+ */
+export function lastTopSetByExercise(workouts: readonly Workout[]): Map<string, LoggedSet> {
+  const out = new Map<string, LoggedSet>();
+  // Oldest first, so a later workout simply overwrites an earlier one.
+  const ordered = [...workouts].sort((a, b) => newestFirst(b, a));
+  for (const workout of ordered) {
+    if (!workout.completed || workout.type === 'rest') continue;
+    for (const ex of workout.exercises) {
+      const sets = ex.sets
+        .filter((s) => s.completed && s.reps > 0)
+        .map((s) => ({ weight: s.weight, reps: s.reps }));
+      const best = topSet(sets);
+      if (!best) continue;
+      out.set(ex.exerciseId, best);
+      out.set(ex.exerciseName.trim().toLowerCase(), best);
+    }
+  }
+  return out;
+}

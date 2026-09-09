@@ -84,6 +84,25 @@ export function removeEntry(day: NutritionDay, entryId: string): NutritionDay {
   return { ...day, entries: day.entries.filter((e) => e.id !== entryId) };
 }
 
+/**
+ * Water is counted in glasses everywhere the user sees it, but stored in
+ * millilitres (`NutritionDay.waterMl`, `NutritionTargets.waterMl`) so nothing
+ * in the data model or the sync payload changes. One glass is 250 ml.
+ */
+export const GLASS_ML = 250;
+
+/** Millilitres → whole glasses, never negative. 750 → 3, 2730 → 11. */
+export function glassesFor(ml: number): number {
+  if (!Number.isFinite(ml) || ml <= 0) return 0;
+  return Math.round(ml / GLASS_ML);
+}
+
+/** Whole glasses → millilitres, the figure that is actually stored. */
+export function mlForGlasses(glasses: number): number {
+  if (!Number.isFinite(glasses) || glasses <= 0) return 0;
+  return Math.round(glasses) * GLASS_ML;
+}
+
 /** 0.25 steps for household units, 5 g/ml steps for the raw unit. Never below one step. */
 export function stepQty(qty: number, unitLabel: string, dir: 1 | -1): number {
   const step = unitLabel === 'g' || unitLabel === 'ml' ? 5 : 0.25;

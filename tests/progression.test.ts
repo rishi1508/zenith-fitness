@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildProgression, collectExerciseSessions, formatKg, formatSet, topSet, WEIGHT_STEP_KG,
+  buildProgression, collectExerciseSessions, formatKg, formatSet, lastTopSetByExercise, topSet, WEIGHT_STEP_KG,
 } from '../src/progression';
 import type { ExerciseSession } from '../src/progression';
 import type { Workout } from '../src/types';
@@ -255,5 +255,31 @@ describe('formatting', () => {
   it('names an unloaded set for what it is', () => {
     expect(formatSet({ weight: 80, reps: 5 })).toBe('80 kg × 5');
     expect(formatSet({ weight: 0, reps: 12 })).toBe('Bodyweight × 12');
+  });
+});
+
+describe('lastTopSetByExercise', () => {
+  const w = (date: string, exerciseId: string, name: string, sets: Array<[number, number]>) => ({
+    id: date, date, name: 'W', type: 'custom', completed: true, startedAt: date,
+    exercises: [{
+      id: 'e', exerciseId, exerciseName: name,
+      sets: sets.map(([weight, reps], i) => ({ id: `${date}-${i}`, weight, reps, completed: true })),
+    }],
+  }) as unknown as Workout;
+
+  it('keeps the newest session and indexes by id and name', () => {
+    const map = lastTopSetByExercise([
+      w('2026-09-01T10:00:00Z', 'bench', 'Bench Press', [[60, 8], [70, 5]]),
+      w('2026-09-08T10:00:00Z', 'bench', 'Bench Press', [[80, 5], [75, 6]]),
+    ]);
+    expect(map.get('bench')).toEqual({ weight: 80, reps: 5 });
+    expect(map.get('bench press')).toEqual({ weight: 80, reps: 5 });
+  });
+
+  it('skips rest days and unlogged sets', () => {
+    const rest = { id: 'r', date: '2026-09-09T10:00:00Z', name: 'Rest Day', type: 'rest', completed: true, exercises: [] } as unknown as Workout;
+    const map = lastTopSetByExercise([w('2026-09-01T10:00:00Z', 'squat', 'Back Squat', [[100, 5]]), rest]);
+    expect(map.get('squat')).toEqual({ weight: 100, reps: 5 });
+    expect(map.size).toBe(2);
   });
 });

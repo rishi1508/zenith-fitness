@@ -71,6 +71,94 @@ export function membershipStatus(m: Pick<GymMember, 'planEnd' | 'frozen'>, now: 
   return 'active';
 }
 
+// ---------- renewal outreach ----------
+
+/**
+ * Members the owner should chase: the plan has lapsed or ends within a
+ * week. Frozen members and members without a plan are left alone —
+ * chasing them is noise. Renewal is where independent gyms lose most of
+ * their revenue, so this feeds the one-tap WhatsApp/UPI actions below.
+ */
+export function needsRenewal(m: Pick<GymMember, 'planEnd' | 'frozen'>, now: Date = new Date()): boolean {
+  const status = membershipStatus(m, now);
+  return status === 'expiring' || status === 'expired';
+}
+
+/**
+ * An Indian mobile number in the `919876543210` form wa.me wants, or
+ * null when the field holds something we cannot dial ("front desk", a
+ * landline, a half-typed number). Accepts +91, 0091 and bare 10-digit
+ * input, with any spacing or punctuation.
+ */
+export function normalizePhoneIN(phone: string | undefined | null): string | null {
+  const digits = (phone ?? '').replace(/\D/g, '').replace(/^0+/, '');
+  if (/^[6-9]\d{9}$/.test(digits)) return `91${digits}`;
+  if (/^91[6-9]\d{9}$/.test(digits)) return digits;
+  return null;
+}
+
+/** wa.me deep link with the message pre-filled — no WhatsApp API, no cost. */
+export function whatsAppUrl(phone: string | undefined | null, message: string): string | null {
+  const to = normalizePhoneIN(phone);
+  return to ? `https://wa.me/${to}?text=${encodeURIComponent(message)}` : null;
+}
+
+/**
+ * `upi://pay` intent the owner can share so the member pays from any UPI
+ * app. Amount is omitted when there is nothing to charge, letting the
+ * member enter it.
+ */
+export function upiPayUri(opts: { vpa: string; payeeName: string; amount?: number; note?: string }): string {
+  const params = new URLSearchParams();
+  params.set('pa', opts.vpa);
+  params.set('pn', opts.payeeName);
+  if (opts.amount && opts.amount > 0) params.set('am', opts.amount.toFixed(2));
+  params.set('cu', 'INR');
+  if (opts.note) params.set('tn', opts.note);
+  return `upi://pay?${params.toString()}`;
+}
+
+function shortDate(dateISO: string): string {
+  return new Date(dateISO.slice(0, 10) + 'T00:00:00')
+    .toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * The renewal message itself. Warm, specific and never shaming — the
+ * member gets their own name, their plan, the date and the price, so the
+ * reply is a yes/no rather than a question.
+ */
+export function buildRenewalMessage(opts: {
+  memberName: string;
+  gymName: string;
+  planName?: string;
+  planEnd?: string;
+  amount?: number;
+  now?: Date;
+}): string {
+  const now = opts.now ?? new Date();
+  const firstName = opts.memberName.trim().split(/\s+/)[0];
+  const lapsed = !!opts.planEnd && dateOnly(opts.planEnd) < localDateISO(now);
+  const lines = [`Hi ${firstName || 'there'},`, ''];
+
+  if (opts.planEnd) {
+    const plan = opts.planName ? `Your ${opts.planName} plan` : 'Your membership';
+    lines.push(`${plan} at ${opts.gymName} ${lapsed ? 'ended' : 'ends'} on ${shortDate(opts.planEnd)}.`);
+  } else {
+    lines.push('Your membership is due for renewal.');
+  }
+
+  if (opts.amount && opts.amount > 0) {
+    lines.push(`Renewal is ₹${opts.amount.toLocaleString('en-IN')}.`);
+  }
+  lines.push(
+    lapsed
+      ? `Shall I renew it so you are back on the floor at ${opts.gymName} tomorrow?`
+      : `Shall I keep your spot at ${opts.gymName} running so you do not miss a session?`,
+  );
+  return lines.join('\n');
+}
+
 // ---------- class scheduling ----------
 
 /**

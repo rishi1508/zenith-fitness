@@ -1,39 +1,16 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Dumbbell, ChevronRight, ChevronLeft, Check, Clock, Search, X, Edit3, Trash2, Plus,
+  Dumbbell, ChevronRight, ChevronLeft, Check, Clock, X, Edit3, Trash2, Plus,
   TrendingUp, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play, Info
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
-import * as sessionService from '../workoutSessionService';
 import { hapticImpact, hapticNotification } from '../haptics';
 import { defaultRestSecondsFor } from '../restTimer';
-import { ExerciseForm } from '../components/ExerciseForm';
 import { labelize } from '../exerciseUtils';
-import type { ExerciseFormValues } from '../components/ExerciseForm';
-import { createAndPublishExercise } from '../sharedExercises';
+import { ExercisePickerSheet } from './exercises/ExercisePickerSheet';
 
 import { useToast, useConfirm } from '../ui';
-/** Shared by both pickers: create the exercise locally + in the shared
- *  library, and broadcast it to the group session (if any) so buddies get
- *  the SAME id instead of re-creating it with a different one. */
-function createExerciseFromForm(values: ExerciseFormValues, sessionId?: string): Exercise {
-  const created = createAndPublishExercise({
-    name: values.name,
-    muscleGroup: values.muscleGroup,
-    category: values.category,
-    equipment: values.equipment,
-    sharedNotes: values.sharedNotes || undefined,
-    notes: values.notes || undefined,
-    videoUrl: values.videoUrl || undefined,
-  });
-  if (sessionId) {
-    sessionService
-      .addCustomExerciseToSession(sessionId, created)
-      .catch((err) => console.warn('[Session] broadcast new exercise failed', err));
-  }
-  return created;
-}
 
 // Module-level AudioContext so oscillators don't constantly warm up a new
 // context (which Android autoplay policy keeps in "suspended"). Lazily
@@ -187,8 +164,6 @@ export function ActiveWorkoutView({
   
   // Add exercise to current workout
   const [showAddExercise, setShowAddExercise] = useState(false);
-  const [addSearchQuery, setAddSearchQuery] = useState('');
-  const [addCreating, setAddCreating] = useState(false);
   const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
 
   const refreshExercises = () => setAllExercises(storage.getExercises());
@@ -213,7 +188,6 @@ export function ActiveWorkoutView({
     };
     onUpdate(newWorkout);
     setShowAddExercise(false);
-    setAddSearchQuery('');
   };
 
   const { showToast } = useToast();
@@ -609,101 +583,16 @@ export function ActiveWorkoutView({
         </button>
       </div>
 
-      {/* Add Exercise Modal */}
-      {showAddExercise && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center animate-fadeIn">
-          <div className="bg-[#1a1a1a] w-full max-h-[80vh] rounded-t-2xl overflow-hidden">
-            <div className="p-4 border-b border-[#2e2e2e]">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold">Add Exercise</h3>
-                <button
-                  onClick={() => { setShowAddExercise(false); setAddSearchQuery(''); setAddCreating(false); }}
-                  className="p-2 text-zinc-400 hover:text-white"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              {!addCreating && (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                  <input
-                    type="text"
-                    value={addSearchQuery}
-                    onChange={(e) => setAddSearchQuery(e.target.value)}
-                    placeholder="Search exercises..."
-                    className="w-full pl-10 pr-4 py-3 bg-[#252525] border border-[#3e3e3e] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
-                    autoFocus
-                  />
-                </div>
-              )}
-            </div>
-            {addCreating ? (
-              <div className="overflow-y-auto max-h-[60vh] p-4">
-                <div className="text-sm text-zinc-400 mb-3">New exercise — it goes into your library and the shared library.</div>
-                <ExerciseForm
-                  mode="create"
-                  isDark
-                  compact
-                  canEditShared
-                  initial={{ name: addSearchQuery.trim() }}
-                  onCancel={() => setAddCreating(false)}
-                  onUseExisting={(ex) => { setAddCreating(false); addExercise(ex); }}
-                  onSubmit={(values) => {
-                    const created = createExerciseFromForm(values, workout.sessionId);
-                    refreshExercises();
-                    setAddCreating(false);
-                    addExercise(created);
-                  }}
-                />
-              </div>
-            ) : (
-            <div className="overflow-y-auto max-h-[60vh] p-2">
-              {allExercises
-                .filter(ex =>
-                  ex.name.toLowerCase().includes(addSearchQuery.toLowerCase()) &&
-                  !workout.exercises.some(we => we.exerciseId === ex.id)
-                )
-                .map(ex => {
-                  const lastData = storage.getLastExerciseSession(ex.id);
-                  return (
-                    <button
-                      key={ex.id}
-                      onClick={() => addExercise(ex)}
-                      className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="font-medium">{ex.name}</div>
-                        <div className="text-xs text-zinc-500">
-                          {labelize(ex.muscleGroup)}
-                          {ex.equipment && <span> · {labelize(ex.equipment)}</span>}
-                          {lastData && lastData[0] && (
-                            <span className="text-orange-400 ml-2">
-                              Last: {lastData[0].weight}kg x {lastData[0].reps}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <Plus className="w-4 h-4 text-orange-400" />
-                    </button>
-                  );
-                })}
-              {addSearchQuery.trim() && (
-                <div className="mt-3 pt-3 border-t border-[#2e2e2e]">
-                  <div className="text-xs text-zinc-500 mb-2 px-3">Can't find what you're looking for?</div>
-                  <button
-                    onClick={() => setAddCreating(true)}
-                    className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center gap-2 text-orange-400"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Create "{addSearchQuery.trim()}"…</span>
-                  </button>
-                </div>
-              )}
-            </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ExercisePickerSheet
+        open={showAddExercise}
+        title="Add exercise"
+        exercises={allExercises.filter((ex) => !workout.exercises.some((we) => we.exerciseId === ex.id))}
+        action="add"
+        sessionId={workout.sessionId}
+        onCreated={refreshExercises}
+        onPick={(ex) => { setShowAddExercise(false); addExercise(ex); }}
+        onClose={() => setShowAddExercise(false)}
+      />
     </div>
   );
 }
@@ -730,19 +619,10 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [swapCreating, setSwapCreating] = useState(false);
   const completedCount = exercise.sets.filter(s => s.completed).length;
   
   // Get all exercises for the selector
   const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
-  const filteredExercises = useMemo(() =>
-    allExercises.filter(ex =>
-      ex.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      ex.id !== exercise.exerciseId // Exclude current exercise
-    ),
-    [allExercises, searchQuery, exercise.exerciseId]
-  );
   
   // Get last session data for progressive overload tracking
   const lastSession = useMemo(() => 
@@ -811,120 +691,16 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
 
   return (
     <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
-      {/* Exercise Selector Modal */}
-      {showExerciseSelector && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end justify-center animate-fadeIn">
-          <div className="bg-[#1a1a1a] w-full max-h-[80vh] rounded-t-2xl overflow-hidden">
-            <div className="p-4 border-b border-[#2e2e2e]">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold">Swap Exercise</h3>
-                <button 
-                  onClick={() => {
-                    setShowExerciseSelector(false);
-                    setSearchQuery('');
-                    setSwapCreating(false);
-                  }}
-                  className="p-2 text-zinc-400 hover:text-white"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              {!swapCreating && (
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search exercises..."
-                    className="w-full pl-10 pr-4 py-3 bg-[#252525] border border-[#3e3e3e] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
-                    autoFocus
-                  />
-                </div>
-              )}
-            </div>
-            {swapCreating ? (
-              <div className="overflow-y-auto max-h-[60vh] p-4">
-                <div className="text-sm text-zinc-400 mb-3">New exercise — it goes into your library and the shared library.</div>
-                <ExerciseForm
-                  mode="create"
-                  isDark
-                  compact
-                  canEditShared
-                  initial={{ name: searchQuery.trim() }}
-                  onCancel={() => setSwapCreating(false)}
-                  onUseExisting={(ex) => {
-                    setSwapCreating(false);
-                    onSwapExercise(ex);
-                    setShowExerciseSelector(false);
-                    setSearchQuery('');
-                  }}
-                  onSubmit={(values) => {
-                    const created = createExerciseFromForm(values, sessionId);
-                    setAllExercises(storage.getExercises());
-                    onExerciseCreated();
-                    setSwapCreating(false);
-                    onSwapExercise(created);
-                    setShowExerciseSelector(false);
-                    setSearchQuery('');
-                  }}
-                />
-              </div>
-            ) : (
-            <div className="overflow-y-auto max-h-[60vh] p-2">
-              {filteredExercises.length === 0 && !searchQuery.trim() ? (
-                <div className="text-center py-8 text-zinc-500">
-                  No exercises found
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {filteredExercises.map(ex => {
-                    const lastData = storage.getLastExerciseSession(ex.id);
-                    return (
-                      <button
-                        key={ex.id}
-                        onClick={() => {
-                          onSwapExercise(ex);
-                          setShowExerciseSelector(false);
-                          setSearchQuery('');
-                        }}
-                        className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center justify-between"
-                      >
-                        <div>
-                          <div className="font-medium">{ex.name}</div>
-                          <div className="text-xs text-zinc-500">
-                            {labelize(ex.muscleGroup)}
-                            {ex.equipment && <span> · {labelize(ex.equipment)}</span>}
-                            {lastData && lastData[0] && (
-                              <span className="text-orange-400 ml-2">
-                                Last: {lastData[0].weight}kg × {lastData[0].reps}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-zinc-600" />
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {searchQuery.trim() && (
-                <div className="mt-3 pt-3 border-t border-[#2e2e2e]">
-                  <div className="text-xs text-zinc-500 mb-2 px-3">Can't find what you're looking for?</div>
-                  <button
-                    onClick={() => setSwapCreating(true)}
-                    className="w-full p-3 rounded-lg text-left hover:bg-[#252525] transition-colors flex items-center gap-2 text-orange-400"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Create "{searchQuery.trim()}"…</span>
-                  </button>
-                </div>
-              )}
-            </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ExercisePickerSheet
+        open={showExerciseSelector}
+        title="Swap exercise"
+        exercises={allExercises.filter((ex) => ex.id !== exercise.exerciseId)}
+        action="swap"
+        sessionId={sessionId}
+        onCreated={() => { setAllExercises(storage.getExercises()); onExerciseCreated(); }}
+        onPick={(ex) => { setShowExerciseSelector(false); onSwapExercise(ex); }}
+        onClose={() => setShowExerciseSelector(false)}
+      />
       
       <div className="p-4 flex items-center justify-between">
         <button

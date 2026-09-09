@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import type { FoodEntry, NutritionDay } from '../src/types';
 import {
-  addDays, canGoForward, copyDayEntries, dayLabel, entriesForMeal, explainTargets, foodFromEntry,
-  formatQty, mealKcal, parseUnits, removeEntry, shiftDate, sourceLabel, stepQty, upsertEntry,
+  GLASS_ML, addDays, canGoForward, copyDayEntries, dayLabel, entriesForMeal, explainTargets,
+  foodFromEntry, formatQty, glassesFor, mealKcal, mlForGlasses, parseUnits, removeEntry, shiftDate,
+  sourceLabel, stepQty, upsertEntry,
 } from '../src/views/nutrition/nutritionHelpers';
 
 function entry(over: Partial<FoodEntry> = {}): FoodEntry {
@@ -101,6 +102,33 @@ describe('quantity stepper', () => {
     expect(formatQty(1)).toBe('1');
     expect(formatQty(1.5)).toBe('1.5');
     expect(formatQty(0.25)).toBe('0.25');
+  });
+});
+
+describe('water in glasses', () => {
+  it('counts a glass as 250 ml', () => {
+    expect(GLASS_ML).toBe(250);
+    expect(glassesFor(750)).toBe(3);
+    expect(mlForGlasses(3)).toBe(750);
+  });
+
+  it('rounds an auto target to whole glasses', () => {
+    // computeTargets rounds to the nearest 50 ml, so goals are rarely exact.
+    expect(glassesFor(2730)).toBe(11);
+    expect(glassesFor(2750)).toBe(11);
+    expect(glassesFor(3000)).toBe(12);
+  });
+
+  it('never goes negative or NaN', () => {
+    expect(glassesFor(0)).toBe(0);
+    expect(glassesFor(-500)).toBe(0);
+    expect(glassesFor(Number.NaN)).toBe(0);
+    expect(mlForGlasses(-2)).toBe(0);
+    expect(mlForGlasses(Number.NaN)).toBe(0);
+  });
+
+  it('round-trips whole glasses', () => {
+    for (const n of [0, 1, 4, 12]) expect(glassesFor(mlForGlasses(n))).toBe(n);
   });
 });
 

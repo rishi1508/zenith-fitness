@@ -11,8 +11,8 @@ import { Button, Card, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, S
 import { NutritionRing } from './NutritionRing';
 import { FoodEntrySheet } from './FoodEntrySheet';
 import {
-  MEALS, MEAL_LABEL, canGoForward, copyDayEntries, dayLabel, entriesForMeal, foodFromEntry,
-  basisLabel, formatQty, mealKcal, removeEntry, shiftDate, toSavedItem,
+  GLASS_ML, MEALS, MEAL_LABEL, canGoForward, copyDayEntries, dayLabel, entriesForMeal, foodFromEntry,
+  basisLabel, formatQty, glassesFor, mealKcal, removeEntry, shiftDate, toSavedItem,
 } from './nutritionHelpers';
 import { MealsSheet, SaveMealSheet } from './MealsSheet';
 import { publishMeal } from './sharedMeals';
@@ -27,8 +27,6 @@ export interface NutritionTodayViewProps {
   /** Day to open on (YYYY-MM-DD). Defaults to today. */
   initialDate?: string;
 }
-
-const WATER_STEP_ML = 250;
 
 /**
  * The food diary (docs/HEALTH_SPEC.md §3). Renders the cached day
@@ -142,19 +140,23 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
             <div className="min-w-0">
               <div className={CAPTION}>Water</div>
               <div className="text-[15px] font-bold tabular-nums text-text">
-                {day.waterMl} ml
-                {targets?.waterMl ? <span className="text-subtle font-semibold"> / {targets.waterMl} ml</span> : null}
+                {targets?.waterMl
+                  ? `${glassesFor(day.waterMl)} of ${glassesFor(targets.waterMl)} glasses`
+                  : `${glassesFor(day.waterMl)} glass${glassesFor(day.waterMl) === 1 ? '' : 'es'}`}
+              </div>
+              <div className="text-xs text-subtle tabular-nums">
+                {day.waterMl} ml{targets?.waterMl ? ` of ${targets.waterMl} ml` : ''}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <IconButton
-              icon={Minus} label="Remove 250 ml" size="sm"
+              icon={Minus} label="Remove a glass" size="sm"
               disabled={day.waterMl <= 0}
               className={day.waterMl <= 0 ? 'opacity-40 pointer-events-none' : ''}
-              onClick={() => addWater(-WATER_STEP_ML)}
+              onClick={() => addWater(-GLASS_ML)}
             />
-            <Button variant="secondary" size="sm" icon={Plus} onClick={() => addWater(WATER_STEP_ML)}>250 ml</Button>
+            <Button variant="secondary" size="sm" icon={Plus} onClick={() => addWater(GLASS_ML)}>1 glass</Button>
           </div>
         </div>
         {targets?.waterMl ? (

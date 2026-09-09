@@ -10,7 +10,7 @@ import { computeTargets, estimateBmr, estimateMaintenanceKcal } from '../../heal
 import {
   Button, Card, Chip, IconButton, SegmentedControl, Sheet, StatTile, useToast, CAPTION, H2, SUB,
 } from '../../ui';
-import { explainTargets } from './nutritionHelpers';
+import { GLASS_ML, explainTargets, glassesFor, mlForGlasses } from './nutritionHelpers';
 
 export interface TargetsViewProps {
   onBack: () => void;
@@ -160,7 +160,8 @@ export function TargetsView({ onBack }: TargetsViewProps) {
                   {auto.kcal} <span className="font-sans text-sm font-medium text-muted">kcal</span>
                 </div>
                 <p className={`${SUB} mt-1`}>
-                  {auto.protein} g protein · {auto.carbs} g carbs · {auto.fat} g fat · {auto.waterMl} ml water
+                  {auto.protein} g protein · {auto.carbs} g carbs · {auto.fat} g fat
+                  {' · '}{glassesFor(auto.waterMl)} glasses water ({auto.waterMl} ml)
                 </p>
                 <p className="text-xs text-subtle mt-2 leading-relaxed">
                   {explainTargets({ bmr, maintenance, activityLevel, goal, ratePctPerWeek: ratePct, weightKg, kcal: auto.kcal })}
@@ -235,7 +236,8 @@ function ManualTargets({ initial, onSave }: {
   const [protein, setProtein] = useState(String(initial?.protein ?? ''));
   const [carbs, setCarbs] = useState(String(initial?.carbs ?? ''));
   const [fat, setFat] = useState(String(initial?.fat ?? ''));
-  const [water, setWater] = useState(String(initial?.waterMl ?? 3000));
+  // Water is entered in glasses and stored in millilitres (1 glass = 250 ml).
+  const [glasses, setGlasses] = useState(String(glassesFor(initial?.waterMl ?? 3000)));
 
   const num = (v: string) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n >= 0 ? n : 0; };
   const valid = num(kcal) > 0;
@@ -248,9 +250,12 @@ function ManualTargets({ initial, onSave }: {
           <Field label="Protein" suffix="g" value={protein} onChange={setProtein} />
           <Field label="Carbs" suffix="g" value={carbs} onChange={setCarbs} />
           <Field label="Fat" suffix="g" value={fat} onChange={setFat} />
-          <Field label="Water" suffix="ml" value={water} onChange={setWater} />
+          <Field label="Water" suffix="glasses" value={glasses} onChange={setGlasses} />
         </div>
         <p className="text-xs text-subtle mt-3">
+          1 glass = {GLASS_ML} ml, so that is {mlForGlasses(num(glasses))} ml a day.
+        </p>
+        <p className="text-xs text-subtle mt-1">
           Manual targets stay put — nothing recalculates them when your weight moves.
         </p>
       </Card>
@@ -258,7 +263,7 @@ function ManualTargets({ initial, onSave }: {
         variant="primary" size="lg" full disabled={!valid}
         onClick={() => onSave({
           kcal: num(kcal), protein: num(protein), carbs: num(carbs), fat: num(fat),
-          waterMl: num(water), mode: 'manual', updatedAt: new Date().toISOString(),
+          waterMl: mlForGlasses(num(glasses)), mode: 'manual', updatedAt: new Date().toISOString(),
         })}
       >
         Save targets
