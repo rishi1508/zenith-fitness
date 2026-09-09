@@ -220,7 +220,7 @@ export async function createGym(input: { name: string; address?: string; phone?:
  *  AdminGymsView's edit sheet. */
 export async function updateGym(
   gymId: string,
-  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'location' | 'geofenceM' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
+  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'location' | 'geofenceM' | 'upiVpa' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
 ): Promise<void> {
   await updateDoc(doc(db, 'gyms', gymId), stripUndefined({ ...patch }));
 }

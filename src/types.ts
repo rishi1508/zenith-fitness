@@ -453,6 +453,8 @@ export interface Gym {
   location?: { lat: number; lng: number };
   /** Geofence radius in metres. Absent = DEFAULT_GEOFENCE_M (src/geo.ts). */
   geofenceM?: number;
+  /** The gym's UPI id, used to build renewal payment links. */
+  upiVpa?: string;
   ownerUid: string;
   staff: Record<string, Exclude<GymRole, 'member'>>;
   joinCode: string;              // 6 chars A–Z0–9, members enter this to join

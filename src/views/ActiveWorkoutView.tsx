@@ -10,6 +10,7 @@ import { feedback } from '../feedback';
 import { defaultRestSecondsFor } from '../restTimer';
 import { labelize } from '../exerciseUtils';
 import { ExercisePickerSheet } from './exercises/ExercisePickerSheet';
+import { buildProgression, collectExerciseSessions, formatSet } from '../progression';
 
 import { useToast, useConfirm } from '../ui';
 
@@ -605,6 +606,20 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exercise.exerciseId, exercise.exerciseName, showInfo, expanded]);
 
+  // What to aim for today, from this exercise's own history (src/progression.ts).
+  // Pure and local: no AI, no network, and it stays quiet until there are two
+  // sessions to reason from.
+  const progression = useMemo(
+    () => buildProgression({
+      sessions: collectExerciseSessions(storage.getWorkouts(), exercise.exerciseId, exercise.exerciseName),
+      equipment: exerciseData.equipment,
+      targetReps: exercise.sets[0]?.reps,
+    }),
+    // Recomputed when the card opens, not on every keystroke in a set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [exercise.exerciseId, exercise.exerciseName, exerciseData.equipment, expanded],
+  );
+
   // Get PR for this exercise — match by id OR by name so session workouts
   // (which carry the host's exerciseIds) resolve to the local user's PR.
   const exercisePR = useMemo(() => {
@@ -791,6 +806,26 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
+          {/* What to aim for today */}
+          {progression.suggestion && (
+            <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 p-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-orange-400 shrink-0" />
+                <span className="text-sm font-semibold">
+                  {progression.suggestion.kind === 'hold' ? 'Hold at' : 'Try'}{' '}
+                  {progression.suggestion.weight > 0 ? `${progression.suggestion.weight} kg × ` : ''}
+                  {progression.suggestion.reps} reps
+                </span>
+                {progression.last && (
+                  <span className="text-xs text-zinc-500 ml-auto shrink-0">
+                    Last: {formatSet(progression.last)}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-zinc-400 mt-1">{progression.suggestion.why}</p>
+            </div>
+          )}
+
           {/* Exercise Notes & Video */}
           {(exerciseData.sharedNotes || exerciseData.notes || exerciseData.videoUrl) && (
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">

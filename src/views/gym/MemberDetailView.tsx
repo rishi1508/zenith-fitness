@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Phone, Mail, Calendar, Snowflake, Trash2, Pencil, Receipt, History } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, Calendar, Snowflake, Trash2, Pencil, Receipt, History, MessageCircle, IndianRupee } from 'lucide-react';
 import type { GymViewProps } from './types';
 import type { GymMember, GymPayment, GymCheckin, PaymentMethod } from '../../types';
 import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { listenToMembers, listPayments, listCheckins, updateMember, removeMember, membershipStatus } from '../../gymService';
-import { localDateISO } from '../../gymStats';
+import { buildRenewalMessage, localDateISO, needsRenewal, upiPayUri, whatsAppUrl } from '../../gymStats';
 import { clearMemberTrainer } from '../../gymStaffHelpers';
 import { StatusChip } from '../../components/gym/StaffMemberRow';
 import { StaffPaymentSheet } from '../../components/gym/StaffPaymentSheet';
@@ -101,7 +101,9 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
   }
 
   const status = membershipStatus(member);
-  const planName = gym.plans.find((p) => p.id === member.planId)?.name;
+  const plan = gym.plans.find((p) => p.id === member.planId);
+  const planName = plan?.name;
+  const planPrice = plan?.price;
 
   const startEditPlan = () => {
     setPlanIdDraft(member.planId ?? '');
@@ -215,6 +217,52 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
           )}
         </div>
       </div>
+
+      {/* Renewal — the point at which independent gyms lose most of their
+          revenue, so it is one tap, not a workflow. */}
+      {canEdit && needsRenewal(member) && (
+        <div className={cardCls}>
+          <div className="text-sm font-medium mb-1">
+            {member.planEnd && daysLeft(member.planEnd) < 0 ? 'Membership lapsed' : 'Renewal due'}
+          </div>
+          <p className={`text-xs mb-3 ${subtle}`}>
+            {member.phone
+              ? 'Send the reminder from your own WhatsApp — the message is written for you.'
+              : 'No phone number on file, so there is nobody to message.'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                const url = whatsAppUrl(member.phone, buildRenewalMessage({
+                  memberName: member.name, gymName: gym.name, planName,
+                  planEnd: member.planEnd, amount: planPrice,
+                }));
+                if (!url) { showToast("That phone number can't be dialled.", 'error'); return; }
+                window.open(url, '_blank', 'noopener');
+              }}
+              disabled={!member.phone}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white disabled:opacity-50"
+            >
+              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp reminder
+            </button>
+            <button
+              onClick={() => {
+                if (!gym.upiVpa) { showToast('Add the gym\'s UPI id in settings first.', 'error'); return; }
+                const uri = upiPayUri({
+                  vpa: gym.upiVpa, payeeName: gym.name, amount: planPrice,
+                  note: planName ? `${planName} renewal` : 'Membership renewal',
+                });
+                void navigator.clipboard?.writeText(uri)
+                  .then(() => showToast('Payment link copied'))
+                  .catch(() => showToast('Could not copy the link.', 'error'));
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${isDark ? 'bg-[#252525] text-zinc-300 hover:bg-[#303030]' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              <IndianRupee className="w-3.5 h-3.5" /> Copy UPI link
+            </button>
+          </div>
+        </div>
+      )}
 
       {canEdit && (
         <div className={cardCls}>

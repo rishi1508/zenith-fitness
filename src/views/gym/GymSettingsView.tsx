@@ -62,6 +62,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
   const [savingLocation, setSavingLocation] = useState(false);
   const [address, setAddress] = useState(gym.address ?? '');
   const [phone, setPhone] = useState(gym.phone ?? '');
+  const [upiVpa, setUpiVpa] = useState(gym.upiVpa ?? '');
   const [logoUrl, setLogoUrl] = useState(gym.logoUrl ?? '');
   const [accentColor, setAccentColor] = useState(gym.accentColor ?? '');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -95,6 +96,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
         name: name.trim(),
         address: address.trim() || undefined,
         phone: phone.trim() || undefined,
+        upiVpa: upiVpa.trim() || undefined,
         logoUrl: logoUrl.trim() || undefined,
         accentColor: accentColor || undefined,
       });
@@ -229,6 +231,13 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
           <div>
             <label className={labelCls}>Address</label>
             <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>UPI id <span className="opacity-70">· used for renewal payment links</span></label>
+            <input
+              type="text" value={upiVpa} onChange={(e) => setUpiVpa(e.target.value)}
+              placeholder="irontemple@okhdfc" className={inputCls}
+            />
           </div>
           <div>
             <label className={labelCls}>Accent colour</label>
