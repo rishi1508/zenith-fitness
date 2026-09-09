@@ -211,3 +211,40 @@ Two different bugs wore the same symptom, which is why the first fix did not lan
 Connectivity: `useOnlineStatus` gave Firestore a single 4 s attempt; a cold channel on mobile data is
 often slower, so the blocking gate appeared on nearly every launch. Now two attempts at 8 s each, and a
 `permission-denied` still counts as reachable.
+
+## 13. Energy ledger (3.19.0, 2026-09-09)
+`src/energy.ts` is the model, `src/health/energyDay.ts` wires it to what is stored, and
+`src/health/energyInsights.ts` turns it into advice. Three layers, deliberately kept apart so
+nothing is counted twice:
+
+| Layer | Source | Notes |
+|---|---|---|
+| `resting` | Mifflin–St Jeor BMR ÷ 24 h | Null when the profile lacks height/age/sex. Fallback 1 kcal/kg/h. |
+| `workouts` | Logged sets × the exercise's MET | Session minutes apportioned by `sets × (setSeconds + restSeconds)`, priced per exercise; real `duration` is ground truth, capped at 240 min. |
+| `movement` | Steps, or the device's own active kcal | `active = max(device, our estimate)`, never a sum. |
+
+`activeKcal = (MET − 1) × restingKcalPerHour × hours`, so the resting burn during a session is
+never double counted. `Exercise.met` is optional: absent means derive it from the category
+(`DEFAULT_MET_BY_CATEGORY`) plus an equipment delta. The creator can set a real MET in the
+exercise library and it rides along on the shared exercise doc.
+
+UI: `EnergyCard` on the Health tab → `EnergyView` (`view: 'energy'`) with the day's split, the
+phase's target balance, a 7-day burned-vs-eaten strip and the insights. The end-of-session
+celebration shows `workoutEnergy().activeKcal` as "kcal burned".
+
+Zen: today's line is in the context pack (`energyContextLine`), and `energy_range` is a new
+`zen_request` kind returning the day-by-day ledger. The answer states that active calories are
+`max(device, estimate)` so the model does not add them up.
+
+Health Connect now syncs itself (`src/activity/autoSync.ts`): on launch, on foreground, and every
+15 minutes, behind one staleness gate and one in-flight promise. Before this, the numbers only
+refreshed while the Activity screen was open — which was wrong everywhere else the moment the
+ledger started reading them.
+
+## 14. Feel (3.19.0)
+`src/sound.ts` synthesises ten cues with the Web Audio API (nothing in the bundle, no licence);
+`src/haptics.ts` pairs each with a vibration pattern; `feedback(cue)` fires both and each channel
+checks its own switch (`zenith_sound_settings`, `zenith_haptic_settings`). Constraints held by
+`tests/feedback.test.ts`: every cue under 700 ms, 329–2100 Hz, sine/triangle only, routine haptics
+one beat. Wired to set completion, rest start / three-seconds-out / done, PRs, finishing a session
+and levelling up.

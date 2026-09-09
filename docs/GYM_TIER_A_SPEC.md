@@ -239,3 +239,25 @@ Admin-SDK script (uses `GOOGLE_APPLICATION_CREDENTIALS`) that creates gym `demo-
 ## 9. Out of scope for Tier A
 
 Payments processing, WhatsApp, PDF reports, lead tracking, per-trainer payroll, member self-registration without a code, multi-gym membership for one user (one gym per profile).
+
+## 10. Gym feed (3.19.0, 2026-09-09)
+`gyms/{gymId}/feed/{uid}_{ts}` — one small doc per post (`GymFeedPost`), listed newest-first with a
+20-doc limit, so opening the Feed segment is ~20 reads. A progress photo lives in
+`feed/{postId}/media/image` as a 720 px JPEG data URL and is read only when that card renders, so
+scrolling past ten photos does not pull ten photos into the list query. Reactions are a
+`uid → emoji` map on the post; rules let a member change only their own key
+(`reactions.diff(...).affectedKeys().hasOnly([request.auth.uid])`), so a fist-bump cannot rewrite
+the post. Authors and staff can delete. Nothing posts automatically — sharing is a deliberate tap.
+
+`My Gym` is now `Member | Feed | Manage` (Manage still staff-only).
+
+## 11. Geofenced check-in and renewal outreach (3.19.0)
+- `Gym.location` + `Gym.geofenceM` (default 100 m, `src/geo.ts`). A poster-QR check-in verifies the
+  member's position, adds their own GPS accuracy to the radius so a poor fix does not lock them out,
+  and stores the distance on the check-in. **This runs on the member's phone**: it stops a photo of
+  the poster being scanned from home, not a determined faker. The daily 6-digit code stays the
+  rules-verified path and is what every location failure points to.
+- `needsRenewal` / `normalizePhoneIN` / `whatsAppUrl` / `upiPayUri` / `buildRenewalMessage` in
+  `gymStats.ts` (pure, `tests/gymRenewal.test.ts`) power a renewal card in the staff member detail:
+  a wa.me deep link with the message pre-written, and a copyable `upi://pay` link built from
+  `Gym.upiVpa`. No API, no fees.
