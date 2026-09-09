@@ -132,6 +132,21 @@ body {
   animation: fadeIn 0.2s ease-out;
 }
 
+/* Plate-scan sweep (src/views/nutrition/FoodScanView.tsx) — the band that
+   travels down the photo while the model looks at it. */
+@keyframes scanSweep {
+  0%   { transform: translateY(-4rem); }
+  100% { transform: translateY(16rem); }
+}
+
+.animate-scanSweep {
+  animation: scanSweep 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scanSweep { animation: none; opacity: 0.35; }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

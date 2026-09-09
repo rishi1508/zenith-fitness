@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Camera, ImagePlus, Minus, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Camera, ImagePlus, Minus, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { AppBar, Button, Card, IconButton, SegmentedControl, useToast, CAPTION, H2, SUB } from '../../ui';
 import { PremiumBadge, PremiumGate } from '../../premium';
@@ -7,6 +7,7 @@ import { getNutritionDay, localDateISO, saveNutritionDay } from '../../health/st
 import type { MealSlot } from '../../types';
 import { prepareScanImage, scaleScanItem, ScanError, scanItemToEntry, scanPreparedImage } from '../../nutrition/scan';
 import type { ScanErrorKind, ScanItem } from '../../nutrition/scan';
+import { ScanItemSheet } from './ScanItemSheet';
 
 export interface FoodScanViewProps {
   onBack: () => void;
@@ -32,6 +33,10 @@ const SCANNING_LINES = [
   'Adding up the calories…',
   'Almost there…',
 ];
+
+/** How long a scan usually takes. Only used to pace the progress bar, which
+ *  eases towards 95 % and waits there rather than pretending to finish. */
+const TYPICAL_SCAN_MS = 12_000;
 
 const GRAM_STEP = 25;
 
@@ -71,7 +76,7 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
   const fileRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
 
-  const [stage, setStage] = useState<'capture' | 'scanning' | 'result'>('capture');
+  const [stage, setStage] = useState<'capture' | 'preparing' | 'scanning' | 'result'>('capture');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [rows, setRows] = useState<ScanRowState[]>([]);
   const [note, setNote] = useState('');
@@ -79,6 +84,7 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
   const [error, setError] = useState<string | null>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
   const [target, setTarget] = useState<MealSlot>(() => meal ?? mealForNow());
+  const [editing, setEditing] = useState<number | null>(null);
 
   const targetDate = date ?? localDateISO();
 
@@ -87,12 +93,15 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
   const runScan = useCallback(async (file: File) => {
     if (!user) { setError('Please sign in again to scan food.'); return; }
     setError(null);
-    setStage('scanning');
+    // Two visible stages: shrinking the photo on-device (a second or two on a
+    // mid-range phone, and previously silent), then the model round trip.
+    setStage('preparing');
     try {
       // Shrink first: this is also what we preview, so a 12 MP camera JPEG is
       // never decoded at full size (that is what used to kill the app).
       const { base64, preview } = await prepareScanImage(file);
       setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return URL.createObjectURL(preview); });
+      setStage('scanning');
       const idToken = await user.getIdToken();
       const result = await scanPreparedImage(base64, { idToken, hint: hint.trim() || undefined, meal: target });
       if (typeof result.remainingToday === 'number') setRemaining(result.remainingToday);
@@ -171,8 +180,13 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
             onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = ''; }}
           />
 
-          {previewUrl && (
-            <img src={previewUrl} alt="Your plate" className="w-full max-h-64 object-cover rounded-2xl border border-border" />
+          {(previewUrl || stage === 'preparing') && (
+            <div className="relative w-full h-64 rounded-2xl border border-border overflow-hidden bg-surface-2">
+              {previewUrl
+                ? <img src={previewUrl} alt="Your plate" className="w-full h-full object-cover" />
+                : <div className="w-full h-full animate-pulse bg-surface-2" />}
+              {(stage === 'preparing' || stage === 'scanning') && <ScanOverlay stage={stage} />}
+            </div>
           )}
 
           {error && (
@@ -180,8 +194,6 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
               <p className="text-sm text-danger">{error}</p>
             </Card>
           )}
-
-          {stage === 'scanning' && <ScanningCard />}
 
           {stage === 'capture' && (
             <>
@@ -222,7 +234,8 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
                   <ScanRow
                     key={`${row.base.name}-${i}`}
                     item={row.item}
-                    onGrams={(grams) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, item: scaleScanItem(r.base, grams) } : r)))}
+                    onGrams={(grams) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, item: scaleScanItem(r.item, grams) } : r)))}
+                    onEdit={() => setEditing(i)}
                     onRemove={() => setRows((prev) => prev.filter((_, j) => j !== i))}
                   />
                 ))}
@@ -246,32 +259,63 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
           )}
         </PremiumGate>
       </div>
+
+      {editing !== null && rows[editing] && (
+        <ScanItemSheet
+          item={rows[editing].item}
+          onClose={() => setEditing(null)}
+          onSave={(next) => {
+            setRows((prev) => prev.map((r, j) => (j === editing ? { base: next, item: next } : r)));
+            setEditing(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-/** Rotating status while the model looks at the photo — same pattern as ZenChatView. */
-function ScanningCard() {
-  const [tick, setTick] = useState(0);
+/**
+ * What the wait looks like: the photo behind a scrim, a sweeping scan line,
+ * a progress bar that eases towards 95 % over the typical scan time, and the
+ * rotating status. The old version was a text card with no photo and no sense
+ * of progress, which is why a slow scan felt like a hang.
+ */
+function ScanOverlay({ stage }: { stage: 'preparing' | 'scanning' }) {
+  const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setTick((n) => n + 1), 2500);
+    const started = Date.now();
+    const t = setInterval(() => setElapsed(Date.now() - started), 200);
     return () => clearInterval(t);
-  }, []);
+  }, [stage]);
+
+  const pct = stage === 'preparing'
+    ? Math.min(15, Math.round((elapsed / 1500) * 15))
+    : 15 + Math.round(80 * (1 - Math.exp(-elapsed / TYPICAL_SCAN_MS)));
+  const line = stage === 'preparing'
+    ? 'Getting the photo ready…'
+    : SCANNING_LINES[Math.min(SCANNING_LINES.length - 1, Math.floor(elapsed / 2500))];
+
   return (
-    <Card>
-      <div className="flex items-center gap-2.5 text-sm text-muted">
-        <span className="flex gap-0.5" aria-hidden="true">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: '300ms' }} />
-        </span>
-        {SCANNING_LINES[tick % SCANNING_LINES.length]}
+    <div className="absolute inset-0 bg-black/55 flex flex-col justify-end p-4" role="status" aria-live="polite">
+      {stage === 'scanning' && (
+        <span className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-accent/40 to-transparent animate-scanSweep" aria-hidden="true" />
+      )}
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-white drop-shadow">{line}</p>
+        <div className="h-1.5 rounded-sm bg-white/25 overflow-hidden">
+          <div className="h-full bg-accent transition-[width] duration-300 ease-out" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="text-[11px] text-white/80">
+          {elapsed > 20_000 ? 'Still going — a busy model can take a while.' : 'Usually about ten seconds.'}
+        </p>
       </div>
-    </Card>
+    </div>
   );
 }
 
-function ScanRow({ item, onGrams, onRemove }: { item: ScanItem; onGrams: (grams: number) => void; onRemove: () => void }) {
+function ScanRow({ item, onGrams, onEdit, onRemove }: {
+  item: ScanItem; onGrams: (grams: number) => void; onEdit: () => void; onRemove: () => void;
+}) {
   return (
     <Card>
       <div className="flex items-start justify-between gap-2">
@@ -279,10 +323,13 @@ function ScanRow({ item, onGrams, onRemove }: { item: ScanItem; onGrams: (grams:
           <p className="text-sm font-bold text-text truncate">{item.name}</p>
           <p className="text-[13px] text-muted">
             {item.kcal} kcal · P{item.protein} C{item.carbs} F{item.fat} g
-            {item.confidence < 0.5 ? ' · low confidence' : ''}
+            {item.foodId ? ' · from the database' : item.confidence < 0.5 ? ' · low confidence' : ''}
           </p>
         </div>
-        <IconButton icon={Trash2} label={`Remove ${item.name}`} size="sm" onClick={onRemove} />
+        <div className="flex items-center gap-1 shrink-0">
+          <IconButton icon={Pencil} label={`Edit ${item.name}`} size="sm" onClick={onEdit} />
+          <IconButton icon={Trash2} label={`Remove ${item.name}`} size="sm" onClick={onRemove} />
+        </div>
       </div>
       <div className="flex items-center gap-2 mt-2">
         <IconButton icon={Minus} label="Less" size="sm" onClick={() => onGrams(Math.max(5, item.grams - GRAM_STEP))} />

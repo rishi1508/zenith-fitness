@@ -1,4 +1,4 @@
-import type { FoodEntry, MealSlot } from '../types';
+import type { FoodEntry, FoodSource, Macros, MealSlot } from '../types';
 
 /**
  * Camera food scan client — talks to `api/foodscan.ts`
@@ -34,6 +34,12 @@ export interface ScanItem {
   carbs: number;
   fat: number;
   confidence: number;
+  /** Set when the user replaced the model's guess with a database food:
+   *  the entry then links to that food and scales from its real per-100 g
+   *  figures instead of the model's estimate. */
+  foodId?: string;
+  source?: FoodSource;
+  per100g?: Macros;
 }
 
 export interface ScanResult {
@@ -257,6 +263,20 @@ export function slugifyFood(name: string): string {
 /** Re-estimates an item's macros for a corrected weight (the user's stepper). */
 export function scaleScanItem(item: ScanItem, grams: number): ScanItem {
   const next = Math.max(1, Math.round(grams));
+  // A matched database food has real per-100 g figures — use them rather
+  // than scaling the model's estimate.
+  if (item.per100g) {
+    const f = next / 100;
+    const r1 = (n: number) => Math.round(n * f * 10) / 10;
+    return {
+      ...item,
+      grams: next,
+      kcal: Math.round(item.per100g.kcal * f),
+      protein: r1(item.per100g.protein),
+      carbs: r1(item.per100g.carbs),
+      fat: r1(item.per100g.fat),
+    };
+  }
   if (item.grams <= 0) return { ...item, grams: next };
   const f = next / item.grams;
   const r1 = (n: number) => Math.round(n * f * 10) / 10;
@@ -271,22 +291,23 @@ export function scaleScanItem(item: ScanItem, grams: number): ScanItem {
 }
 
 /**
- * A scanned item as a diary entry. Everything from a scan is an estimate,
- * so it is always `approx` and carries a `scan:` food id — there is no
- * database row behind it to open.
+ * A scanned item as a diary entry. The model's own guesses are estimates,
+ * so they stay `approx` behind a `scan:` food id — there is no database row
+ * to open. An item the user matched to a real food keeps that food's id and
+ * source instead.
  */
 export function scanItemToEntry(item: ScanItem, meal: MealSlot, at: Date = new Date()): FoodEntry {
   return {
     id: crypto.randomUUID(),
-    foodId: `scan:${slugifyFood(item.name)}`,
+    foodId: item.foodId ?? `scan:${slugifyFood(item.name)}`,
     name: item.name,
-    source: 'dish',
+    source: item.source ?? 'dish',
     meal,
     qty: item.grams,
     unit: 'g',
     grams: item.grams,
     macros: { kcal: item.kcal, protein: item.protein, carbs: item.carbs, fat: item.fat },
     at: at.toISOString(),
-    approx: true,
+    approx: !item.foodId,
   };
 }
