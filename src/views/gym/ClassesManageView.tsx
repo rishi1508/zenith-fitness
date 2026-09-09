@@ -83,7 +83,7 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
+          <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-xl font-bold">Classes</h1>
@@ -236,7 +236,7 @@ function ClassFormSheet({ isDark, gymId, trainers, editingClass, onClose, onSucc
       >
         <div className={`sticky top-0 p-4 border-b flex items-center justify-between ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
           <h3 className="font-bold">{editingClass ? 'Edit class' : 'Add class'}</h3>
-          <button onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'text-zinc-500 hover:text-white hover:bg-[#252525]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
+          <button aria-label="Close" onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'text-zinc-500 hover:text-white hover:bg-[#252525]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -359,7 +359,7 @@ function AttendanceSheet({ isDark, gymId, cls, memberByUid, onClose }: Attendanc
             <h3 className="font-bold">{cls.name}</h3>
             <p className={`text-xs ${subtle}`}>{WEEKDAY_LABEL[cls.weekday]} · {cls.startTime}</p>
           </div>
-          <button onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'text-zinc-500 hover:text-white hover:bg-[#252525]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
+          <button aria-label="Close" onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'text-zinc-500 hover:text-white hover:bg-[#252525]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
             <X className="w-5 h-5" />
           </button>
         </div>

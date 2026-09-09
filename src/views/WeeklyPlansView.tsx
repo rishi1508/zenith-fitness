@@ -168,7 +168,7 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
   return (
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-4">
-        <button onClick={onCancel} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+        <button aria-label="Back" onClick={onCancel} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">Edit {day.name}</h1>
@@ -386,7 +386,7 @@ function EditWeeklyPlanView({ plan, isNew, isDark, onSave, onCancel }: {
   return (
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-4">
-        <button onClick={onCancel} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+        <button aria-label="Back" onClick={onCancel} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">{isNew ? 'New Weekly Plan' : 'Edit Plan'}</h1>
@@ -569,12 +569,12 @@ export function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+          <button aria-label="Back" onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
             <ChevronLeft className="w-6 h-6" />
           </button>
           <h1 className="text-xl font-bold">Weekly Plans</h1>
         </div>
-        <button 
+        <button aria-label="Add" 
           onClick={createNewPlan}
           className="p-2 bg-orange-500 rounded-lg hover:bg-orange-400 transition-colors"
         >

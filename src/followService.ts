@@ -67,8 +67,12 @@ export async function unfollow(targetUid: string): Promise<void> {
 export async function followBuddy(otherUid: string): Promise<void> {
   const me = auth.currentUser?.uid;
   if (!me || me === otherUid) return;
-  await follow(otherUid).catch((err) => console.warn('[Follow] buddy follow failed:', err));
-  await followBack(otherUid, me).catch((err) => console.warn('[Follow] buddy follow-back failed:', err));
+  // Both halves must land. They used to be swallowed here, which is how a
+  // sync that ran an hour before the reciprocal-edge rule was deployed could
+  // report success and then sit behind the 24 h guard with the follower side
+  // missing (2026-09-09).
+  await follow(otherUid);
+  await followBack(otherUid, me);
 }
 
 /** The other half of a buddy pair: `other` follows `me`. */
@@ -89,19 +93,47 @@ async function followBack(otherUid: string, me: string): Promise<void> {
 export async function syncBuddyFollows(buddyUids: readonly string[]): Promise<void> {
   const me = auth.currentUser?.uid;
   if (!me || buddyUids.length === 0) return;
-  const key = `zenith_buddy_follow_sync_${me}`;
+  // The suffix is a schema version: bump it and every device re-runs the
+  // sync once, which is how a fix to this function actually reaches people
+  // who are sitting inside the 24 h window.
+  const key = `zenith_buddy_follow_sync2_${me}`;
   try {
     const last = localStorage.getItem(key);
     if (last && Date.now() - Number(last) < 24 * 60 * 60 * 1000) return;
   } catch { /* private mode — just do the work */ }
 
+  let complete = true;
   for (const uid of buddyUids) {
     if (uid === me) continue;
     // Both directions, and each is a no-op when the edge already exists, so
     // this costs two reads per buddy on the days it runs.
-    await followBuddy(uid).catch(() => {});
+    try {
+      await followBuddy(uid);
+    } catch (err) {
+      complete = false;
+      console.warn('[Follow] buddy sync failed for', uid, err);
+    }
   }
-  try { localStorage.setItem(key, String(Date.now())); } catch { /* ignore */ }
+
+  // Counters drift whenever an edge lands but its increment does not — a
+  // rejected write, a tab closed mid-flight, an edge written before the
+  // counters existed. My own profile is the one document I may set outright,
+  // so recount it from the edges rather than trusting the running total.
+  try {
+    const [followers, following] = await Promise.all([listFollowers(me, 500), listFollowing(me, 500)]);
+    await updateDoc(doc(db, 'userProfiles', me), {
+      followerCount: followers.length,
+      followingCount: following.length,
+    });
+  } catch (err) {
+    complete = false;
+    console.warn('[Follow] recount failed:', err);
+  }
+
+  // Only remember a run that actually finished; a partial one must retry.
+  if (complete) {
+    try { localStorage.setItem(key, String(Date.now())); } catch { /* ignore */ }
+  }
 }
 
 /** Uids following `targetUid`. Capped — the header only needs a count. */

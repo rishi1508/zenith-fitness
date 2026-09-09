@@ -26,12 +26,21 @@ export function IconButton({ icon: Icon, label, badge, size = 'md', active, clas
     >
       <Icon className={size === 'sm' ? 'w-[18px] h-[18px]' : 'w-5 h-5'} strokeWidth={1.75} />
       {badge && badge > 0 ? (
-        <span
-          className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-[5px] rounded-full bg-accent text-white text-[11px] leading-[18px] font-bold text-center"
-          aria-label={`${badge} pending`}
-        >
-          {badge > 9 ? '9+' : badge}
-        </span>
+        <>
+          {/* One ring pushing out of the badge, so something waiting for an
+              answer reads as alive rather than as decoration. */}
+          <span
+            aria-hidden
+            className="absolute -top-1 -right-1 w-[18px] h-[18px] rounded-full bg-accent"
+            style={{ animation: 'notif-ping 1.9s cubic-bezier(0, 0, 0.2, 1) infinite' }}
+          />
+          <span
+            className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-[5px] rounded-full bg-accent text-white text-[11px] leading-[18px] font-bold text-center"
+            aria-label={`${badge} pending`}
+          >
+            {badge > 9 ? '9+' : badge}
+          </span>
+        </>
       ) : null}
     </button>
   );

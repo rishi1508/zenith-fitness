@@ -69,7 +69,7 @@ export function OneRMCalculator({ onClose, initialWeight = 60, initialReps = 5, 
             <Trophy className="w-5 h-5 text-yellow-400" />
             <h2 className="text-lg font-bold">1RM Calculator</h2>
           </div>
-          <button onClick={onClose} className={`p-2 rounded-lg ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-100'}`}>
+          <button aria-label="Close" onClick={onClose} className={`p-2 rounded-lg ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-100'}`}>
             <X className="w-5 h-5" />
           </button>
         </div>

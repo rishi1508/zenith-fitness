@@ -176,6 +176,46 @@ body {
   @keyframes avatar-peek { from, to { transform: none; opacity: 1; } }
 }
 
+/* Heads-up notification (src/components/NotificationToast.tsx).
+   Drops in from above the status bar with a small overshoot, so a buddy
+   request or a message announces itself instead of appearing. */
+@keyframes notif-in {
+  0%   { transform: translate3d(0, -140%, 0) scale(0.94); opacity: 0; }
+  70%  { transform: translate3d(0, 6%, 0) scale(1.01); opacity: 1; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+
+@keyframes notif-out {
+  from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+  to   { transform: translate3d(0, -130%, 0) scale(0.94); opacity: 0; }
+}
+
+/* The dwell timer, drawn. Drains left to right under the card. */
+@keyframes notif-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* Something is waiting for you: one ring expanding out of the count badge. */
+@keyframes notif-ping {
+  0%   { transform: scale(1); opacity: 0.5; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* An actionable card breathes so the eye comes back to it. */
+@keyframes notif-halo {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.85; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes notif-in { from, to { transform: none; opacity: 1; } }
+  @keyframes notif-out { from, to { transform: none; opacity: 0; } }
+  @keyframes notif-ping { 0%, 100% { transform: none; opacity: 0.4; } }
+  @keyframes notif-halo { 0%, 100% { opacity: 0.5; } }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

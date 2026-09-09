@@ -86,7 +86,7 @@ export function PlateCalculator({ onClose, initialWeight = 60, isDark }: PlateCa
             <Calculator className="w-5 h-5 text-orange-400" />
             <h2 className="text-lg font-bold">Plate Calculator</h2>
           </div>
-          <button onClick={onClose} className={`p-2 rounded-lg ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-100'}`}>
+          <button aria-label="Close" onClick={onClose} className={`p-2 rounded-lg ${isDark ? 'hover:bg-[#252525]' : 'hover:bg-gray-100'}`}>
             <X className="w-5 h-5" />
           </button>
         </div>

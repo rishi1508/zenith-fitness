@@ -275,9 +275,11 @@ export async function sendBuddyRequest(toUid: string, toName: string, toPhoto?: 
     createdAt: new Date().toISOString(),
   };
 
-  await addDoc(collection(db, 'buddyRequests'), request);
+  const requestRef = await addDoc(collection(db, 'buddyRequests'), request);
 
-  // Send notification to recipient
+  // Send notification to recipient. `requestId` lets the heads-up card answer
+  // the request in place instead of sending them to the Buddies screen, and
+  // `fromPhoto` gives it a face to show.
   await addNotification(toUid, {
     type: 'buddy_request',
     fromUid: user.uid,
@@ -285,6 +287,10 @@ export async function sendBuddyRequest(toUid: string, toName: string, toPhoto?: 
     message: `${user.displayName || 'Someone'} sent you a buddy request!`,
     createdAt: new Date().toISOString(),
     read: false,
+    data: {
+      requestId: requestRef.id,
+      ...(request.fromPhoto ? { fromPhoto: request.fromPhoto } : {}),
+    },
   });
 }
 
@@ -334,12 +340,13 @@ export async function acceptBuddyRequest(requestId: string): Promise<void> {
 
   await batch.commit();
 
-  // Buddies follow each other. Only our own edge is ours to write; theirs
-  // appears when their app next syncs (src/followService.ts).
+  // Buddies follow each other, both edges written here — the buddy document
+  // is the proof the rules check for (src/followService.ts).
   const otherUid = request.fromUid === user.uid ? request.toUid : request.fromUid;
   await followBuddy(otherUid);
 
   // Notify the request sender
+  const myPhoto = effectiveProfilePhoto(user.photoURL);
   await addNotification(request.fromUid, {
     type: 'buddy_accepted',
     fromUid: user.uid,
@@ -347,6 +354,7 @@ export async function acceptBuddyRequest(requestId: string): Promise<void> {
     message: `${user.displayName || 'Someone'} accepted your buddy request!`,
     createdAt: new Date().toISOString(),
     read: false,
+    ...(myPhoto ? { data: { fromPhoto: myPhoto } } : {}),
   });
 }
 
@@ -565,7 +573,7 @@ export async function sendMessage(
         message: notifMessage,
         createdAt: new Date().toISOString(),
         read: false,
-        data: { chatId },
+        data: { chatId, ...(effectiveProfilePhoto(user.photoURL) ? { fromPhoto: effectiveProfilePhoto(user.photoURL)! } : {}) },
       });
       console.info('[Chat] notification written — notifications/' + recipientUid + '/items/' + ref.id);
     } catch (err) {

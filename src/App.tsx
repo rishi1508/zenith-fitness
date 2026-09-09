@@ -1388,6 +1388,7 @@ function App() {
             setBuddyContext((prev) => ({ ...prev, uid, chatId, name, photoURL: prev.photoURL }));
             navigateTo('buddy-chat');
           }}
+          onOpenBuddies={() => navigateTo('buddies')}
         />
       )}
       {user && <PushPermissionPrompt userUid={user.uid} isDark={isDark} />}

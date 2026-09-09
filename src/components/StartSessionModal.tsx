@@ -147,7 +147,7 @@ export function StartSessionModal({
             <h3 className="font-bold">Workout with {buddyName}</h3>
             <p className={`text-xs ${subtleText} mt-0.5`}>Pick a day from your active plan</p>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className={`p-1.5 rounded-lg ${subtleHover}`}
           >

@@ -39,7 +39,7 @@ export function GetAppBanner() {
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismiss(); }}
         aria-label="Dismiss"
-        className="shrink-0 p-0.5"
+        className="shrink-0 -mr-1.5 p-2.5"
       >
         <X className="w-4 h-4" strokeWidth={1.75} />
       </button>

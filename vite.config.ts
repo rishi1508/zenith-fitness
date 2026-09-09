@@ -27,6 +27,11 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
+          // Firebase and the icon set never change between app releases; keeping
+          // them out of the app chunk means a version bump re-downloads ~450 kB
+          // instead of ~1.1 MB on a phone.
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/messaging'],
+          'vendor-icons': ['lucide-react'],
         }
       }
     }

@@ -229,7 +229,7 @@ export function HomeTabView({
             <span className={`${SUB} min-w-0 truncate`}>
               {today.reason ?? (lastTime ? `Last time ${lastTime}` : 'No sessions logged yet')}
             </span>
-            <button onClick={() => setDayPickerOpen(true)} className="text-[13px] font-bold text-accent">Change day</button>
+            <button onClick={() => setDayPickerOpen(true)} className="shrink-0 whitespace-nowrap text-[13px] font-bold text-accent">Change day</button>
           </div>
         </Card>
       ) : (

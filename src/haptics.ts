@@ -47,7 +47,7 @@ export async function hapticSelection() {
  */
 export type HapticCue =
   | 'tap' | 'selection' | 'setComplete' | 'restStart' | 'restEnding' | 'restDone'
-  | 'prCelebration' | 'workoutComplete' | 'levelUp' | 'error';
+  | 'prCelebration' | 'workoutComplete' | 'levelUp' | 'notify' | 'error';
 
 type Strength = 'light' | 'medium' | 'heavy';
 
@@ -75,6 +75,8 @@ export const HAPTIC_CUES: Record<HapticCue, Beat[]> = {
   prCelebration: [{ strength: 'medium', gap: 70 }, { strength: 'medium', gap: 70 }, { strength: 'heavy' }],
   workoutComplete: [{ strength: 'heavy', gap: 110 }, { strength: 'medium', gap: 70 }, { strength: 'heavy' }],
   levelUp: [{ strength: 'light', gap: 60 }, { strength: 'medium', gap: 60 }, { strength: 'heavy', gap: 90 }, { strength: 'heavy' }],
+  // Two beats, the second lighter: a phone tap on the shoulder.
+  notify: [{ strength: 'medium', gap: 70 }, { strength: 'light' }],
   error: [{ strength: 'medium', gap: 60 }, { strength: 'medium' }],
 };
 

@@ -88,7 +88,7 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
             <h3 className="font-bold">Record payment</h3>
             <p className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>{member.name}</p>
           </div>
-          <button onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'text-zinc-500 hover:text-white hover:bg-[#252525]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
+          <button aria-label="Close" onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'text-zinc-500 hover:text-white hover:bg-[#252525]' : 'text-gray-400 hover:text-gray-900 hover:bg-gray-100'}`}>
             <X className="w-5 h-5" />
           </button>
         </div>

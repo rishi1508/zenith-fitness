@@ -123,7 +123,7 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
     return (
       <div className="space-y-4 animate-fadeIn">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
+          <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-xl font-bold">Check In</h1>
@@ -140,7 +140,7 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
   return (
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
+        <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-bold">Check In</h1>

@@ -29,6 +29,7 @@ export type SoundCue =
   | 'prCelebration'
   | 'workoutComplete'
   | 'levelUp'
+  | 'notify'
   | 'error';
 
 /**
@@ -151,6 +152,16 @@ export const CUES: Record<SoundCue, CueSpec> = {
       { type: 'sine', freq: 1567.98, at: 0.12, dur: 0.11, gain: 0.1, attack: 0.004 },
       { type: 'sine', freq: 2093, at: 0.18, dur: 0.34, gain: 0.07, attack: 0.005, detune: 9 },
       { type: 'triangle', freq: 1046.5, at: 0.18, dur: 0.34, gain: 0.05, attack: 0.01 },
+    ],
+  },
+
+  notify: {
+    channel: 'ui',
+    description: 'Two soft bells, E5 → C6, with a brief shimmer — someone is asking for you.',
+    voices: [
+      { type: 'sine', freq: 659.25, at: 0, dur: 0.12, gain: 0.085, attack: 0.006, detune: 5 },
+      { type: 'sine', freq: 1046.5, at: 0.09, dur: 0.26, gain: 0.09, attack: 0.006, detune: 5 },
+      { type: 'triangle', freq: 1567.98, at: 0.09, dur: 0.1, gain: 0.022, attack: 0.006 },
     ],
   },
 

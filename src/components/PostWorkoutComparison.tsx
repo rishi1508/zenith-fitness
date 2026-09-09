@@ -78,7 +78,7 @@ export function PostWorkoutComparison({ session, isDark = true, onClose }: PostW
             </div>
             <p className={`text-xs ${subtleText}`}>{session.workoutName}</p>
           </div>
-          <button onClick={onClose} className={`p-2 ${closeBtnHover}`}>
+          <button aria-label="Close" onClick={onClose} className={`p-2 ${closeBtnHover}`}>
             <X className="w-5 h-5" />
           </button>
         </div>

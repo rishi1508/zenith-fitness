@@ -27,7 +27,7 @@ export function GymSettingsView({ isDark, onBack }: GymViewProps) {
 
   const header = (
     <div className="flex items-center gap-3">
-      <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
+      <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-[#222]' : 'hover:bg-gray-50'}`}>
         <ArrowLeft className="w-5 h-5" />
       </button>
       <h1 className="text-xl font-bold">Gym Settings</h1>

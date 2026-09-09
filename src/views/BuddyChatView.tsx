@@ -270,7 +270,7 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
         </div>
       ) : (
         <div className="flex-none flex items-center gap-3 pb-3">
-          <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
+          <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2 flex-1 min-w-0">

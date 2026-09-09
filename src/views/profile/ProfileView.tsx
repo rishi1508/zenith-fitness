@@ -244,11 +244,13 @@ export function ProfileView({
             <Pill tone="accent">Lv {stats.level} · {levelTitle(stats.level)}</Pill>
           </div>
 
-          <div className="flex items-center gap-4 mt-2">
-            <button onClick={() => setPeople('followers')} className={SUB}>
+          {/* Padded out to a thumb-sized target without moving the text:
+              the row was 18px tall, which is half of what a tap needs. */}
+          <div className="flex items-center gap-1 mt-1 -ml-2">
+            <button onClick={() => setPeople('followers')} className={`${SUB} px-2 py-2`}>
               <b className="text-text tabular-nums">{followers}</b> followers
             </button>
-            <button onClick={() => setPeople('following')} className={SUB}>
+            <button onClick={() => setPeople('following')} className={`${SUB} px-2 py-2`}>
               <b className="text-text tabular-nums">{followingCount}</b> following
             </button>
           </div>

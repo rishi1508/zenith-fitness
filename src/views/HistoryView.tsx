@@ -365,7 +365,7 @@ export function HistoryView({ workouts, isDark, onBack, onDelete, onChanged }: H
       )}
       
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
+        <button aria-label="Back" onClick={onBack} className={`p-2 -ml-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           <ChevronLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">Workout History</h1>

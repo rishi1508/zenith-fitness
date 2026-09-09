@@ -111,7 +111,7 @@ export function BuddyComparisonView({
     return (
       <div className="space-y-4 animate-fadeIn">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
+          <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-xl font-bold">Compare</h1>
@@ -131,7 +131,7 @@ export function BuddyComparisonView({
     return (
       <div className="space-y-4 animate-fadeIn">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
+          <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-xl font-bold">vs. {buddyName}</h1>
@@ -173,7 +173,7 @@ export function BuddyComparisonView({
   return (
     <div className="space-y-4 animate-fadeIn">
       <div className="flex items-center gap-3">
-        <button onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
+        <button aria-label="Back" onClick={onBack} className={`p-2 rounded-lg transition-colors ${hoverBg}`}>
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-bold">vs. {buddyName}</h1>

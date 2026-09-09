@@ -108,6 +108,12 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
 
   // --- Tooltip state ---
   const containerRef = useRef<HTMLDivElement>(null);
+  // 26 weeks are wider than a phone, and the newest column is the rightmost
+  // one — so open on this week rather than on six months ago.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [columns.length]);
   const [tip, setTip] = useState<
     | { x: number; y: number; cell: NonNullable<Cell>; maxLeft: number }
     | null
@@ -170,8 +176,10 @@ export function ActivityHeatmap({ workouts, activityDays, isDark, weeks = 26 }: 
       >
         <div className="inline-flex gap-1">
           {/* Day-of-week label column. Single letters to save horizontal
-              space; aligned 1:1 with the 7 rows on its right. */}
-          <div className="flex flex-col gap-1 mr-0.5 select-none">
+              space; aligned 1:1 with the 7 rows on its right. Pinned, because
+              the grid opens scrolled to this week and the letters would
+              otherwise be six months off to the left. */}
+          <div className={`sticky left-0 z-10 flex flex-col gap-1 pr-1 select-none ${isDark ? 'bg-[#1a1a1a]' : 'bg-white'}`}>
             {DAY_LABELS.map((lbl, i) => (
               <div
                 key={i}
