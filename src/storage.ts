@@ -1434,6 +1434,22 @@ export function setSoundSettings(settings: Partial<SoundSettings>): void {
   setItem('zenith_sound_settings', { ...current, ...settings });
 }
 
+/** Vibration feedback. One switch — the cue patterns in src/haptics.ts
+ *  vary their own strength. */
+interface HapticSettings {
+  enabled: boolean;
+}
+
+const DEFAULT_HAPTIC_SETTINGS: HapticSettings = { enabled: true };
+
+export function getHapticSettings(): HapticSettings {
+  return getItem<HapticSettings>('zenith_haptic_settings', DEFAULT_HAPTIC_SETTINGS);
+}
+
+export function setHapticSettings(settings: Partial<HapticSettings>): void {
+  setItem('zenith_haptic_settings', { ...getHapticSettings(), ...settings });
+}
+
 export function isSoundEnabled(type: 'celebration' | 'timer'): boolean {
   const settings = getSoundSettings();
   return settings.enabled && settings[type];

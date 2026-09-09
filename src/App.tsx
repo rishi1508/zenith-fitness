@@ -81,6 +81,7 @@ import { tabRoot } from './shell/tabs';
 import type { Tab } from './shell/tabs';
 import { isAdmin } from './admin';
 import { levelForVolume } from './levels';
+import { feedback } from './feedback';
 import { workoutEnergy } from './energy';
 import { getHealthProfile } from './health';
 import { recordBuddyInteraction } from './buddyAffinity';
@@ -334,7 +335,10 @@ function App() {
       const reached = levelForVolume(freshStats.totalVolume).level;
       const seen = storage.getSeenLevel();
       if (seen === 0) storage.setSeenLevel(reached);
-      else if (reached > seen) setLevelUp({ from: seen, to: reached, volume: freshStats.totalVolume });
+      else if (reached > seen) {
+        setLevelUp({ from: seen, to: reached, volume: freshStats.totalVolume });
+        feedback('levelUp');
+      }
     }
     setWorkoutHistory(storage.getWorkouts());
     // Check for missing days after splash
@@ -1015,6 +1019,7 @@ function App() {
         kcalEstimated: burn.estimated,
       });
       setShowCelebration(true);
+      feedback('workoutComplete');
       
       setActiveWorkout(null);
       loadData();

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   ChevronLeft, FileSpreadsheet, Download, Upload,
   CheckCircle2, Copy, Volume2, Palette, Sun, Moon, Clock, User, LogOut, LogIn,
-  Cloud, Bell, Flame, Trash2,
+  Cloud, Bell, Flame, Trash2, Vibrate,
 } from 'lucide-react';
 import * as storage from '../storage';
 import type { Workout, Exercise, WeeklyPlan } from '../types';
@@ -16,6 +16,8 @@ import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '.
 import { deleteMyAccount } from '../accountService';
 import { Capacitor } from '@capacitor/core';
 import { Sheet, Button, useToast, useConfirm } from '../ui';
+import { playCue } from '../sound';
+import { hapticCue } from '../haptics';
 
 declare const __APP_VERSION__: string;
 
@@ -190,48 +192,37 @@ function StreakSettingsSection({ isDark, onChange }: { isDark: boolean; onChange
   );
 }
 
-// Sound Settings Section
+// Sound + haptics section
 function SoundSettingsSection({ isDark }: { isDark: boolean }) {
   const [settings, setSettings] = useState(() => storage.getSoundSettings());
-  
+  const [haptics, setHaptics] = useState(() => storage.getHapticSettings());
+
   const toggleSetting = (key: 'enabled' | 'celebration' | 'timer') => {
-    const newSettings = { ...settings, [key]: !settings[key] };
-    storage.setSoundSettings(newSettings);
-    setSettings(newSettings);
+    const next = { ...settings, [key]: !settings[key] };
+    storage.setSoundSettings(next);
+    setSettings(next);
+    // Play the thing being switched on, so the toggle demonstrates itself.
+    if (next[key]) playCue(key === 'timer' ? 'restDone' : 'workoutComplete');
   };
-  
-  const playTestSound = (type: 'celebration' | 'timer') => {
-    try {
-      // Simple beep using Web Audio API
-      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtor) return;
-      const audioContext = new AudioCtor();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.value = type === 'celebration' ? 880 : 440;
-      oscillator.type = 'sine';
-      gainNode.gain.value = 0.3;
-      
-      oscillator.start();
-      
-      if (type === 'celebration') {
-        // Victory jingle pattern
-        setTimeout(() => oscillator.frequency.value = 1047, 100);
-        setTimeout(() => oscillator.frequency.value = 1319, 200);
-        setTimeout(() => oscillator.stop(), 400);
-      } else {
-        // Timer beep
-        setTimeout(() => oscillator.stop(), 200);
-      }
-    } catch {
-      console.log('Audio not supported');
-    }
+
+  const toggleHaptics = () => {
+    const next = { enabled: !haptics.enabled };
+    storage.setHapticSettings(next);
+    setHaptics(next);
+    if (next.enabled) hapticCue('setComplete');
   };
-  
+
+  const row = `flex items-center justify-between py-2 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`;
+  const testBtn = `px-2 py-1 text-xs rounded ${isDark ? 'bg-[#252525] text-zinc-400' : 'bg-gray-100 text-gray-500'}`;
+  const toggle = (on: boolean, small = false) =>
+    `relative ${small ? 'w-10 h-5' : 'w-12 h-6'} rounded-full transition-colors ${
+      on ? 'bg-pink-500' : isDark ? 'bg-[#3e3e3e]' : 'bg-gray-300'
+    }`;
+  const knob = (on: boolean, small = false) =>
+    `absolute ${small ? 'top-0.5' : 'top-1'} w-4 h-4 rounded-full bg-white transition-transform ${
+      on ? (small ? 'left-5' : 'left-7') : (small ? 'left-0.5' : 'left-1')
+    }`;
+
   return (
     <div className={`rounded-xl p-4 border ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`}>
       <div className="flex items-center justify-between mb-4">
@@ -239,77 +230,64 @@ function SoundSettingsSection({ isDark }: { isDark: boolean }) {
           <Volume2 className="w-5 h-5 text-pink-400" />
           <span className="font-medium">Sound Effects</span>
         </div>
-        <button
-          onClick={() => toggleSetting('enabled')}
-          className={`relative w-12 h-6 rounded-full transition-colors ${
-            settings.enabled ? 'bg-pink-500' : isDark ? 'bg-[#3e3e3e]' : 'bg-gray-300'
-          }`}
-        >
-          <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
-            settings.enabled ? 'left-7' : 'left-1'
-          }`} />
+        <button onClick={() => toggleSetting('enabled')} className={toggle(settings.enabled)} aria-pressed={settings.enabled} aria-label="Sound effects">
+          <div className={knob(settings.enabled)} />
         </button>
       </div>
-      
+
       {settings.enabled && (
         <div className="space-y-3">
-          {/* Celebration Sound */}
-          <div className={`flex items-center justify-between py-2 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+          <div className={row}>
             <div>
               <div className="text-sm font-medium">Celebration</div>
               <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
-                Play sound on workout completion & PRs
+                PRs, finishing a session, levelling up
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => playTestSound('celebration')}
-                className={`px-2 py-1 text-xs rounded ${isDark ? 'bg-[#252525] text-zinc-400' : 'bg-gray-100 text-gray-500'}`}
-              >
-                Test
-              </button>
-              <button
-                onClick={() => toggleSetting('celebration')}
-                className={`relative w-10 h-5 rounded-full transition-colors ${
-                  settings.celebration ? 'bg-pink-500' : isDark ? 'bg-[#3e3e3e]' : 'bg-gray-300'
-                }`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                  settings.celebration ? 'left-5' : 'left-0.5'
-                }`} />
+              <button onClick={() => playCue('prCelebration')} className={testBtn}>Test</button>
+              <button onClick={() => toggleSetting('celebration')} className={toggle(settings.celebration, true)} aria-pressed={settings.celebration} aria-label="Celebration sounds">
+                <div className={knob(settings.celebration, true)} />
               </button>
             </div>
           </div>
-          
-          {/* Timer Sound */}
-          <div className={`flex items-center justify-between py-2 border-t ${isDark ? 'border-[#2e2e2e]' : 'border-gray-200'}`}>
+
+          <div className={row}>
             <div>
-              <div className="text-sm font-medium">Timer Beep</div>
+              <div className="text-sm font-medium">Rest timer</div>
               <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
-                Play sound when rest timer ends
+                A heads-up three seconds out, then time
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => playTestSound('timer')}
-                className={`px-2 py-1 text-xs rounded ${isDark ? 'bg-[#252525] text-zinc-400' : 'bg-gray-100 text-gray-500'}`}
-              >
-                Test
-              </button>
-              <button
-                onClick={() => toggleSetting('timer')}
-                className={`relative w-10 h-5 rounded-full transition-colors ${
-                  settings.timer ? 'bg-pink-500' : isDark ? 'bg-[#3e3e3e]' : 'bg-gray-300'
-                }`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                  settings.timer ? 'left-5' : 'left-0.5'
-                }`} />
+              <button onClick={() => playCue('restDone')} className={testBtn}>Test</button>
+              <button onClick={() => toggleSetting('timer')} className={toggle(settings.timer, true)} aria-pressed={settings.timer} aria-label="Rest timer sounds">
+                <div className={knob(settings.timer, true)} />
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Haptics — its own switch, because plenty of people want the buzz
+          without the noise in a gym. */}
+      <div className={`${row} mt-3`}>
+        <div className="flex items-center gap-2">
+          <Vibrate className="w-5 h-5 text-pink-400" />
+          <div>
+            <div className="text-sm font-medium">Vibration</div>
+            <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+              A tap per set, a pattern for a PR
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => hapticCue('prCelebration')} className={testBtn}>Test</button>
+          <button onClick={toggleHaptics} className={toggle(haptics.enabled, true)} aria-pressed={haptics.enabled} aria-label="Vibration">
+            <div className={knob(haptics.enabled, true)} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -5,27 +5,13 @@ import {
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
-import { hapticImpact, hapticNotification } from '../haptics';
+import { hapticImpact } from '../haptics';
+import { feedback } from '../feedback';
 import { defaultRestSecondsFor } from '../restTimer';
 import { labelize } from '../exerciseUtils';
 import { ExercisePickerSheet } from './exercises/ExercisePickerSheet';
 
 import { useToast, useConfirm } from '../ui';
-
-// Module-level AudioContext so oscillators don't constantly warm up a new
-// context (which Android autoplay policy keeps in "suspended"). Lazily
-// created and resumed inside playSound.
-let sharedAudioContext: AudioContext | null = null;
-function getAudioContext(): AudioContext | null {
-  if (sharedAudioContext) return sharedAudioContext;
-  try {
-    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    sharedAudioContext = new Ctor();
-    return sharedAudioContext;
-  } catch {
-    return null;
-  }
-}
 
 // Active Workout View
 export function ActiveWorkoutView({
@@ -99,44 +85,6 @@ export function ActiveWorkoutView({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Persistent audio context — browsers require the same context for
-  // subsequent plays, and suspended contexts must be resumed via a user
-  // gesture. Creating a fresh one per call is why sounds were firing
-  // inconsistently on Android.
-  const playSound = (type: 'celebration' | 'timer') => {
-    if (!storage.isSoundEnabled(type)) return;
-    try {
-      const ctx = getAudioContext();
-      if (!ctx) return;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.type = 'sine';
-      oscillator.frequency.value = type === 'celebration' ? 880 : 440;
-
-      // Short attack + release envelope so the tone doesn't click.
-      const now = ctx.currentTime;
-      const duration = type === 'celebration' ? 0.4 : 0.2;
-      gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(0.3, now + 0.015);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-      oscillator.start(now);
-      if (type === 'celebration') {
-        oscillator.frequency.setValueAtTime(880, now);
-        oscillator.frequency.setValueAtTime(1047, now + 0.1);
-        oscillator.frequency.setValueAtTime(1319, now + 0.2);
-      }
-      oscillator.stop(now + duration + 0.02);
-    } catch (e) {
-      console.log('Audio not supported:', e);
-    }
-  };
-
   useEffect(() => {
     if (restTimer === null) return;
     const interval = setInterval(() => {
@@ -145,10 +93,11 @@ export function ActiveWorkoutView({
           // Finished: clear the timer and signal from inside the tick so the
           // effect body itself never sets state.
           setRestTimer(null);
-          playSound('timer');
-          hapticNotification('warning');
+          feedback('restDone');
           return 0;
         }
+        // Three seconds out, a quieter heads-up so you can rack up in time.
+        if (t === 4) feedback('restEnding');
         return t - 1;
       });
     }, 1000);
@@ -158,8 +107,6 @@ export function ActiveWorkoutView({
   const startRestTimer = (seconds: number) => {
     setRestTimer(seconds);
     setRestTimeLeft(seconds);
-    // Quick haptic feedback when starting timer
-    hapticImpact('light');
   };
   
   // Add exercise to current workout
@@ -294,6 +241,9 @@ export function ActiveWorkoutView({
 
     // Rest timer — only on first completion, not on edits.
     if (justCompleted) {
+      // The set landing is the cue; the timer starting is the same moment,
+      // so it does not get its own.
+      feedback('setComplete');
       const libraryEntry = storage.getExercises().find(
         (e) => e.id === exercise.exerciseId
           || e.name.trim().toLowerCase() === exercise.exerciseName.trim().toLowerCase(),
@@ -369,8 +319,7 @@ export function ActiveWorkoutView({
           reps: freshSessionBest.reps,
         });
         setTimeout(() => setPrAchievement(null), 3500);
-        playSound('celebration');
-        hapticNotification('success');
+        feedback('prCelebration');
       } else if (isVolumePR && isLastCompletedSet) {
         setPrAchievement({
           exercise: exercise.exerciseName,
@@ -379,7 +328,7 @@ export function ActiveWorkoutView({
           isVolumePR: true,
         });
         setTimeout(() => setPrAchievement(null), 3500);
-        hapticNotification('success');
+        feedback('prCelebration');
       }
     }
   };
@@ -486,7 +435,7 @@ export function ActiveWorkoutView({
           {storage.getRestTimerPresets().map(seconds => (
             <button
               key={seconds}
-              onClick={() => startRestTimer(seconds)}
+              onClick={() => { feedback('restStart'); startRestTimer(seconds); }}
               className="flex-1 py-2 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg text-sm text-zinc-400 hover:border-orange-500/50 transition-colors"
             >
               {seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}
