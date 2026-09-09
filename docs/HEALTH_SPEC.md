@@ -302,3 +302,29 @@ off at 20 s), `MAX_MODEL_ATTEMPTS` 3 → 4, and a failed scan now **refunds** th
 Diagnostics: `POST /api/foodscan` with `debug: true` from an admin uid returns a per-attempt array
 (model, status, finishReason, token usage, and the first 300 chars of an unparseable reply). That
 is how both faults were found; use it before theorising again.
+
+## 17. The three quota clocks (3.19.2, 2026-09-09)
+Google enforces three separate limits per model and they expire on completely different clocks.
+Treating them alike is what broke the scanner; `aiQuota/{YYYY-MM-DD Pacific}` now models each one:
+
+| Limit | Meaning | Where it lives | Expires |
+|---|---|---|---|
+| **RPD** | requests per day | `used[model]` vs `perDay`, and `exhausted[model]` | with the Pacific day — a new document |
+| **RPM** | requests per minute | `cooldownUntil[model]` | at the stored instant, ~65 s later |
+| **TPM** | tokens per minute | `cooldownUntil[model]` | same |
+| — | demand spike (503) | `cooldownUntil[model]` | ~45 s, or Google's own `retryDelay` |
+
+`selectModel` skips a model only while `cooldownUntil[model] > now`, so **a model rate-limited five
+minutes ago is a first-class candidate again now** — nothing has to clear the flag. `exhausted` is
+reserved for the two things that really do last: a 429 whose message names a per-**day** quota, and
+a 404. `classifyFailure` returns `{ kind, cooldownMs, refund }` and prefers
+`error.details[].retryDelay` over our own defaults whenever the API sends one.
+
+Failed calls also hand their reservation back (`releaseReservation`). `pickModel` increments the
+day counter *before* the call, so without this a spike walked `used` from 1 to 4 with no answer
+ever coming back — the scanner was spending its daily budget on failures. Google does not charge a
+503 against the quota and neither do we now.
+
+When every model is cooling at once the error says so, with the wait
+("Every model is rate-limited right now. Try again in 30s.") instead of the flatly wrong
+"Try again tomorrow."

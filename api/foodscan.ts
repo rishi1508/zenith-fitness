@@ -26,7 +26,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { assertPremium, consumeLimit, DAY_MS, HttpError, refundLimit } from './_limits.js';
-import { classifyFailure, markExhausted, MAX_MODEL_ATTEMPTS, pickModel } from './_modelRouter.js';
+import {
+  classifyFailure, markCooldown, markExhausted, MAX_MODEL_ATTEMPTS, pickModel, releaseReservation,
+} from './_modelRouter.js';
 import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js';
 
 // A vision call on a flash model answers in 2–8 s; the ceiling is here for
@@ -233,18 +235,22 @@ async function scan(
     if (r.status < 200 || r.status >= 300) {
       debug?.push(describe(model, r));
       const why = r.body.error?.message || '';
-      const kind = classifyFailure(r.status, why);
-      console.warn(`[foodscan] ${model} → ${r.status} (${kind}) ${why.slice(0, 140)}`);
-      if (kind === 'exhausted') {
+      const failure = classifyFailure(r.status, why, r.body);
+      console.warn(`[foodscan] ${model} → ${r.status} (${failure.kind}) ${why.slice(0, 140)}`);
+      tried.add(model);
+      // A call that never reached the model owes its reserved request back.
+      if (failure.refund) await releaseReservation(db, model);
+
+      if (failure.kind === 'exhausted') {
         await markExhausted(db, model);
-        tried.add(model);
         if (canRetry(attempt)) continue;
         break;
       }
-      if (kind === 'transient') {
-        // The model is fine, this call was not. Skip it for the rest of THIS
-        // request only — its daily budget is untouched.
-        tried.add(model);
+      if (failure.kind === 'cooldown') {
+        // Park it for as long as the limit actually lasts — a minute for RPM
+        // or TPM, seconds for a demand spike — so the next request skips it
+        // without spending an attempt, and picks it up again after that.
+        await markCooldown(db, model, failure.cooldownMs ?? 45_000);
         lastFailure = r.status === 504
           ? new HttpError(504, 'The scan took too long. Please try again in a moment.', { reason: 'busy' })
           : new HttpError(503, 'The scanner is busy right now. Try again in a moment.', { reason: 'busy' });

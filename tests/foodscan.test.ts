@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { clampItem, MAX_ITEMS, parseScanPayload, repairJson } from '../api/_scanParse';
-import { classifyFailure, selectModel } from '../api/_modelRouter';
+import { classifyFailure, nextAvailableInSec, retryDelayMs, selectModel } from '../api/_modelRouter';
 import { scaleScanItem, scanItemToEntry, slugifyFood } from '../src/nutrition/scan';
 
 describe('repairJson', () => {
@@ -106,27 +106,39 @@ describe('scan → diary mapping', () => {
 
 describe('cascade failure classification', () => {
   it('only writes a model off for a real daily quota', () => {
-    expect(classifyFailure(429, 'Quota exceeded for quota metric ... GenerateRequestsPerDayPerProject')).toBe('exhausted');
-    expect(classifyFailure(404, 'models/gemini-x is not found')).toBe('exhausted');
+    expect(classifyFailure(429, 'Quota exceeded for quota metric ... GenerateRequestsPerDayPerProject').kind).toBe('exhausted');
+    expect(classifyFailure(404, 'models/gemini-x is not found').kind).toBe('exhausted');
   });
 
-  it('treats a demand spike as transient, not as exhaustion', () => {
+  it('cools a demand spike instead of writing the day off', () => {
     // The 2026-09-09 bug: this wrote off the three strongest models after
     // 1-2 calls out of 20 each, for the whole day.
-    expect(classifyFailure(503, 'This model is currently experiencing high demand.')).toBe('transient');
-    expect(classifyFailure(500, 'Internal error encountered.')).toBe('transient');
-    expect(classifyFailure(502, '')).toBe('transient');
-    expect(classifyFailure(504, '')).toBe('transient');
+    const spike = classifyFailure(503, 'This model is currently experiencing high demand.');
+    expect(spike.kind).toBe('cooldown');
+    expect(spike.cooldownMs).toBeGreaterThan(0);
+    expect(spike.cooldownMs).toBeLessThanOrEqual(60_000);
+    // And the reserved request comes back — a spike costs no daily quota.
+    expect(spike.refund).toBe(true);
   });
 
-  it('treats a per-minute rate limit as transient too', () => {
-    expect(classifyFailure(429, 'Quota exceeded ... GenerateRequestsPerMinutePerProject')).toBe('transient');
-    expect(classifyFailure(429, 'Too many requests per minute')).toBe('transient');
+  it('cools a per-minute limit for about a minute', () => {
+    const rpm = classifyFailure(429, 'Quota exceeded ... GenerateRequestsPerMinutePerProject');
+    expect(rpm.kind).toBe('cooldown');
+    expect(rpm.cooldownMs).toBeGreaterThanOrEqual(60_000);
+    expect(rpm.refund).toBe(true);
+  });
+
+  it("believes Google's own retryDelay when it sends one", () => {
+    const body = { error: { details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '23s' }] } };
+    expect(retryDelayMs(body)).toBe(23_000);
+    expect(classifyFailure(429, 'per minute', body).cooldownMs).toBe(23_000);
+    expect(retryDelayMs({ error: { details: [{ reason: 'RATE_LIMIT' }] } })).toBeNull();
+    expect(retryDelayMs(undefined)).toBeNull();
   });
 
   it('calls a malformed request fatal — no other model will do better', () => {
-    expect(classifyFailure(400, 'Invalid JSON payload')).toBe('fatal');
-    expect(classifyFailure(403, 'API key not valid')).toBe('fatal');
+    expect(classifyFailure(400, 'Invalid JSON payload').kind).toBe('fatal');
+    expect(classifyFailure(403, 'API key not valid').kind).toBe('fatal');
   });
 });
 
@@ -136,24 +148,38 @@ describe('model selection', () => {
     { model: 'mid', perDay: 20 },
     { model: 'weak', perDay: 500 },
   ];
+  const NOW = 1_700_000_000_000;
 
   it('takes the strongest model with budget left', () => {
-    expect(selectModel({}, budgets)?.model).toBe('strong');
+    expect(selectModel({}, budgets, new Set(), NOW)?.model).toBe('strong');
   });
 
   it('skips a model that is exhausted for the day', () => {
-    expect(selectModel({ exhausted: { strong: true } }, budgets)?.model).toBe('mid');
+    expect(selectModel({ exhausted: { strong: true } }, budgets, new Set(), NOW)?.model).toBe('mid');
   });
 
   it('skips a model that already failed this request without touching its budget', () => {
-    const pick = selectModel({ used: { strong: 3 } }, budgets, new Set(['strong']));
-    expect(pick?.model).toBe('mid');
-    // Nothing was written off: a later request still gets the strong model.
-    expect(selectModel({ used: { strong: 3 } }, budgets)?.model).toBe('strong');
+    expect(selectModel({ used: { strong: 3 } }, budgets, new Set(['strong']), NOW)?.model).toBe('mid');
+    expect(selectModel({ used: { strong: 3 } }, budgets, new Set(), NOW)?.model).toBe('strong');
+  });
+
+  it('skips a cooling model, and takes it back the moment the window passes', () => {
+    const cooling = { cooldownUntil: { strong: NOW + 30_000 } };
+    expect(selectModel(cooling, budgets, new Set(), NOW)?.model).toBe('mid');
+    // Five minutes later the same state must not hold it back — this is the
+    // whole point: RPM and TPM expire on their own.
+    expect(selectModel(cooling, budgets, new Set(), NOW + 5 * 60_000)?.model).toBe('strong');
+  });
+
+  it('reports how long until something frees up', () => {
+    const state = { cooldownUntil: { strong: NOW + 30_000, mid: NOW + 90_000 } };
+    expect(nextAvailableInSec(state, NOW)).toBe(30);
+    expect(nextAvailableInSec(state, NOW + 120_000)).toBeNull();
+    expect(nextAvailableInSec({}, NOW)).toBeNull();
   });
 
   it('gives up only when every model is spent', () => {
-    expect(selectModel({ exhausted: { strong: true, mid: true, weak: true } }, budgets)).toBeNull();
+    expect(selectModel({ exhausted: { strong: true, mid: true, weak: true } }, budgets, new Set(), NOW)).toBeNull();
   });
 });
 

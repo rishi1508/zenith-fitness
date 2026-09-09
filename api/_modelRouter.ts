@@ -6,13 +6,29 @@
 // resets at midnight Pacific, so the counters live in one Firestore
 // document per Pacific day:
 //
-//   aiQuota/{YYYY-MM-DD} = { used: { [model]: n }, exhausted: { [model]: true } }
+//   aiQuota/{YYYY-MM-DD} = {
+//     used:          { [model]: n },       // RPD, spent today
+//     exhausted:     { [model]: true },    // RPD gone: nothing until tomorrow
+//     cooldownUntil: { [model]: epochMs }, // RPM / TPM / a demand spike
+//   }
 //
-// `pickModel` reserves a slot in a transaction (so two concurrent scans
-// can't both spend the last request). A 429/404/503 from the model that
-// was picked means the published budget was wrong or the model is gone:
-// `markExhausted` writes it off for the rest of the day and the caller
-// picks again (see MAX_MODEL_ATTEMPTS).
+// The three limits Google enforces expire on completely different clocks,
+// and treating them alike is what broke the scanner on 2026-09-09:
+//
+//   RPD  requests per day    → resets at midnight Pacific, i.e. a new doc
+//   RPM  requests per minute → resets within the minute
+//   TPM  tokens per minute   → resets within the minute
+//
+// So a model is skipped either because its DAY is spent (`exhausted`, which
+// only a per-day 429 or a 404 may set) or because it is still inside a short
+// cooling window (`cooldownUntil`, set by a per-minute 429 or a 503 spike and
+// honoured only until that instant passes). A model rate-limited five minutes
+// ago is a first-class candidate again now.
+//
+// `pickModel` reserves a slot in a transaction (so two concurrent scans can't
+// both spend the last request); `releaseReservation` hands it back when the
+// call never reached the model, so a spike cannot quietly eat the day's
+// twenty requests.
 //
 // Zen is untouched: it keeps its own Gemma peer-switching in
 // api/_zenProtocol.ts. Today only api/foodscan.ts uses this router.
@@ -51,6 +67,8 @@ export const MAX_MODEL_ATTEMPTS = 4;
 export interface QuotaState {
   used?: Record<string, number>;
   exhausted?: Record<string, boolean>;
+  /** model → epoch ms before which it must not be picked again. */
+  cooldownUntil?: Record<string, number>;
 }
 
 export interface ModelPick {
@@ -68,15 +86,26 @@ export function selectModel(
   state: QuotaState,
   budgets: ModelBudget[] = MODEL_CASCADE,
   skip: ReadonlySet<string> = new Set(),
+  nowMs: number = Date.now(),
 ): ModelPick | null {
   for (const b of budgets) {
     if (state.exhausted?.[b.model] || skip.has(b.model)) continue;
+    // A cooling window that has already passed is not a reason to skip.
+    if ((state.cooldownUntil?.[b.model] ?? 0) > nowMs) continue;
     const used = state.used?.[b.model] ?? 0;
     if (used < b.perDay - HEADROOM) {
       return { model: b.model, remainingToday: b.perDay - HEADROOM - used - 1 };
     }
   }
   return null;
+}
+
+/** Seconds until every cooling model is available again, or null if none are. */
+export function nextAvailableInSec(state: QuotaState, nowMs: number = Date.now()): number | null {
+  const waits = Object.values(state.cooldownUntil ?? {})
+    .map((until) => until - nowMs)
+    .filter((ms) => ms > 0);
+  return waits.length ? Math.ceil(Math.min(...waits) / 1000) : null;
 }
 
 /** The quota day (YYYY-MM-DD) this instant belongs to — Pacific, like the API's reset. */
@@ -107,7 +136,7 @@ export async function pickModel(
   const pick = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const state = (snap.exists ? snap.data() : {}) as QuotaState;
-    const chosen = selectModel(state, budgets, opts.skip);
+    const chosen = selectModel(state, budgets, opts.skip, opts.now?.getTime() ?? Date.now());
     if (!chosen) return null;
     tx.set(
       ref,
@@ -116,15 +145,58 @@ export async function pickModel(
     );
     return chosen;
   });
-  if (!pick) throw new HttpError(429, 'Scanning is busy today. Try again tomorrow.', { reason: 'quota' });
+  if (!pick) {
+    // Distinguish "come back tomorrow" from "come back in a minute" — with
+    // per-minute limits the second is much the more common of the two.
+    const state = (await ref.get()).data() as QuotaState | undefined;
+    const wait = nextAvailableInSec(state ?? {}, opts.now?.getTime() ?? Date.now());
+    if (wait !== null) {
+      throw new HttpError(429, `Every model is rate-limited right now. Try again in ${wait < 60 ? `${wait}s` : 'a minute'}.`, {
+        reason: 'busy', retryAfterSec: wait,
+      });
+    }
+    throw new HttpError(429, 'Scanning is busy today. Try again tomorrow.', { reason: 'quota' });
+  }
   console.log(`[modelRouter] ${opts.purpose} → ${pick.model} (${pick.remainingToday} left today)`);
   return pick;
 }
 
-/** Writes a model off for the rest of the day after it answered 429/404/503. */
+/** Writes a model off for the rest of the day. Only a per-day 429 or a 404. */
 export async function markExhausted(db: Firestore, model: string, now?: Date): Promise<void> {
   console.warn(`[modelRouter] ${model} exhausted for ${quotaDayISO(now)}`);
   await quotaRef(db, now).set({ exhausted: { [model]: true }, updatedAt: Date.now() }, { merge: true });
+}
+
+/**
+ * Parks a model for `ms` — a per-minute limit or a demand spike. Nothing has
+ * to clear it: `selectModel` compares the stored instant against the clock,
+ * so the model returns of its own accord.
+ */
+export async function markCooldown(db: Firestore, model: string, ms: number, now?: Date): Promise<void> {
+  const until = Date.now() + Math.max(1_000, ms);
+  console.warn(`[modelRouter] ${model} cooling for ${Math.round(ms / 1000)}s`);
+  await quotaRef(db, now).set({ cooldownUntil: { [model]: until }, updatedAt: Date.now() }, { merge: true });
+}
+
+/**
+ * Hands back the request `pickModel` reserved, for a call that never reached
+ * the model. Google does not charge a 503 against the daily quota, and nor
+ * should we: on 2026-09-09 spikes alone walked `used` up 1 → 4 without a
+ * single answer coming back.
+ */
+export async function releaseReservation(db: Firestore, model: string, now?: Date): Promise<void> {
+  const ref = quotaRef(db, now);
+  try {
+    await ref.firestore.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const state = (snap.exists ? snap.data() : {}) as QuotaState;
+      const used = state.used?.[model] ?? 0;
+      if (used <= 0) return;
+      tx.set(ref, { used: { [model]: used - 1 }, updatedAt: Date.now() }, { merge: true });
+    });
+  } catch (err) {
+    console.warn(`[modelRouter] could not release ${model}:`, (err as Error).message);
+  }
 }
 
 /**
@@ -145,7 +217,41 @@ export async function markExhausted(db: Firestore, model: string, now?: Date): P
  * lasts seconds; a daily quota lasts until midnight Pacific. Only 429 with
  * a quota message, and 404, may write a model off.
  */
-export type FailureKind = 'exhausted' | 'transient' | 'fatal';
+export type FailureKind = 'exhausted' | 'cooldown' | 'fatal';
+
+export interface Failure {
+  kind: FailureKind;
+  /** kind 'cooldown': how long to park the model for, in ms. */
+  cooldownMs?: number;
+  /** True when the request never reached the model, so its slot is owed back. */
+  refund?: boolean;
+}
+
+/** Default cooling windows, by what went wrong. */
+const COOLDOWN_MS = {
+  /** RPM / TPM. The window is a minute; a little past it is safer. */
+  perMinute: 65_000,
+  /** "This model is currently experiencing high demand" — seconds, usually. */
+  spike: 45_000,
+  /** An internal error or a timeout: give it a moment, don't write it off. */
+  glitch: 20_000,
+} as const;
+
+/**
+ * Google sometimes says exactly how long to wait, in
+ * `error.details[].retryDelay: "23s"`. Believe it when it does.
+ */
+export function retryDelayMs(body: unknown): number | null {
+  const details = (body as { error?: { details?: Array<Record<string, unknown>> } })?.error?.details;
+  if (!Array.isArray(details)) return null;
+  for (const d of details) {
+    const raw = d?.retryDelay;
+    if (typeof raw !== 'string') continue;
+    const m = /^(\d+(?:\.\d+)?)s$/.exec(raw.trim());
+    if (m) return Math.round(Number(m[1]) * 1000);
+  }
+  return null;
+}
 
 /** Per-minute limits recover on their own; per-day ones do not. */
 function isPerDayQuota(message: string): boolean {
@@ -154,9 +260,15 @@ function isPerDayQuota(message: string): boolean {
   return /per\s*day|perday|per-day|\brpd\b|daily|quota/.test(m);
 }
 
-export function classifyFailure(status: number, message = ''): FailureKind {
-  if (status === 404) return 'exhausted';
-  if (status === 429) return isPerDayQuota(message) ? 'exhausted' : 'transient';
-  if (status === 408 || status === 409 || status === 500 || status === 502 || status === 503 || status === 504) return 'transient';
-  return 'fatal';
+export function classifyFailure(status: number, message = '', body?: unknown): Failure {
+  if (status === 404) return { kind: 'exhausted' };
+  if (status === 429) {
+    if (isPerDayQuota(message)) return { kind: 'exhausted' };
+    return { kind: 'cooldown', cooldownMs: retryDelayMs(body) ?? COOLDOWN_MS.perMinute, refund: true };
+  }
+  if (status === 503) return { kind: 'cooldown', cooldownMs: retryDelayMs(body) ?? COOLDOWN_MS.spike, refund: true };
+  if (status === 408 || status === 409 || status === 500 || status === 502 || status === 504) {
+    return { kind: 'cooldown', cooldownMs: COOLDOWN_MS.glitch, refund: true };
+  }
+  return { kind: 'fatal' };
 }
