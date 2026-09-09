@@ -82,6 +82,7 @@ import type { Tab } from './shell/tabs';
 import { isAdmin } from './admin';
 import { levelForVolume } from './levels';
 import { feedback } from './feedback';
+import { startActivityAutoSync } from './activity';
 import { workoutEnergy } from './energy';
 import { getHealthProfile } from './health';
 import { recordBuddyInteraction } from './buddyAffinity';
@@ -1122,6 +1123,14 @@ function App() {
       autoFinishInFlightRef.current = false;
     }
   };
+  // Health Connect keeps itself current in the background — the energy
+  // ledger reads steps and sleep from the cache on every screen, not just
+  // the Activity one (src/activity/autoSync.ts).
+  useEffect(() => {
+    if (!user) return;
+    return startActivityAutoSync();
+  }, [user]);
+
   const checkIdleAutoFinishRef = useRef(checkIdleAutoFinish);
   checkIdleAutoFinishRef.current = checkIdleAutoFinish;
 

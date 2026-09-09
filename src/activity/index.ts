@@ -8,6 +8,8 @@ export {
 } from './healthConnect';
 export type { PermissionState } from './healthConnect';
 
+export { startActivityAutoSync, syncIfStale } from './autoSync';
+
 export {
   ACTIVITY_METRICS, APP_SOURCE, HC_SOURCE,
   addSessionToDay, estimateWorkoutKcal, formatSleep, hasReadings, mergeActivityDay, sameActivityDay, summariseActivity,
