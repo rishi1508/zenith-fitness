@@ -58,12 +58,16 @@ service cloud.firestore {
         request.auth.uid == uid ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gym']) && isGymManager(request.resource.data.gym.gymId)) ||
         // Somebody following or unfollowing this person may move that one
-        // counter by one, and nothing else (src/followService.ts).
+        // counter by one, and nothing else (src/followService.ts) — and only
+        // in step with their own edge: +1 once the edge exists, -1 once it is
+        // gone. Without that a stranger could inflate anybody's follower count.
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followerCount'])
           && request.resource.data.followerCount is int
           && request.resource.data.followerCount >= 0
-          && (request.resource.data.followerCount == resource.data.get('followerCount', 0) + 1
-            || request.resource.data.followerCount == resource.data.get('followerCount', 0) - 1)) ||
+          && ((request.resource.data.followerCount == resource.data.get('followerCount', 0) + 1
+                && exists(/databases/$(database)/documents/follows/$(request.auth.uid + '__' + uid)))
+            || (request.resource.data.followerCount == resource.data.get('followerCount', 0) - 1
+                && !exists(/databases/$(database)/documents/follows/$(request.auth.uid + '__' + uid))))) ||
         // The buddy follow-back bumps the buddy's `followingCount` by one.
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followingCount'])
           && request.resource.data.followingCount is int
@@ -401,13 +405,17 @@ service cloud.firestore {
                                );
                                allow update, delete: if isGymManager(gymId) || isAdmin(); }
       match /dailyStats/{date} { allow read: if isGymStaff(gymId) || isAdmin();
-                               // Members may only bump the counter by one (their own check-in).
+                               // Members may only bump the counter by one, and only for a day they
+                               // really checked in on — the check-in doc `${uid}_${date}` is written
+                               // first (checkinMember in gymService.ts), so its existence is the proof.
                                allow create: if isGymStaff(gymId) || isAdmin() || (isGymMember(gymId)
                                  && request.resource.data.keys().hasOnly(['date', 'count', 'hours'])
-                                 && request.resource.data.date == date && request.resource.data.count == 1);
+                                 && request.resource.data.date == date && request.resource.data.count == 1
+                                 && exists(/databases/$(database)/documents/gyms/$(gymId)/checkins/$(request.auth.uid + '_' + date)));
                                allow update: if isGymStaff(gymId) || isAdmin() || (isGymMember(gymId)
                                  && request.resource.data.keys().hasOnly(['date', 'count', 'hours'])
-                                 && request.resource.data.date == date && request.resource.data.count == resource.data.count + 1); }
+                                 && request.resource.data.date == date && request.resource.data.count == resource.data.count + 1
+                                 && exists(/databases/$(database)/documents/gyms/$(gymId)/checkins/$(request.auth.uid + '_' + date))); }
       match /classes/{id}    { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow write: if isGymManager(gymId) || isAdmin();
         match /sessions/{date} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
                                  // Staff/admin: anything. Member: may CREATE the session doc as the first
