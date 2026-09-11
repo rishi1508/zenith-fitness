@@ -92,6 +92,7 @@ import { startActivityAutoSync } from './activity';
 import { claimGymInvite } from './gymStaffHelpers';
 import { syncBuddyFollows } from './followService';
 import { installCaptureRestore } from './captureRestore';
+import { PremiumGate } from './premium';
 import type { RestoreOutcome } from './captureRestore';
 import { refreshBadges } from './badgeSync';
 import { badgeById } from './badges';
@@ -1714,6 +1715,7 @@ function App() {
             onOpenPhase={() => navigateTo('phase')}
             onOpenActivity={() => navigateTo('activity')}
             onOpenEnergy={() => navigateTo('energy')}
+            onJoinGym={() => navigateToGym('gym-join')}
           />
         )}
         {view === 'you' && (
@@ -1728,6 +1730,7 @@ function App() {
             onOpenAdminUsers={() => navigateTo('admin-users')}
             onOpenAdminLibrary={() => navigateTo('admin-library')}
             onOpenProfileUid={openProfile}
+            onJoinGym={() => navigateToGym('gym-join')}
           />
         )}
         {view === 'history' && (
@@ -1795,28 +1798,30 @@ function App() {
           />
         )}
         {view === 'analysis' && (
-          <AnalysisView
-            stats={stats}
-            workouts={workoutHistory}
-            isDark={isDark}
-            onBack={() => goBack()}
-            onStartDay={(dayIndex) => {
-              const activePlan = storage.getActivePlan();
-              if (activePlan && activePlan.days[dayIndex]) {
-                storage.setLastUsedDay(dayIndex);
-                const dayPlan = activePlan.days[dayIndex];
-                const template: WorkoutTemplate = {
-                  id: `${activePlan.id}_day${dayIndex}`,
-                  name: `${activePlan.name} - ${dayPlan.name}`,
-                  type: 'custom',
-                  exercises: dayPlan.exercises,
-                  dayOfWeek: dayIndex,
-                  weeklyPlanId: activePlan.id,
-                };
-                startWorkout(template);
-              }
-            }}
-          />
+          <PremiumGate feature="analysis" onJoinGym={() => navigateToGym('gym-join')} onBack={() => goBack()}>
+            <AnalysisView
+              stats={stats}
+              workouts={workoutHistory}
+              isDark={isDark}
+              onBack={() => goBack()}
+              onStartDay={(dayIndex) => {
+                const activePlan = storage.getActivePlan();
+                if (activePlan && activePlan.days[dayIndex]) {
+                  storage.setLastUsedDay(dayIndex);
+                  const dayPlan = activePlan.days[dayIndex];
+                  const template: WorkoutTemplate = {
+                    id: `${activePlan.id}_day${dayIndex}`,
+                    name: `${activePlan.name} - ${dayPlan.name}`,
+                    type: 'custom',
+                    exercises: dayPlan.exercises,
+                    dayOfWeek: dayIndex,
+                    weeklyPlanId: activePlan.id,
+                  };
+                  startWorkout(template);
+                }
+              }}
+            />
+          </PremiumGate>
         )}
         {view === 'exercises' && (
           <ExerciseManagerView
@@ -1915,19 +1920,26 @@ function App() {
               setBuddyContext((prev) => ({ ...prev, uid, name, photoURL }));
               navigateTo('buddy-profile');
             }}
+            onJoinGym={() => navigateToGym('gym-join')}
           />
         )}
         {view === 'energy' && (
-          <EnergyView onBack={() => goBack()} onAskZen={openZen} />
+          <PremiumGate feature="advanced-analytics" onJoinGym={() => navigateToGym('gym-join')} onBack={() => goBack()}>
+            <EnergyView onBack={() => goBack()} onAskZen={openZen} />
+          </PremiumGate>
         )}
         {view === 'nutrition-targets' && (
           <TargetsView onBack={() => goBack()} />
         )}
         {view === 'phase' && (
-          <PhaseView isDark={isDark} onBack={() => goBack()} onOpenBodyWeight={() => navigateTo('body-weight')} />
+          <PremiumGate feature="advanced-analytics" onJoinGym={() => navigateToGym('gym-join')} onBack={() => goBack()}>
+            <PhaseView isDark={isDark} onBack={() => goBack()} onOpenBodyWeight={() => navigateTo('body-weight')} />
+          </PremiumGate>
         )}
         {view === 'insights' && (
-          <InsightsView isDark={isDark} onBack={() => goBack()} />
+          <PremiumGate feature="analysis" onJoinGym={() => navigateToGym('gym-join')} onBack={() => goBack()}>
+            <InsightsView isDark={isDark} onBack={() => goBack()} />
+          </PremiumGate>
         )}
         {view === 'admin-gyms' && (
           <AdminGymsView onBack={() => goBack()} />
@@ -1939,11 +1951,13 @@ function App() {
           <AdminLibraryView onBack={() => goBack()} />
         )}
         {view === 'zen' && (
-          <ZenChatView
-            onBack={() => goBack()}
-            initialPrompt={zenPrefill}
-            onConsumePrompt={() => setZenPrefill(null)}
-          />
+          <PremiumGate feature="zen" onJoinGym={() => navigateToGym('gym-join')} onBack={() => goBack()}>
+            <ZenChatView
+              onBack={() => goBack()}
+              initialPrompt={zenPrefill}
+              onConsumePrompt={() => setZenPrefill(null)}
+            />
+          </PremiumGate>
         )}
         {view === 'body-weight' && (
           <BodyWeightView isDark={isDark} onBack={() => goBack()} />
@@ -1969,6 +1983,7 @@ function App() {
               navigateTo('buddy-chat');
             }}
             onOpenSession={openSession}
+            onJoinGym={() => navigateToGym('gym-join')}
           />
         )}
         {view === 'buddy-profile' && buddyContext.uid && (
@@ -2003,6 +2018,7 @@ function App() {
               setBuddyContext({ uid, name, photoURL });
               navigateTo('buddies');
             }}
+            onJoinGym={() => navigateToGym('gym-join')}
           />
         )}
         {view === 'buddy-compare' && buddyContext.uid && (

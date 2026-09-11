@@ -12,6 +12,8 @@ import { addDaysISO, localDateISO } from '../../health';
 
 interface HealthTabViewProps {
   onOpenZen: (prompt?: string) => void;
+  /** Gym join screen, for the locked Zen card. */
+  onJoinGym?: () => void;
   onOpenBodyWeight: () => void;
   onOpenBodyMeasurements: () => void;
   onOpenInsights: () => void;
@@ -22,7 +24,7 @@ interface HealthTabViewProps {
 }
 
 /** Health tab root (docs/REVAMP_SPEC.md §3, §6). */
-export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasurements, onOpenInsights, onOpenNutrition, onOpenPhase, onOpenActivity, onOpenEnergy }: HealthTabViewProps) {
+export function HealthTabView({ onOpenZen, onJoinGym, onOpenBodyWeight, onOpenBodyMeasurements, onOpenInsights, onOpenNutrition, onOpenPhase, onOpenActivity, onOpenEnergy }: HealthTabViewProps) {
   // The whole tab reads one day, so yesterday's food, energy and steps are a
   // tap away instead of only reachable inside the diary.
   const today = localDateISO();
@@ -63,7 +65,7 @@ export function HealthTabView({ onOpenZen, onOpenBodyWeight, onOpenBodyMeasureme
         </Button>
       </Card>
 
-      <ZenCard onAskZen={onOpenZen} />
+      <ZenCard onAskZen={onOpenZen} onJoinGym={onJoinGym} />
 
       <EnergyCard onOpen={onOpenEnergy} date={isToday ? undefined : date} />
 

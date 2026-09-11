@@ -14,7 +14,7 @@ import { follow, isFollowing, listFollowers, listFollowing, unfollow } from '../
 import { saveProfilePhoto, effectiveProfilePhoto } from '../../profilePhoto';
 import { LevelRing } from '../../components/LevelRing';
 import { ActivityHeatmap, AvatarPeek, BadgeArt, StreakModal } from '../../components';
-import { usePremium, PremiumBadge } from '../../premium';
+import { usePremium, PremiumBadge, UpgradeSheet, FREE_BUDDY_LIMIT } from '../../premium';
 import type { Tier } from '../../premium';
 import {
   Card, EmptyState, IconButton, ListRow, Pill, SectionHeader, Sheet, Skeleton, StatTile, useToast, CAPTION, H2, SUB,
@@ -55,6 +55,8 @@ const TABS: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
 ];
 
 export interface ProfileViewProps {
+  /** Gym join screen, from the Premium sheet. */
+  onJoinGym?: () => void;
   /** Whose profile. Absent = the signed-in user's own. */
   uid?: string;
   isDark: boolean;
@@ -87,11 +89,11 @@ export interface ProfileViewProps {
  */
 export function ProfileView({
   uid, isDark, onBack, onOpenProgress, onOpenAnalysis, onOpenHistory, onOpenBuddies, onOpenSettings,
-  onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary, onOpenChat, onOpenProfileUid, onCompare, onStartSession,
-}: ProfileViewProps) {
+  onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary, onOpenChat, onOpenProfileUid, onCompare, onStartSession, onJoinGym }: ProfileViewProps) {
   const { user } = useAuth();
   const { gym, role: gymRole } = useGym();
-  const { tier } = usePremium();
+  const { tier, can } = usePremium();
+  const [showUpgrade, setShowUpgrade] = useState<null | 'unlimited-buddies' | 'tier'>(null);
   const { showToast } = useToast();
 
   const self = !uid || uid === user?.uid;
@@ -239,7 +241,10 @@ export function ProfileView({
                 both print "Admin" next to each other. */}
             {isAdmin(targetUid)
               ? <Pill tone="info">Admin</Pill>
-              : self && tier !== 'free' && <Pill tone={TIER_TONE[tier]}>{TIER_LABEL[tier]}</Pill>}
+              : self && (tier !== 'free'
+                ? <Pill tone={TIER_TONE[tier]}>{TIER_LABEL[tier]}</Pill>
+                // The one quiet place a free account is told there is more.
+                : <button type="button" onClick={() => setShowUpgrade('tier')} aria-label="About Premium" className="rounded-full"><Pill tone="neutral">Free</Pill></button>)}
             {gymRoleLabel && <Pill tone="neutral">{gymRoleLabel}</Pill>}
             <Pill tone="accent">Lv {stats.level} · {levelTitle(stats.level)}</Pill>
           </div>
@@ -295,6 +300,17 @@ export function ProfileView({
               // them, not asking again.
               if (buddyState === 'buddies') { onOpenChat?.(targetUid, name, avatar); return; }
               if (buddyState !== 'none') return;
+              if (!can('unlimited-buddies')) {
+                // Free accounts train with a few buddies; one read to know where they stand.
+                void buddyService.getBuddies().then((rels) => {
+                  if (rels.length >= FREE_BUDDY_LIMIT) { setShowUpgrade('unlimited-buddies'); return; }
+                  setBuddyState('requested');
+                  void buddyService.sendBuddyRequest(targetUid, name, avatar ?? undefined)
+                    .then(() => showToast(`Buddy request sent to ${name}`))
+                    .catch((err) => { setBuddyState('none'); showToast(err instanceof Error ? err.message : 'Could not send that request.', 'error'); });
+                });
+                return;
+              }
               setBuddyState('requested');
               void buddyService.sendBuddyRequest(targetUid, name, avatar ?? undefined)
                 .then(() => showToast(`Buddy request sent to ${name}`))
@@ -517,6 +533,19 @@ export function ProfileView({
           </div>
         </Sheet>
       )}
+
+      <UpgradeSheet
+
+        open={showUpgrade !== null}
+
+        onClose={() => setShowUpgrade(null)}
+
+        feature={showUpgrade === 'unlimited-buddies' ? 'unlimited-buddies' : undefined}
+
+        onJoinGym={onJoinGym}
+
+      />
+
 
       {openPhoto && gym?.id && (
         <PhotoViewer gymId={gym.id} post={openPhoto} onClose={() => setOpenPhoto(null)} />

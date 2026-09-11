@@ -5,6 +5,7 @@ import App from './App.tsx'
 import { AuthProvider } from './auth/AuthContext'
 import { GymProvider } from './gym/GymContext'
 import { ToastProvider, ConfirmProvider } from './ui'
+import { PremiumProvider } from './premium'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 // Register service worker for PWA
@@ -21,11 +22,13 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
     <AuthProvider>
       <GymProvider>
-        <ToastProvider>
-          <ConfirmProvider>
-            <App />
-          </ConfirmProvider>
-        </ToastProvider>
+        <PremiumProvider>
+          <ToastProvider>
+            <ConfirmProvider>
+              <App />
+            </ConfirmProvider>
+          </ToastProvider>
+        </PremiumProvider>
       </GymProvider>
     </AuthProvider>
     </ErrorBoundary>

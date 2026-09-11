@@ -21,7 +21,7 @@
 //   GEMINI_MODEL           default gemma-4-31b-it
 //   GEMINI_FALLBACK_MODEL  default gemma-4-27b-it   (peer, not a backup — see
 //                          the model-switching rule below)
-//   ZEN_REQUIRE_PREMIUM    default false            ('true' → userProfiles/{uid} must be premium/gym)
+//   ZEN_REQUIRE_PREMIUM    default true             ('false' → open to every signed-in user; premium = paid, admin grant or gym member)
 //
 // Model switching (Rishi's rule): GEMINI_MODEL and GEMINI_FALLBACK_MODEL
 // are peers. On 429/404/503 from whichever is tried, retry immediately
@@ -312,7 +312,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new HttpError(401, 'Your session has expired. Please sign in again.', { reason: 'auth' });
     }
 
-    if (process.env.ZEN_REQUIRE_PREMIUM === 'true') await assertPremium(db, uid, 'Zen is part of Zenith Premium.');
+    // Premium is enforced on the server since 3.27.0 — the client gate is the polite copy of this rule.
+    if (process.env.ZEN_REQUIRE_PREMIUM !== 'false') await assertPremium(db, uid, 'Zen is part of Zenith Premium.');
 
     const messages = trimMessages(body.messages);
     if (messages.length === 0 || messages[messages.length - 1].role !== 'user') {

@@ -2,4 +2,3 @@
 export { HomeTabView } from './HomeTabView';
 export { TrainTabView } from './TrainTabView';
 export { HealthTabView } from './HealthTabView';
-export { YouTabView } from './YouTabView';

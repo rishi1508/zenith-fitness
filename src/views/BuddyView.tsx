@@ -10,8 +10,11 @@ import * as buddyService from '../buddyService';
 import { StartSessionModal } from '../components';
 import { buddyStreakFromProfile, formatStreak } from '../streakService';
 
+import { usePremium, UpgradeSheet, FREE_BUDDY_LIMIT } from '../premium';
 import { useToast } from '../ui';
 interface BuddyViewProps {
+  /** Gym join screen, offered when the free buddy limit is reached. */
+  onJoinGym?: () => void;
   isDark: boolean;
   onBack: () => void;
   onViewProfile: (buddyUid: string, buddyName: string, photoURL?: string | null) => void;
@@ -21,7 +24,7 @@ interface BuddyViewProps {
 
 type Tab = 'buddies' | 'requests' | 'notifications';
 
-export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSession }: BuddyViewProps) {
+export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSession, onJoinGym }: BuddyViewProps) {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>('buddies');
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,7 +121,11 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
   }, [searchQuery, showSearch]);
 
   const { showToast } = useToast();
+  const { can } = usePremium();
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const handleSendRequest = async (profile: UserProfile) => {
+    // Free accounts train with a few buddies; the sheet says how to lift it.
+    if (!can('unlimited-buddies') && buddies.length >= FREE_BUDDY_LIMIT) { setShowUpgrade(true); return; }
     setActionLoading(profile.uid);
     try {
       await buddyService.sendBuddyRequest(profile.uid, profile.displayName, profile.photoURL);
@@ -285,6 +292,8 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
           )}
         </div>
       )}
+
+      <UpgradeSheet open={showUpgrade} onClose={() => setShowUpgrade(false)} feature="unlimited-buddies" onJoinGym={onJoinGym} />
 
       {/* Tabs */}
       <div className={`flex rounded-xl border overflow-hidden ${cardBg} ${cardBorder}`}>
