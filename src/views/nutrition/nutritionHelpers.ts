@@ -56,6 +56,39 @@ export function mealKcal(entries: FoodEntry[], meal: MealSlot): number {
   return Math.round(entriesForMeal(entries, meal).reduce((sum, e) => sum + e.macros.kcal, 0));
 }
 
+export interface WeeklyPoint { date: string; value: number }
+
+export interface WeekSeries {
+  /** `from`..`to` inclusive, oldest first — zero for any day with nothing cached. */
+  days: WeeklyPoint[];
+  /** Of the days with something logged, how many reached `target`. */
+  onTarget: number;
+  logged: number;
+}
+
+/**
+ * One `value` per day of a trailing week, zero-filled for days that aren't
+ * in `days` yet, plus how many logged days reached `target`. Backs the
+ * weekly kcal / water bar charts — one call per metric, since `value` and
+ * `target` differ (kcal vs. glasses).
+ */
+export function weeklySeries(
+  days: NutritionDay[],
+  from: string,
+  to: string,
+  value: (day: NutritionDay) => number,
+  target: number,
+): WeekSeries {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  const points: WeeklyPoint[] = [];
+  for (let cursor = from; cursor <= to; cursor = addDays(cursor, 1)) {
+    const day = byDate.get(cursor);
+    points.push({ date: cursor, value: day ? value(day) : 0 });
+  }
+  const logged = points.filter((p) => p.value > 0);
+  return { days: points, onTarget: logged.filter((p) => p.value >= target).length, logged: logged.length };
+}
+
 /**
  * "Copy yesterday" — the same foods with fresh ids and timestamps so the two
  * days stay independent (deleting today's copy must not touch the original).

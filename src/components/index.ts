@@ -25,6 +25,8 @@ export { InsightCard } from './InsightCard';
 export { ExerciseForm } from './ExerciseForm';
 export { InteractiveLineChart } from './InteractiveLineChart';
 export type { ChartPoint } from './InteractiveLineChart';
+export { WeeklyBars } from './WeeklyBars';
+export type { WeeklyBarDay } from './WeeklyBars';
 export { ChartSettingsBar } from './ChartSettingsBar';
 export { QrCode } from './gym/QrCode';
 export { QrScanner } from './gym/QrScanner';
