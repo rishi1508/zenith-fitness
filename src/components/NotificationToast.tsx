@@ -153,14 +153,24 @@ export function NotificationToast({ onOpenSession, onOpenChat, onOpenBuddies }: 
     const unsub = buddyService.listenToNotifications((notifications) => {
       let changed = false;
       // Oldest first, so a burst stacks in the order it happened.
-      for (const notif of [...notifications].reverse()) {
-        if (!seenIds.has(notif.id)) {
-          seenIds.add(notif.id);
-          changed = true;
-          addToast(notif);
-        }
-      }
+      const fresh = [...notifications].reverse().filter((n) => !seenIds.has(n.id));
+      for (const notif of fresh) { seenIds.add(notif.id); changed = true; }
       if (changed) saveSeen(seenIds);
+      if (fresh.length === 0) return;
+      // A request stays unread until it is answered IN the card — so one that
+      // was answered on another device, or from the Buddies screen, would
+      // resurface here on every new sign-in. Check it is still pending first.
+      const requests = fresh.filter((n) => n.type === 'buddy_request');
+      const others = fresh.filter((n) => n.type !== 'buddy_request');
+      for (const notif of others) addToast(notif);
+      if (requests.length === 0) return;
+      void buddyService.getIncomingRequests().then((pending) => {
+        const open = new Set(pending.map((r) => r.fromUid));
+        for (const notif of requests) {
+          if (open.has(notif.fromUid)) addToast(notif);
+          else void buddyService.markNotificationRead(notif.id);
+        }
+      }).catch(() => { for (const notif of requests) addToast(notif); });
     }, user.uid);
 
     return unsub;

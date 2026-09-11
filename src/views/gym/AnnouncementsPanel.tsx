@@ -9,6 +9,7 @@ import {
 } from '../../gymService';
 import { prepareScanImage } from '../../nutrition/scan';
 import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
+import { consumeRestoredPhoto, hasRestoredPhoto } from '../../captureRestore';
 import { Avatar } from '../../components';
 import { formatDateTime } from '../../gymMemberHelpers';
 import { Button, Card, Chip, EmptyState, Sheet, Skeleton, useConfirm, useToast, CAPTION, SUB } from '../../ui';
@@ -178,7 +179,9 @@ export function AnnouncementComposer({ onPosted }: { onPosted?: () => void } = {
   const { gym } = useGym();
   const { user } = useAuth();
   const isStaff = useIsStaff();
-  const [open, setOpen] = useState(false);
+  // Reopens itself when a notice photo came back after Android recycled the
+  // app mid-capture (src/captureRestore.ts).
+  const [open, setOpen] = useState(() => hasRestoredPhoto('gym-announcement'));
 
   if (!gym || !isStaff) return null;
 
@@ -231,11 +234,20 @@ function ComposerSheet({ gymId, onClose, onPosted }: {
     }
   };
 
+  // The shot that survived a restart, attached as if the camera had just returned.
+  useEffect(() => {
+    const restoredPhoto = consumeRestoredPhoto('gym-announcement');
+    if (!restoredPhoto) return;
+    const t = window.setTimeout(() => { void attach(restoredPhoto.blob); }, 0);
+    return () => window.clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per sheet
+  }, []);
+
   /** Camera and gallery, the same two intentions the feed composer offers. */
   const pick = async (source: 'camera' | 'gallery') => {
     if (!nativePhotoCapture()) { fileRef.current?.click(); return; }
     try {
-      await attach(await capturePhoto(source));
+      await attach(await capturePhoto(source, 'gym-announcement', { gymId }));
     } catch (err) {
       if (err instanceof PhotoCancelled) return;
       showToast(err instanceof Error ? err.message : 'The camera could not be opened.', 'error');

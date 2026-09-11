@@ -14,6 +14,7 @@ import {
 import { listenToAnnouncements } from '../../gymService';
 import { prepareScanImage } from '../../nutrition/scan';
 import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
+import { consumeRestoredPhoto, hasRestoredPhoto } from '../../captureRestore';
 import { Button, Card, EmptyState, SegmentedControl, Sheet, Skeleton, useConfirm, useToast, CAPTION, SUB } from '../../ui';
 import { getUserProfile } from '../../buddyService';
 import { AnnouncementComposer, AnnouncementsPanel } from './AnnouncementsPanel';
@@ -77,8 +78,10 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
   const { confirm } = useConfirm();
 
   const [posts, setPosts] = useState<GymFeedPost[] | null>(null);
-  const [composing, setComposing] = useState<Composing>(null);
-  const [tab, setTabState] = useState<FeedTab>(() => lastTab);
+  // A photo taken for the feed just before Android recycled the app comes
+  // back here (src/captureRestore.ts): reopen the photo composer with it.
+  const [composing, setComposing] = useState<Composing>(() => (hasRestoredPhoto('gym-feed') ? 'photo' : null));
+  const [tab, setTabState] = useState<FeedTab>(() => (hasRestoredPhoto('gym-announcement') ? 'announcements' : lastTab));
   const tabRef = useRef<FeedTab>(lastTab);
   const [newestNotice, setNewestNotice] = useState<string | null>(null);
   const [seenNotice, setSeenNotice] = useState(() => (gym ? readSeen(gym.id) : ''));
@@ -264,12 +267,23 @@ function ComposerSheet({ gymId, mode, onClose, onPosted }: {
     }
   };
 
+  // The shot that survived a restart, attached as if the camera had just
+  // returned. Deferred a tick so the sheet paints first.
+  useEffect(() => {
+    if (mode !== 'photo') return;
+    const restoredPhoto = consumeRestoredPhoto('gym-feed');
+    if (!restoredPhoto) return;
+    const t = window.setTimeout(() => { void attach(restoredPhoto.blob); }, 0);
+    return () => window.clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per sheet
+  }, [mode]);
+
   /** Camera and gallery are separate on purpose — "take a photo" and "choose
    *  one I already have" are different intentions, and the second was missing. */
   const pick = async (source: 'camera' | 'gallery') => {
     if (!nativePhotoCapture()) { fileRef.current?.click(); return; }
     try {
-      await attach(await capturePhoto(source));
+      await attach(await capturePhoto(source, 'gym-feed', { gymId }));
     } catch (err) {
       if (err instanceof PhotoCancelled) return;
       showToast(err instanceof Error ? err.message : 'The camera could not be opened.', 'error');

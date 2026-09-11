@@ -60,6 +60,11 @@ function readPendingCapture(): PendingCapture | null {
 
 const restored = new Map<CapturePurpose, { blob: Blob; extra?: Record<string, string> }>();
 
+/** Is a restored photo waiting for this purpose? Does not take it. */
+export function hasRestoredPhoto(purpose: CapturePurpose): boolean {
+  return restored.has(purpose);
+}
+
 /** The photo that came back after a restart, for the screen it was meant for.
  *  One-shot: the second call returns null. */
 export function consumeRestoredPhoto(purpose: CapturePurpose): { blob: Blob; extra?: Record<string, string> } | null {
