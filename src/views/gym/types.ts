@@ -20,6 +20,7 @@ export type GymView =
   | 'gym-announcements'
   | 'gym-membership'
   | 'gym-dashboard'
+  | 'gym-ops'
   | 'gym-members'
   | 'gym-member'
   | 'gym-console'

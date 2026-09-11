@@ -65,6 +65,7 @@ export const viewToTab: Record<View, Tab> = {
   'gym-announcements': 'gym',
   'gym-membership': 'gym',
   'gym-dashboard': 'gym',
+  'gym-ops': 'gym',
   'gym-members': 'gym',
   'gym-member': 'gym',
   'gym-console': 'gym',

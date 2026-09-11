@@ -63,6 +63,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
   const [address, setAddress] = useState(gym.address ?? '');
   const [phone, setPhone] = useState(gym.phone ?? '');
   const [upiVpa, setUpiVpa] = useState(gym.upiVpa ?? '');
+  const [marketingSpend, setMarketingSpend] = useState(gym.marketingSpendMonthly ? String(gym.marketingSpendMonthly) : '');
   const [logoUrl, setLogoUrl] = useState(gym.logoUrl ?? '');
   const [accentColor, setAccentColor] = useState(gym.accentColor ?? '');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -97,6 +98,9 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
         address: address.trim() || undefined,
         phone: phone.trim() || undefined,
         upiVpa: upiVpa.trim() || undefined,
+        // 0 rather than undefined, so emptying the field really clears it
+        // (updateGym drops undefined keys instead of unsetting them).
+        marketingSpendMonthly: Math.max(0, Math.round(Number(marketingSpend) || 0)),
         logoUrl: logoUrl.trim() || undefined,
         accentColor: accentColor || undefined,
       });
@@ -237,6 +241,14 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
             <input
               type="text" value={upiVpa} onChange={(e) => setUpiVpa(e.target.value)}
               placeholder="irontemple@okhdfc" className={inputCls}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Marketing spend / month (₹) <span className="opacity-70">· gives Analytics a cost per member</span></label>
+            <input
+              type="number" inputMode="numeric" min="0" value={marketingSpend}
+              onChange={(e) => setMarketingSpend(e.target.value)}
+              placeholder="0" className={inputCls}
             />
           </div>
           <div>

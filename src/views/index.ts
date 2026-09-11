@@ -26,6 +26,7 @@ export { ClassDetailView } from './gym/ClassDetailView';
 export { AnnouncementsView } from './gym/AnnouncementsView';
 export { MembershipView } from './gym/MembershipView';
 export { GymDashboardView } from './gym/GymDashboardView';
+export { GymOpsView } from './gym/GymOpsView';
 export { MembersView } from './gym/MembersView';
 export { MemberDetailView } from './gym/MemberDetailView';
 export { CheckinConsoleView } from './gym/CheckinConsoleView';

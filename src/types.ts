@@ -473,6 +473,9 @@ export interface Gym {
   dailyCodeHash?: string;
   dailyCodeDate?: string;        // YYYY-MM-DD local
   memberCount: number;           // denormalised, updated on add/remove
+  /** What the owner spends on marketing each month (₹). Feeds the
+   *  CLV:CAC tile in GymOpsView — without it there is no cost side. */
+  marketingSpendMonthly?: number;
   createdAt: string;
   subscriptionStatus: 'pilot' | 'active' | 'lapsed';
   pilotEndsAt?: string;
@@ -501,7 +504,13 @@ export interface GymMember {
   checkinCount30d?: number;      // denormalised by client on check-in
 }
 
-export interface GymPayment { id: string; uid: string; amount: number; method: PaymentMethod; paidAt: string; months: number; planId?: string; note?: string; recordedBy: string }
+/** What a payment was for. Absent on everything recorded before the
+ *  revenue split existed, and read as 'membership' — which is what it was. */
+export type RevenueCategory = 'membership' | 'pt' | 'other';
+export interface GymPayment { id: string; uid: string; amount: number; method: PaymentMethod; paidAt: string; months: number; planId?: string; category?: RevenueCategory; note?: string; recordedBy: string }
+/** A machine on the floor. `downtimeMin` accumulates whenever it comes
+ *  back up, so uptime can be reported without keeping an outage log. */
+export interface GymEquipment { id: string; name: string; status: 'ok' | 'down'; downSince?: string; downtimeMin: number; updatedAt: string }
 export interface GymCheckin { id: string; uid: string; at: string; date: string /* YYYY-MM-DD local */; method: CheckinMethod; byUid: string; codeHash?: string /* method 'code': sha256(code:date:gymId), checked by rules */; distanceM?: number /* method 'member-qr': metres from the gym when the phone checked in */ }
 /** Per-day check-in aggregate (doc id = date), denormalised on each
  *  check-in so the dashboard can read ~30 docs instead of ~thousands of
