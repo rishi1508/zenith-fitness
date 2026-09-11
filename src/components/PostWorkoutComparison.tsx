@@ -103,8 +103,8 @@ export function PostWorkoutComparison({ session, isDark = true, onClose }: PostW
                     <div className="relative">
                       <Avatar name={p.name} photoURL={p.photoURL} size="lg" />
                       {isFirst && (
-                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-yellow-500 flex items-center justify-center text-[10px]">
-                          👑
+                        <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-yellow-500 text-black flex items-center justify-center" aria-label="Top volume">
+                          <Crown className="w-3 h-3" strokeWidth={2.5} />
                         </div>
                       )}
                     </div>

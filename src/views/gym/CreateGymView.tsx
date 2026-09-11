@@ -52,7 +52,7 @@ export function CreateGymView({ isDark, onBack, onNavigate }: GymViewProps) {
     try {
       await createGym({ name: name.trim(), address: address.trim() || undefined, phone: phone.trim() || undefined });
       refresh();
-      showToast('Gym created!');
+      showToast('Gym created.');
       onNavigate('gym-home');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not create the gym.', 'error');

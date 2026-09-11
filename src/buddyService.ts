@@ -236,7 +236,7 @@ export async function sendBuddyRequest(toUid: string, toName: string, toPhoto?: 
   const pairId = getBuddyPairId(user.uid, toUid);
   const buddyRef = doc(db, 'buddies', pairId);
   const buddySnap = await getDoc(buddyRef);
-  if (buddySnap.exists()) throw new Error('Already buddies!');
+  if (buddySnap.exists()) throw new Error('You are already buddies.');
 
   // Check if request already exists (in either direction)
   const existingQ = query(
@@ -246,7 +246,7 @@ export async function sendBuddyRequest(toUid: string, toName: string, toPhoto?: 
     where('status', '==', 'pending'),
   );
   const existingSnap = await getDocs(existingQ);
-  if (!existingSnap.empty) throw new Error('Request already sent!');
+  if (!existingSnap.empty) throw new Error('Request already sent.');
 
   // Check reverse direction too
   const reverseQ = query(
@@ -522,7 +522,7 @@ export async function sendMessage(
     // duplicated "Rishi Mishra\nRishi Mishra: hi" that the user flagged.
     const truncated = text.slice(0, 140) + (text.length > 140 ? '…' : '');
     const notifMessage = type === 'workout_invite'
-      ? 'sent you a workout invite!'
+      ? 'sent you a workout invite'
       : truncated;
 
     console.info('[Chat] writing notification for recipient', recipientUid, 'from', user.uid, 'chatId:', chatId);

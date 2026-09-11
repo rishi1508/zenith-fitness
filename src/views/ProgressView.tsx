@@ -329,7 +329,7 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
       {completedWorkouts.length === 0 && (
         <div className={`text-center py-8 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
           <TrendingUp className="w-12 h-12 mx-auto mb-4 opacity-50" />
-          <p>Complete some workouts to see your progress!</p>
+          <p>Finish a few workouts and your progress shows up here.</p>
         </div>
       )}
     </div>

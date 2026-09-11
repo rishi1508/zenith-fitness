@@ -46,17 +46,31 @@ export function getWorkouts(): Workout[] {
   return getItem<Workout[]>(STORAGE_KEYS.WORKOUTS, []);
 }
 
-export function saveWorkout(workout: Workout): void {
+/** False when the device refused the write (storage full) — the caller must
+ *  not tell the user it saved. */
+export function saveWorkout(workout: Workout): boolean {
   const workouts = getWorkouts();
   const index = workouts.findIndex(w => w.id === workout.id);
-  
+
   if (index >= 0) {
     workouts[index] = workout;
   } else {
     workouts.unshift(workout);
   }
-  setItem(STORAGE_KEYS.WORKOUTS, workouts);
-  
+  return setItem(STORAGE_KEYS.WORKOUTS, workouts);
+}
+
+/** YYYY-MM-DD in the device's own calendar. `toISOString()` is UTC and files
+ *  an evening workout west of UTC on the next day (and an early one east of
+ *  it on the previous). Every day key in this module goes through here. */
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Local midnight of a YYYY-MM-DD key (the inverse of localDayKey). */
+function localDayStart(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
 // Save the full workouts array (for bulk operations like import)
@@ -80,7 +94,7 @@ export function autoLogMissedRestDays(): void {
   const workouts = getWorkouts();
   if (workouts.length === 0) return;
 
-  const logged = new Set(workouts.map(w => w.date.split('T')[0]));
+  const logged = new Set(workouts.map(w => localDayKey(new Date(w.date))));
   const sortedDates = Array.from(logged).sort();
   const newRest: Workout[] = [];
   const oneDayMs = 86400000;
@@ -97,10 +111,11 @@ export function autoLogMissedRestDays(): void {
 
   const addRestDay = (baseDate: Date, offset: number) => {
     const d = new Date(baseDate.getTime() + offset * oneDayMs);
-    const ds = d.toISOString().split('T')[0];
+    const ds = localDayKey(d);
     if (!logged.has(ds)) {
       // Use noon UTC to avoid timezone boundary weirdness when showing date.
-      const iso = new Date(`${ds}T12:00:00.000Z`).toISOString();
+      // Local noon, so the rest day lands on the calendar day it names.
+      const iso = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).toISOString();
       newRest.push(createRestDay(iso));
       logged.add(ds);
     }
@@ -108,8 +123,8 @@ export function autoLogMissedRestDays(): void {
 
   // Fill gaps between consecutive logged dates.
   for (let i = 0; i < sortedDates.length - 1; i++) {
-    const a = new Date(sortedDates[i] + 'T00:00:00.000Z');
-    const b = new Date(sortedDates[i + 1] + 'T00:00:00.000Z');
+    const a = localDayStart(sortedDates[i]);
+    const b = localDayStart(sortedDates[i + 1]);
     const gapDays = Math.round((b.getTime() - a.getTime()) / oneDayMs);
     if (gapDays <= 1) continue;
     const fillCount = Math.min(gapDays - 1, 7);
@@ -117,9 +132,9 @@ export function autoLogMissedRestDays(): void {
   }
 
   // Fill from the last logged date up to yesterday (not today).
-  const lastLogged = new Date(sortedDates[sortedDates.length - 1] + 'T00:00:00.000Z');
+  const lastLogged = localDayStart(sortedDates[sortedDates.length - 1]);
   const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
   const daysSinceLast = Math.round((today.getTime() - lastLogged.getTime()) / oneDayMs);
   // Skip the last-logged day (offset 0) and today (offset daysSinceLast).
   const trailingFill = Math.min(daysSinceLast - 1, 7);
@@ -363,11 +378,11 @@ export function getMissingDays(): string[] {
   
   // Find the most recent activity date
   const sortedDates = workouts
-    .map(w => w.date.split('T')[0])
+    .map(w => localDayKey(new Date(w.date)))
     .sort()
     .reverse();
-  
-  const lastActivityDate = new Date(sortedDates[0]);
+
+  const lastActivityDate = localDayStart(sortedDates[0]);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
@@ -383,7 +398,7 @@ export function getMissingDays(): string[] {
   yesterday.setDate(yesterday.getDate() - 1);
   
   while (checkDate <= yesterday) {
-    const dateStr = checkDate.toISOString().split('T')[0];
+    const dateStr = localDayKey(checkDate);
     if (!loggedDates.has(dateStr)) {
       missingDays.push(dateStr);
     }
@@ -957,7 +972,7 @@ export function importFromCSV(csvText: string): ImportResult {
       date = lastDate;
     }
     
-    const dateKey = date.toISOString().split('T')[0];
+    const dateKey = localDayKey(date);
     exercisesFound.add(exerciseName);
     
     // Create or get workout for this date
@@ -1163,7 +1178,7 @@ export function getBodyWeightEntries(): BodyWeightEntry[] {
 export function addBodyWeightEntry(weight: number, notes?: string, date?: string): BodyWeightEntry {
   const entry: BodyWeightEntry = {
     id: `bw_${Date.now()}`,
-    date: date || new Date().toISOString().split('T')[0],
+    date: date || localDayKey(new Date()),
     weight,
     notes,
   };
@@ -1653,4 +1668,50 @@ export function getSeenLevel(): number {
 
 export function setSeenLevel(level: number): void {
   setItem(STORAGE_KEYS.LEVEL_SEEN, Math.max(getSeenLevel(), Math.floor(level)));
+}
+
+// ---------------------------------------------------------------- guest backup
+
+const GUEST_BACKUP_KEY = 'zenith_device_guest_backup';
+
+/** When a guest signed in to an account that already had cloud data, their
+ *  local log was parked here (src/auth/AuthContext.tsx). */
+export function getGuestBackupInfo(): { savedAt: string; workouts: number } | null {
+  try {
+    const raw = localStorage.getItem(GUEST_BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt: string; data: Record<string, string> };
+    const workouts = parsed.data[STORAGE_KEYS.WORKOUTS] ? (JSON.parse(parsed.data[STORAGE_KEYS.WORKOUTS]) as unknown[]).length : 0;
+    return { savedAt: parsed.savedAt, workouts };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Merge the parked guest data into the signed-in account: anything with an
+ * `id` (workouts, exercises, plans, body weight, measurements) is appended
+ * when that id is not already present; scalars are left as they are. Goes
+ * through setItem so it syncs like any other edit. Returns how many workouts
+ * came across.
+ */
+export function restoreGuestBackup(): number {
+  const raw = localStorage.getItem(GUEST_BACKUP_KEY);
+  if (!raw) return 0;
+  const parsed = JSON.parse(raw) as { data: Record<string, string> };
+  let added = 0;
+  for (const [key, value] of Object.entries(parsed.data)) {
+    let incoming: unknown;
+    try { incoming = JSON.parse(value); } catch { continue; }
+    if (!Array.isArray(incoming)) continue;
+    const current = getItem<unknown[]>(key, []);
+    if (!Array.isArray(current)) continue;
+    const ids = new Set(current.map((x) => (x as { id?: string })?.id).filter(Boolean));
+    const fresh = incoming.filter((x) => { const id = (x as { id?: string })?.id; return id && !ids.has(id); });
+    if (fresh.length === 0) continue;
+    setItem(key, key === STORAGE_KEYS.WORKOUTS ? [...fresh, ...current] : [...current, ...fresh]);
+    if (key === STORAGE_KEYS.WORKOUTS) added += fresh.length;
+  }
+  localStorage.removeItem(GUEST_BACKUP_KEY);
+  return added;
 }

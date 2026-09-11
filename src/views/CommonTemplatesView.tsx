@@ -192,7 +192,7 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
         <div className={`rounded-xl border p-6 text-center ${cardBg} ${cardBorder}`}>
           <Dumbbell className={`w-10 h-10 mx-auto mb-2 ${subtle}`} />
           <p className={`text-sm ${subtle}`}>
-            {search.trim() ? 'No templates match your search.' : 'No common templates yet — be the first to publish one!'}
+            {search.trim() ? 'No templates match your search.' : 'No shared templates yet. Publish one of yours to start the library.'}
           </p>
         </div>
       ) : (

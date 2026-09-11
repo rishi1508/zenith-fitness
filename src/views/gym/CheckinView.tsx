@@ -52,7 +52,7 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
 
   const afterSuccess = async () => {
     await hapticNotification('success');
-    showToast('Checked in!');
+    showToast('Checked in.');
     loadWeek();
   };
 

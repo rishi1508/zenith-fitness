@@ -8,6 +8,7 @@ import {
 import * as storage from '../storage';
 import type { Workout, Exercise, WeeklyPlan } from '../types';
 import { useAuth } from '../auth/AuthContext';
+import { isAdmin } from '../admin';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as buddyService from '../buddyService';
@@ -698,6 +699,8 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
   const { confirm: confirmDialog } = useConfirm();
   const [open, setOpen] = useState<CategoryId | null>(null);
   const [exportCsv, setExportCsv] = useState('');
+  const [guestBackup, setGuestBackup] = useState(() => storage.getGuestBackupInfo());
+  const { showToast } = useToast();
   const [copied, setCopied] = useState(false);
   const { user, isGuest, signOut, exitGuestMode } = useAuth();
 
@@ -848,6 +851,25 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
           <p className={`text-sm ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
             Back up your workouts or move them to another device.
           </p>
+          {guestBackup && (
+            <div className={`rounded-lg border p-3 ${isDark ? 'border-orange-500/40 bg-orange-500/10' : 'border-orange-300 bg-orange-50'}`}>
+              <div className="text-sm font-medium">Workouts from before you signed in</div>
+              <p className={`text-xs mt-0.5 ${isDark ? 'text-zinc-400' : 'text-gray-600'}`}>
+                {guestBackup.workouts} workout{guestBackup.workouts === 1 ? '' : 's'} logged as a guest on this device were kept aside when you signed in. Add them to this account?
+              </p>
+              <button
+                onClick={() => {
+                  const n = storage.restoreGuestBackup();
+                  setGuestBackup(null);
+                  window.dispatchEvent(new Event('zenith-data-refresh'));
+                  showToast(n > 0 ? `Added ${n} workout${n === 1 ? '' : 's'} to your account.` : 'Nothing new to add.');
+                }}
+                className="mt-2 w-full py-2 rounded-lg text-sm font-semibold bg-gradient-to-r from-orange-500 to-red-600 text-white"
+              >
+                Add them to my account
+              </button>
+            </div>
+          )}
           {!exportCsv ? (
             <button
               onClick={handleExport}
@@ -869,7 +891,7 @@ export function SettingsView({ onBack, onDataChange, isDark, onThemeChange }: {
                 onClick={copyToClipboard}
                 className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm"
               >
-                {copied ? (<><CheckCircle2 className="w-4 h-4" /> Copied!</>) : (<><Copy className="w-4 h-4" /> Copy CSV</>)}
+                {copied ? (<><CheckCircle2 className="w-4 h-4" /> Copied</>) : (<><Copy className="w-4 h-4" /> Copy CSV</>)}
               </button>
             </div>
           )}
@@ -952,6 +974,7 @@ function HealthSyncSection({ isDark }: { isDark: boolean }) {
 
 function PushNotificationsSection({ isDark }: { isDark: boolean }) {
   const { showToast } = useToast();
+  const { user } = useAuth();
   // `perm` drives the three render branches. We kick off an async probe
   // on mount rather than reading Notification.permission synchronously —
   // the Capacitor Android WebView does NOT expose the Notification API,
@@ -1008,9 +1031,10 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
       ) : perm === 'granted' ? (
         <div className="space-y-2">
           <p className="text-xs text-emerald-400">
-            ✓ Enabled on this device. You'll get a push when buddies message
+            Enabled on this device. You'll get a push when buddies message
             you, invite you to a session, or send a workout invite.
           </p>
+          {isAdmin(user?.uid) && (
           <button
             onClick={async () => {
               try {
@@ -1024,19 +1048,15 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
             }}
             className="w-full py-1.5 rounded-lg text-[11px] font-medium border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 transition-colors"
           >
-            🧪 Send test notification (to yourself)
+            Send a test notification to yourself
           </button>
-          <p className="text-[10px] text-zinc-500 leading-tight">
-            If you see a toast appear, the in-app pipeline is healthy. If
-            not, open the browser console (or <code>adb logcat</code> on
-            Android) and look for lines starting with <code>[Notif]</code>.
-          </p>
+          )}
         </div>
       ) : perm === 'denied' ? (
         <div className="text-xs text-red-400 space-y-1.5">
           <p>Notifications are blocked for this app.</p>
           <p className="text-zinc-500">
-            <strong>Chrome (web):</strong> tap the lock icon 🔒 in the URL bar → Site settings → Notifications → Allow. Then reload.
+            <strong>Chrome (web):</strong> tap the lock icon in the URL bar → Site settings → Notifications → Allow. Then reload.
           </p>
           <p className="text-zinc-500">
             <strong>Android app:</strong> system Settings → Apps → Zenith Fitness → Notifications → On.

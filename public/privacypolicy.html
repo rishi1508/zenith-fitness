@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Zenith Fitness — Health data privacy</title>
+    <title>Zenith Fitness — Privacy Policy</title>
     <style>
       :root { color-scheme: light dark; }
       body {
@@ -20,21 +20,50 @@
       }
       h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
       h2 { font-size: 1.05rem; margin: 2rem 0 0.5rem; }
+      h3 { font-size: 0.95rem; margin: 1.25rem 0 0.35rem; }
       p, li { margin: 0.5rem 0; }
       .updated { color: #777; font-size: 0.85rem; margin-top: 0; }
       code { background: #f1f1f1; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.9em; }
     </style>
   </head>
   <body>
-    <h1>Health data in Zenith Fitness</h1>
-    <p class="updated">Last updated: 7 September 2026</p>
+    <h1>Zenith Fitness — Privacy Policy</h1>
+    <p class="updated">Effective 13 September 2026</p>
 
     <p>
-      Zenith Fitness is a personal workout tracker. This page explains exactly what it does with the health
-      data you allow it to read through Health Connect, and what it does not do.
+      Zenith Fitness is a workout, nutrition and gym-management app built and run by one person. This page
+      explains what the app collects, why, where it goes, and how to delete it. It covers the Android app
+      and the web app (<code>zenith-fitness-18e2a.web.app</code>) — both are the same product.
+    </p>
+    <p>
+      If you use <strong>guest mode</strong>, none of this applies beyond what's stored on your own phone:
+      guest data never leaves your device, there is no account, and nothing here is collected or sent
+      anywhere. Everything below describes what happens once you sign in with Google or an email code.
     </p>
 
-    <h2>What we read</h2>
+    <h2>Account and profile</h2>
+    <p>
+      Signing in (Google, or a one-time code sent to your email) creates an account identified by a random
+      ID. We store your name, email address, and profile photo (from your Google account, or one you set
+      yourself), so the app and the people you connect with can show who you are.
+    </p>
+
+    <h2>Your workouts, plans and body data</h2>
+    <p>
+      Workouts, weekly plans, exercise notes, body weight and measurements, personal records and streaks are
+      stored in your own account so they survive a reinstall and follow you to a new phone. Nobody but you
+      can read them, unless you explicitly share a workout or a streak with a buddy.
+    </p>
+
+    <h2>Nutrition diary and food scanning</h2>
+    <p>
+      Meals you log, and any custom foods or meals you create, are stored the same way — in your own
+      account. If you photograph a plate to estimate its nutrition, the photo is downscaled on your phone
+      and sent to an AI model (Google Gemini, or OpenAI if Gemini is unavailable) to read what's on it. We
+      do not keep a copy of that photo afterwards — it is used once, to answer that one scan, and discarded.
+    </p>
+
+    <h2>Health Connect (Android)</h2>
     <p>Only if you grant permission, and only for the days shown in the Activity screen (the last 7 days):</p>
     <ul>
       <li><strong>Steps</strong> — daily totals.</li>
@@ -45,30 +74,115 @@
       <li><strong>Exercise sessions</strong> — type, start time, duration and calories, so your workouts from other apps appear alongside the ones you log here.</li>
       <li><strong>Body weight</strong> — so your weight trend stays in step with your other apps.</li>
     </ul>
-
-    <h2>What we write</h2>
     <p>
-      Body weight only, and only weigh-ins you type into Zenith yourself. Nothing else is written to Health
-      Connect. Workouts you finish in Zenith are stored inside Zenith, not pushed into Health Connect.
+      <strong>What we write:</strong> body weight only, and only weigh-ins you type into Zenith yourself.
+      Nothing else is written to Health Connect. Workouts you finish in Zenith are stored inside Zenith, not
+      pushed into Health Connect.
+    </p>
+    <p>
+      <strong>Where it goes:</strong> Health Connect data is stored on your phone and in your own account in
+      Zenith's database (Google Firebase, Firestore), so it survives a reinstall and shows on your other
+      devices. Nobody else can read it — your gym, your training buddies and other Zenith users see only
+      what you explicitly share with them (workouts and streaks), never steps, sleep, heart rate or weight.
+      It is never sold, never used for advertising, and never shared with third parties or analytics
+      services. If you ask Zen (the in-app coach) a question, only the summary numbers needed to answer it
+      are sent to the model provider for that one request — not the raw Health Connect records, and it is
+      not used to train any AI model.
+    </p>
+    <p>
+      <strong>How to stop it:</strong> turn the permissions off any time in Health Connect → App permissions
+      → Zenith Fitness (the app falls back to manual entry immediately); turn off Settings → Health sync
+      inside Zenith to stop recording finished workouts as activity sessions; delete your Zenith account to
+      remove the stored health data with it; or uninstall the app to remove the copy held on your phone.
     </p>
 
-    <h2>Where it goes</h2>
-    <ul>
-      <li>Health data is stored on your phone and in <strong>your own account</strong> in Zenith's database (Google Firebase, Firestore), so it survives a reinstall and shows on your other devices.</li>
-      <li>Nobody else can read it. Your gym, your training buddies and other Zenith users see only what you explicitly share with them (workouts and streaks) — never steps, sleep, heart rate or weight.</li>
-      <li>It is <strong>never sold</strong>, never used for advertising, and never shared with third parties or analytics services.</li>
-      <li>It is not used to train any AI model. If you ask Zen (the in-app coach) a question, only the summary numbers needed to answer it are sent to the model provider for that one request.</li>
-    </ul>
+    <h2>Zen, the in-app coach</h2>
+    <p>
+      Zen answers questions using your own training, activity and nutrition data. Each question you ask,
+      plus a short summary of the data needed to answer it, is sent to Google Gemini, and to OpenAI if
+      Gemini is unavailable, to generate a reply. Your chat history with Zen is kept on your device only —
+      it is not stored in Zenith's database. Zen does not give medical advice or diagnoses; it will point
+      you to a professional for pain or health concerns.
+    </p>
 
-    <h2>How to stop it</h2>
+    <h2>Location, for gym check-in</h2>
+    <p>
+      One check-in method reads your device's location, compares it to your gym's location, and stores only
+      the distance in metres on your check-in record — never your coordinates. If your device or app can't
+      get a location, or you'd rather not share it, your gym's daily front-desk code works the same way
+      without it.
+    </p>
+
+    <h2>Push notifications</h2>
+    <p>
+      If you allow notifications, a device token is stored against your account so we can deliver them (new
+      messages, buddy requests, gym announcements, and similar). It identifies your device for this purpose
+      only.
+    </p>
+
+    <h2>Your gym</h2>
+    <p>
+      If you join a gym through Zenith, that gym's owner, managers and trainers can see your name, phone
+      number, email, plan dates, payments and check-in history — but only for their own gym, not any other.
+      Other members of the same gym can see your name and photo, and anything you post to the gym's feed.
+      Feed and announcement photos are stored in Zenith's database and are visible to members of that gym.
+    </p>
+
+    <h2>Buddies and chat</h2>
+    <p>
+      Training buddies you add can see your workouts and streaks if you share them, chat with you, and see
+      your badges. Buddy chat messages are stored in Zenith's database so they sync across your devices, and
+      are readable only by the two people in that conversation.
+    </p>
+
+    <h2>Who we share data with</h2>
+    <p>These are the outside services Zenith relies on, and exactly what each one gets:</p>
     <ul>
-      <li>Turn the permissions off any time in <strong>Health Connect &rarr; App permissions &rarr; Zenith Fitness</strong>. Zenith falls back to manual entry immediately.</li>
-      <li>Turn off <strong>Settings &rarr; Health sync</strong> inside Zenith to stop recording finished workouts as activity sessions.</li>
-      <li>Deleting your Zenith account (<strong>Settings &rarr; Account &rarr; Delete account</strong>) removes the stored health data with it.</li>
-      <li>Uninstalling the app removes the copy held on your phone.</li>
+      <li><strong>Google Firebase</strong> — sign-in, database, app hosting and push notification delivery. This is Zenith's own backend, run on Google's infrastructure; Google does not use your data for its own purposes.</li>
+      <li><strong>Vercel</strong> — hosts the small server functions (sign-in codes, push, account deletion, Zen, food scanning). Same role as Firebase: it runs our code, it doesn't use your data itself.</li>
+      <li><strong>Google Gemini API</strong> — reads food-scan photos to estimate nutrition, and answers Zen coaching questions using the summary described above.</li>
+      <li><strong>OpenAI API</strong> — a fallback for the same two things, used only when Gemini is unavailable.</li>
+      <li><strong>EmailJS</strong> — sends the sign-in code to your email address when you choose email sign-in. It sees the email address and the code, nothing else.</li>
+      <li><strong>GitHub</strong> — the Android app checks GitHub for the latest release tag so it can tell you an update is available. This call carries no personal data.</li>
     </ul>
+    <p>
+      We do not run ads, do not use an advertising or analytics SDK, and do not sell your data to anyone,
+      ever.
+    </p>
+
+    <h2>Security</h2>
+    <p>
+      Everything above travels encrypted (TLS) between your device and every service listed. Data at rest is
+      encrypted using Google Cloud's standard encryption.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+      Zenith Fitness is intended for users 18 and older and is not directed at children.
+    </p>
+
+    <h2>Your rights and deleting your account</h2>
+    <p>
+      You can delete your account any time from inside the app: <strong>Settings → Account → Delete
+      account</strong>. This removes your private data (workouts, plans, body data, nutrition diary),
+      your profile, your gym membership record, and your sign-in credentials. It does not reach into
+      records that belong to someone else's copy of a shared thing — a message you sent in a chat, a post
+      you made to a gym feed, or a payment your gym recorded — the same way deleting your own account
+      elsewhere doesn't erase an email you sent from the recipient's inbox. Email us if you want any specific
+      item like that removed by hand, and we will.
+    </p>
+    <p>
+      You can also just email us to ask what we hold about you, to correct it, or to have it deleted,
+      without going through the app.
+    </p>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      If this policy changes, we'll update the date at the top. Material changes (a new third party, a new
+      kind of data) will also be reflected in the app's own update notes.
+    </p>
 
     <h2>Contact</h2>
-    <p>Zenith Fitness is built and run by one person. Questions: <code>rishimishra1508@gmail.com</code>.</p>
+    <p>Zenith Fitness is built and run by one person. Questions or requests: <code>rishimishra1508@gmail.com</code>.</p>
   </body>
 </html>

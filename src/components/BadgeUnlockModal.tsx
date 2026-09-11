@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Share2, X } from 'lucide-react';
+import { registerBackHandler } from '../backHandlerRegistry';
 import type { BadgeDef } from '../badges';
 import { BadgeArt } from './BadgeArt';
 import { feedback } from '../feedback';
@@ -64,7 +65,10 @@ export function BadgeUnlockModal({ badges, onClose }: { badges: BadgeDef[]; onCl
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // The phone's back button closes it too — an overlay that ignores back
+    // leaves the screen behind it navigating underneath.
+    const unregister = registerBackHandler(() => { onClose(); return true; });
+    return () => { window.removeEventListener('keydown', onKey); unregister(); };
   }, [onClose]);
 
   if (!badge) return null;

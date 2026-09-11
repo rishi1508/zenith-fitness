@@ -17,7 +17,7 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '../firebase';
-import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, flushPendingWrites } from '../firestoreSync';
+import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, flushPendingWrites, setCurrentUserId } from '../firestoreSync';
 import { startSharedExerciseSync, stopSharedExerciseSync } from '../sharedExercises';
 import * as otpService from '../otpService';
 
@@ -26,7 +26,23 @@ const LAST_UID_KEY = 'zenith_last_uid';
 // Device-level preferences that survive a sign-out / account switch. Everything
 // else under `zenith_*` is one user's data and must not leak into the next
 // account on a shared phone or gym tablet.
-const DEVICE_KEYS = new Set([GUEST_MODE_KEY, LAST_UID_KEY, 'zenith_theme']);
+const DEVICE_KEYS = new Set([GUEST_MODE_KEY, LAST_UID_KEY, 'zenith_theme', 'zenith_device_guest_backup']);
+
+/** Guest data set aside when a guest signs in to an account that already has
+ *  cloud data. Device-scoped (survives clearLocalUserData) so Settings → Data
+ *  & backup can offer it back. */
+export const GUEST_BACKUP_KEY = 'zenith_device_guest_backup';
+function parkGuestData(): void {
+  try {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith('zenith_') && !DEVICE_KEYS.has(k) && k !== 'zenith_sync_meta');
+    const data: Record<string, string> = {};
+    let hasContent = false;
+    for (const k of keys) { const v = localStorage.getItem(k); if (v !== null) { data[k] = v; if (k === 'zenith_workouts' && v.length > 2) hasContent = true; } }
+    if (!hasContent) { for (const k of keys) localStorage.removeItem(k); return; }
+    localStorage.setItem(GUEST_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data }));
+    for (const k of keys) localStorage.removeItem(k);
+  } catch { /* storage unavailable */ }
+}
 
 function clearLocalUserData(): void {
   try {
@@ -144,8 +160,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // listener only handles legitimate future remote changes.
         (async () => {
           try {
+            const wasGuest = (() => { try { return localStorage.getItem(GUEST_MODE_KEY) === 'true' || !localStorage.getItem(LAST_UID_KEY); } catch { return false; } })();
             const didMigrate = await migrateLocalStorageToFirestore(firebaseUser.uid);
             if (!didMigrate) {
+              // A guest session signing in to an EXISTING account: the two
+              // histories cannot be merged safely (whole-array documents), and
+              // silently letting either one overwrite the other lost data both
+              // ways. The account's cloud copy wins; the guest data is parked
+              // as a backup this device can restore from Settings.
+              if (wasGuest) parkGuestData();
               await pullFirestoreToLocalStorage(firebaseUser.uid);
             }
             onDataRefresh?.();
@@ -166,6 +189,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         })();
       } else {
+        // Nothing queued may survive into the next account.
+        setCurrentUserId(null);
         setUser(null);
         setLoading(false);
       }
@@ -279,6 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // remove this user's data from the device.
     try { await flushPendingWrites(); } catch { /* best-effort */ }
     teardownFirestoreListeners();
+    setCurrentUserId(null);
     stopSharedExerciseSync();
     await firebaseSignOut(auth);
     clearLocalUserData();

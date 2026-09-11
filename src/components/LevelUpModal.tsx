@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { registerBackHandler } from '../backHandlerRegistry';
 import { Share2, Sparkles, Users, X } from 'lucide-react';
 import { formatVolume, levelTitle } from '../levels';
 import { Button, IconButton, CAPTION, SUB } from '../ui';
@@ -51,10 +52,13 @@ export function LevelUpModal({ level, from, totalVolumeKg, onShareToGym, gymName
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // The phone's back button closes it too — an overlay that ignores back
+    // leaves the screen behind it navigating underneath.
+    const unregister = registerBackHandler(() => { onClose(); return true; });
+    return () => { window.removeEventListener('keydown', onKey); unregister(); };
   }, [onClose]);
 
-  const text = `Level ${level} unlocked on Zenith Fitness — ${levelTitle(level)}, ${formatVolume(totalVolumeKg)} lifted all time. 💪`;
+  const text = `Level ${level} unlocked on Zenith Fitness — ${levelTitle(level)}, ${formatVolume(totalVolumeKg)} lifted all time.`;
 
   const share = async () => {
     try {

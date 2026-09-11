@@ -160,6 +160,9 @@ function App() {
   const { confirm: confirmDialog } = useConfirm();
   // Which day/meal the food search or plate scan adds to (docs/HEALTH_SPEC.md §7).
   const [foodNav, setFoodNav] = useState<{ date: string; meal: MealSlot }>({ date: healthToday(), meal: 'snacks' });
+  // True once this device has heard from the cloud for the signed-in user
+  // (or knows there is no cloud to hear from). Gates first-run seeding.
+  const syncSettledRef = useRef(false);
   // A photo that came back after Android recycled the app behind the camera
   // (src/captureRestore.ts). Held until auth settles, then routed.
   const [restoredCapture, setRestoredCapture] = useState<RestoreOutcome | null>(null);
@@ -325,17 +328,25 @@ function App() {
       return true;
     }
     if (navigationHistory.current.length > 1) {
-      navigationHistory.current.pop(); // Remove current
+      const current = navigationHistory.current.pop(); // Remove current
       const previousView = navigationHistory.current[navigationHistory.current.length - 1];
+      // Profiles stack on top of profiles (followers → a person → their
+      // followers…). The view name alone cannot say whose; keep the uids.
+      if (current === 'profile') {
+        profileStack.current.pop();
+        if (previousView === 'profile') setProfileUid(profileStack.current[profileStack.current.length - 1] ?? null);
+      }
       setView(previousView);
       return true;
     }
     return false; // No history, let app close
   }, [view, activeWorkout]);
+  const profileStack = useRef<string[]>([]);
 
   // Open a group workout session (used by buddy invites and notification toasts)
   /** Anyone's face, anywhere, opens their profile. */
   const openProfile = useCallback((uid: string) => {
+    profileStack.current.push(uid);
     setProfileUid(uid);
     navigationHistory.current.push('profile');
     setView('profile');
@@ -400,7 +411,10 @@ function App() {
     // records where the user already is — nobody gets a burst of confetti for
     // history they logged months ago. After that, crossing a threshold shows
     // the achievement once.
-    {
+    // Only once the cloud has been consulted: on a fresh device the first
+    // pass runs on an empty log and used to seed "level 1", which the real
+    // history then "beat" with confetti for months-old lifting.
+    if (syncSettledRef.current) {
       const reached = levelForVolume(freshStats.totalVolume).level;
       const seen = storage.getSeenLevel();
       if (seen === 0) storage.setSeenLevel(reached);
@@ -425,8 +439,11 @@ function App() {
     // Restored workout stays paused on home screen -- user can resume via
     // banner. The idle auto-finish effect runs as soon as this lands in
     // state, so a workout forgotten for days is closed right here.
+    // `?? null` matters: App is never unmounted across a sign-out, so without
+    // it the previous account's paused workout stayed in state and the next
+    // account could resume and save it as their own.
+    setActiveWorkout(savedActiveWorkout ?? null);
     if (savedActiveWorkout) {
-      setActiveWorkout(savedActiveWorkout);
       // If the saved workout was part of a buddy session, restore the
       // session id too. The existing session-status watcher will then
       // reattach: if the host ended / cancelled the session while we
@@ -464,22 +481,52 @@ function App() {
     }
   }, [user]);
 
-  // Sync profile on mount (so existing users update the new compareStats field
-  // as soon as they open the updated app).
+  // The public profile is written only AFTER the cloud pull (the refresh
+  // event below) — on a fresh device the mount-time stats are all zeros and
+  // used to overwrite a real profile with them.
+
+  // Guests and signed-out visitors have nothing to pull: their local data is
+  // the truth, so first-run seeding may proceed at once.
   useEffect(() => {
-    upsertMyProfileStats();
-  }, [upsertMyProfileStats]);
+    if (authLoading || user) return;
+    if (!syncSettledRef.current) { syncSettledRef.current = true; loadData(); }
+  }, [authLoading, user, loadData]);
 
   // Listen for data refresh events from auth/sync layer
   // Profile upsert happens HERE (after sync) to avoid stale stats from previous account
   useEffect(() => {
     const handler = () => {
+      syncSettledRef.current = true;
       loadData();
       upsertMyProfileStats();
+      // A guest who signed in to an existing account: their guest log was set
+      // aside rather than merged (src/auth/AuthContext.tsx parkGuestData).
+      try {
+        if (localStorage.getItem('zenith_device_guest_backup') && !sessionStorage.getItem('zenith_guest_backup_told')) {
+          sessionStorage.setItem('zenith_guest_backup_told', '1');
+          showToast('Your guest workouts were kept as a backup — Settings › Data & backup.', 'info');
+        }
+      } catch { /* ignore */ }
     };
     window.addEventListener('zenith-data-refresh', handler);
     return () => window.removeEventListener('zenith-data-refresh', handler);
-  }, [loadData, upsertMyProfileStats]);
+  }, [loadData, upsertMyProfileStats, showToast]);
+
+  // Everything that belongs to one account, cleared when the account changes.
+  // App stays mounted across sign-out/sign-in, so state does not reset itself.
+  const lastUidRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const uid = user?.uid ?? null;
+    if (lastUidRef.current !== undefined && lastUidRef.current !== uid) {
+      setActiveWorkout(null);
+      setActiveSessionId(null);
+      setCompletedSession(null);
+      setBuddyContext({ uid: '', name: '' });
+      setProfileUid(null);
+      syncSettledRef.current = false;
+    }
+    lastUidRef.current = uid;
+  }, [user]);
   
   // CRITICAL: Persist active workout to localStorage on every change (screen timeout fix)
   // Also sync progress to Firestore when in a group session (debounced 2s)
@@ -529,6 +576,8 @@ function App() {
   // re-subscribing every time `startWorkout` or `activeWorkout` changes.
   const startWorkoutRef = useRef<((t: WorkoutTemplate, sessionId?: string) => void) | null>(null);
   const activeWorkoutRef = useRef<Workout | null>(null);
+  const completedSessionRef = useRef<WorkoutSession | null>(null);
+  useEffect(() => { completedSessionRef.current = completedSession; }, [completedSession]);
   useEffect(() => {
     if (!activeSessionId) {
       // Reset template snapshot when leaving a session so next attach
@@ -575,14 +624,14 @@ function App() {
       // active (post-completion changes shouldn't mutate our workout).
       if (
         !iAmHost &&
-        activeWorkout?.sessionId === activeSessionId &&
+        activeWorkoutRef.current?.sessionId === activeSessionId &&
         s.status === 'active' &&
         s.currentTemplateExercises
       ) {
         const prev = lastSeenTemplateRef.current ?? s.templateExercises ?? [];
         const next = s.currentTemplateExercises;
         if (!templatesEqual(prev, next)) {
-          const reconciled = reconcileWorkoutWithTemplate(activeWorkout, next, prev);
+          const reconciled = reconcileWorkoutWithTemplate(activeWorkoutRef.current, next, prev);
           if (reconciled) {
             // Use saveActiveWorkout to also persist + sync our progress.
             saveActiveWorkoutRef.current?.(reconciled);
@@ -614,17 +663,17 @@ function App() {
         }
       }
       if (s.status === 'completed' &&
-          activeWorkout?.sessionId === activeSessionId &&
-          !activeWorkout.completed) {
+          activeWorkoutRef.current?.sessionId === activeSessionId &&
+          !activeWorkoutRef.current.completed) {
         finishWorkoutRef.current?.({ skipValidation: true });
       }
       // Drive the post-workout comparison modal from here too, so we
       // don't need a second short-lived listener inside finishWorkout.
-      if (s.status === 'completed' && !completedSession) {
+      if (s.status === 'completed' && !completedSessionRef.current) {
         setCompletedSession(s);
       }
       if (s.status === 'cancelled' &&
-          activeWorkout?.sessionId === activeSessionId) {
+          activeWorkoutRef.current?.sessionId === activeSessionId) {
         // Host cancelled the session → drop our local workout (don't
         // save to history) and bounce back to home. Await the status
         // write so a quick app-close doesn't leave the public profile
@@ -642,7 +691,11 @@ function App() {
       }
     });
     return unsub;
-  }, [activeSessionId, activeWorkout, user, completedSession, showToast]);
+  // Reads the live workout and the completed-session flag through refs, so a
+  // set edit (which changes `activeWorkout` on every keystroke) does not tear
+  // the Firestore listener down and re-attach it — a document read per
+  // keystroke, and the whole host/participant decision re-run each time.
+  }, [activeSessionId, user, showToast]);
 
   // Listen to per-participant progress and capture each buddy's full
   // ordered list of completed sets per exercise (keyed by exercise name,
@@ -1076,7 +1129,13 @@ function App() {
         }
       }
 
-      storage.saveWorkout(finished);
+      if (!storage.saveWorkout(finished)) {
+        // Storage refused (full). The active workout stays exactly where it
+        // is; a celebration for a session that was written nowhere is worse
+        // than an error.
+        showToast('Could not save this workout — the device is out of storage. Free some space and try Finish again.', 'error');
+        return;
+      }
       // Now that the workout is in history, rebuild PR records from
       // scratch. Idempotent — and crucially this is the ONLY place that
       // writes records in the active-session flow. Earlier we'd persist
@@ -1104,7 +1163,7 @@ function App() {
       // auto-cancel. It sets `completedSession` for the post-workout
       // comparison, which avoids the 30-min setTimeout leak we had
       // before.
-      if (activeSessionId && duration) {
+      if (activeSessionId && duration !== undefined) {
         sessionService.syncProgress(activeSessionId, finished.exercises);
         sessionService.completeSession(activeSessionId, duration)
           .catch((err) => console.error('[Session] completeSession failed:', err))
@@ -1409,7 +1468,7 @@ function App() {
       <OfflineBanner state={connState} onRetry={retryConnection} />
       {/* First-launch gate: blocks UI until the user retries or
           explicitly chooses to proceed offline. */}
-      {!dismissedOfflineGate && (
+      {!dismissedOfflineGate && !(view === 'active' && activeWorkout) && (
         <OfflineGate
           state={connState}
           onRetry={retryConnection}

@@ -34,7 +34,7 @@ export function JoinGymView({ isDark, onBack, onNavigate }: GymViewProps) {
     try {
       await joinGymByCode(value);
       refresh();
-      showToast('Joined! Welcome aboard.');
+      showToast('You are in. Welcome to the gym.');
       onNavigate('gym-home');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Could not join — check the code.', 'error');

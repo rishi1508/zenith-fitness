@@ -353,7 +353,7 @@ export function ActiveWorkoutView({
             <div className="text-3xl">{prAchievement.isVolumePR ? <TrendingUp className="w-8 h-8 text-white" /> : <Trophy className="w-8 h-8 text-white" />}</div>
             <div className="flex-1 text-white">
               <div className="font-bold">
-                {prAchievement.isVolumePR ? 'Volume PR!' : 'New Personal Record!'}
+                {prAchievement.isVolumePR ? 'Volume PR' : 'New personal record'}
               </div>
               <div className="text-sm text-white/90">
                 {prAchievement.isVolumePR 

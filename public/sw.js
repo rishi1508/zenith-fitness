@@ -7,7 +7,7 @@
 // "AbortError: Registration failed - push service error". Merging them
 // removes the conflict.
 
-const CACHE_NAME = 'zenith-fitness-v3';
+const CACHE_NAME = 'zenith-fitness-v4';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 // Food search must work offline; the shards under /data/foods/ are picked up by
 // the runtime cache below on first use, but the index is worth pre-caching.
@@ -118,6 +118,6 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request)),
+      .catch(() => caches.match(event.request, { ignoreSearch: true })),
   );
 });

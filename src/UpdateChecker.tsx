@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Download, X } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 
 const GITHUB_REPO = 'rishi1508/zenith-fitness';
 const CURRENT_VERSION = __APP_VERSION__;
@@ -14,6 +15,9 @@ export function UpdateChecker() {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    // Installed builds update through the store. Pointing users at a GitHub
+    // APK from inside the app is also against Play's device-abuse policy.
+    if (Capacitor.isNativePlatform()) return;
     void checkForUpdates();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
@@ -56,7 +60,7 @@ export function UpdateChecker() {
     return update.html_url;
   };
 
-  if (!update || dismissed) return null;
+  if (Capacitor.isNativePlatform() || !update || dismissed) return null;
 
   return (
     <div className="fixed top-16 left-4 right-4 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl p-4 shadow-lg z-50 animate-fadeIn">

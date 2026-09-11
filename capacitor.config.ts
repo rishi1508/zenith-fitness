@@ -4,9 +4,6 @@ const config: CapacitorConfig = {
   appId: 'com.zenith.fitness',
   appName: 'Zenith Fitness',
   webDir: 'dist',
-  android: {
-    allowMixedContent: true,
-  },
   plugins: {
     StatusBar: {
       style: 'DARK',

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { registerBackHandler } from '../backHandlerRegistry';
 import { ChevronRight } from 'lucide-react';
 import type { Tab } from '../shell/tabs';
 import { markTourSeen } from '../tourState';
@@ -93,6 +94,8 @@ export function WelcomeTour({ onDone, onGoToTab }: { onDone: () => void; onGoToT
     markTourSeen();
     onDone();
   }, [onDone]);
+  // Back skips the tour rather than moving the app behind the spotlight.
+  useEffect(() => registerBackHandler(() => { finish(); return true; }), [finish]);
 
   // Take the tab the step lives on, then wait for its target to be laid out.
   // A tab the user does not have (no gym) simply has no target, and the step
