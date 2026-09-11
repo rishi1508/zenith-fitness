@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { Info } from 'lucide-react';
 import { Card } from '../../../ui';
 import { H2, SUB } from '../../../ui/styles';
 import type { AcquisitionMonth } from '../../../gym/gymOps';
@@ -21,7 +22,7 @@ function signed(n: number): string {
  * comes from holding a month. Same scrub idiom as PeakHours: pointer
  * capture on the track, and every column is a real focusable button.
  */
-export function AcquisitionChurnChart({ series }: { series: AcquisitionMonth[] }) {
+export function AcquisitionChurnChart({ series, onInfo }: { series: AcquisitionMonth[]; onInfo?: () => void }) {
   const [active, setActive] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -43,7 +44,10 @@ export function AcquisitionChurnChart({ series }: { series: AcquisitionMonth[] }
     <Card>
       <div className="flex items-start justify-between gap-3 mb-1">
         <div className="min-w-0">
-          <h2 className={H2}>Acquisition vs churn</h2>
+          <h2 className={`${H2} flex items-center gap-1.5`}>
+            Acquisition vs churn
+            {onInfo && <InfoDot onClick={onInfo} label="About acquisition and churn" />}
+          </h2>
           <p className={SUB}>Members joined and lost · last 12 months</p>
         </div>
         <div className="text-right shrink-0">
@@ -137,5 +141,19 @@ export function AcquisitionChurnChart({ series }: { series: AcquisitionMonth[] }
         </>
       )}
     </Card>
+  );
+}
+
+/** The "i" that opens a chart's explainer — the same one the KPI tiles wear. */
+function InfoDot({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="w-7 h-7 -my-1 flex items-center justify-center rounded-full text-subtle hover:text-text"
+    >
+      <Info className="w-4 h-4" strokeWidth={2} />
+    </button>
   );
 }

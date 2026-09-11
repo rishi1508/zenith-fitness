@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Info } from 'lucide-react';
 import { Card } from '../../../ui';
 import { H2, SUB } from '../../../ui/styles';
 import { formatInr, type RevenueSplitResult } from '../../../gym/gymOps';
@@ -19,7 +20,7 @@ const SLICE_COLOR = ['var(--color-accent)', 'var(--color-info)', 'var(--color-mu
  * Pressing a slice or its legend row focuses it; the legend carries both
  * the percentage and the rupees, so nothing is gated behind the press.
  */
-export function RevenueDonut({ split }: { split: RevenueSplitResult }) {
+export function RevenueDonut({ split, onInfo }: { split: RevenueSplitResult; onInfo?: () => void }) {
   const [focused, setFocused] = useState<number | null>(null);
   const focusedSlice = focused == null ? null : split.slices[focused];
 
@@ -33,7 +34,10 @@ export function RevenueDonut({ split }: { split: RevenueSplitResult }) {
   return (
     <Card>
       <div className="mb-3">
-        <h2 className={H2}>Revenue split</h2>
+        <h2 className={`${H2} flex items-center gap-1.5`}>
+          Revenue split
+          {onInfo && <InfoDot onClick={onInfo} label="About the revenue split" />}
+        </h2>
         <p className={SUB}>What was paid in · last {split.days} days</p>
       </div>
 
@@ -93,5 +97,19 @@ export function RevenueDonut({ split }: { split: RevenueSplitResult }) {
         </div>
       )}
     </Card>
+  );
+}
+
+/** The "i" that opens a chart's explainer — the same one the KPI tiles wear. */
+function InfoDot({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="w-7 h-7 -my-1 flex items-center justify-center rounded-full text-subtle hover:text-text"
+    >
+      <Info className="w-4 h-4" strokeWidth={2} />
+    </button>
   );
 }

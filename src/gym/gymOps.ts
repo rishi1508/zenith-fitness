@@ -128,9 +128,19 @@ export function acquisitionChurnSeries(members: GymMember[], now: Date = new Dat
   return series;
 }
 
+export interface SlippingRow {
+  member: GymMember;
+  /** Check-ins in the last 30 days. */
+  recent: number;
+  /** Check-ins in the 30 days before that. */
+  earlier: number;
+}
+
 export interface SlippingAway {
   /** Members whose attendance more than halved month over month. */
   members: GymMember[];
+  /** The same people with the two counts the verdict came from, biggest drop first. */
+  rows: SlippingRow[];
   /** How many members that was measured against. */
   activeCount: number;
 }
@@ -153,12 +163,84 @@ export function slippingAway(checkins: GymCheckin[], members: GymMember[], now: 
   }
 
   const active = members.filter((m) => isMember(m) && onLivePlan(m, now));
-  const slipping = active.filter((m) => {
+  const rows: SlippingRow[] = [];
+  for (const m of active) {
     const before = earlier.get(m.uid) ?? 0;
-    if (before < 2) return false;
-    return (recent.get(m.uid) ?? 0) < before / 2;
-  });
-  return { members: slipping, activeCount: active.length };
+    if (before < 2) continue;
+    const after = recent.get(m.uid) ?? 0;
+    if (after < before / 2) rows.push({ member: m, recent: after, earlier: before });
+  }
+  rows.sort((a, b) => (b.earlier - b.recent) - (a.earlier - a.recent));
+  return { members: rows.map((r) => r.member), rows, activeCount: active.length };
+}
+
+export interface MonthPoint {
+  /** 'Sep 26'. */
+  month: string;
+  value: number;
+}
+
+/**
+ * MRR as it stood at the end of each of the last 12 months (this month: as
+ * of today) — the same rule computeMrr uses for "30 days ago": a member
+ * counted on a date if planStart ≤ date < planEnd and they were not frozen.
+ * Lets the MRR tile show where the number came from rather than one delta.
+ */
+export function mrrSeries(members: GymMember[], plans: GymPlan[], now: Date = new Date()): MonthPoint[] {
+  const priceById = new Map(plans.map((p) => [p.id, p]));
+  const monthly = (m: GymMember): number => {
+    const plan = m.planId ? priceById.get(m.planId) : undefined;
+    return plan && plan.months > 0 ? plan.price / plan.months : 0;
+  };
+  const out: MonthPoint[] = [];
+  for (let i = 11; i >= 0; i--) {
+    // Last day of that month, or today for the current one.
+    const end = i === 0 ? now : new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+    const on = localDateISO(end);
+    let value = 0;
+    for (const m of members) {
+      // The current month uses the tile's own rule, so the last bar and the
+      // headline never disagree; past months use the date-range rule.
+      if (i === 0) { if (onLivePlan(m, now)) value += monthly(m); continue; }
+      if (m.frozen || !m.planEnd) continue;
+      const start = (m.planStart ?? m.joinedAt).slice(0, 10);
+      if (start <= on && on < m.planEnd.slice(0, 10)) value += monthly(m);
+    }
+    out.push({ month: monthLabel(end.getFullYear(), end.getMonth()), value });
+  }
+  return out;
+}
+
+export interface RevenueMonth {
+  month: string;
+  byCategory: Record<RevenueCategory, number>;
+  total: number;
+}
+
+/**
+ * Money taken in, per month for the last 12, split by category — the
+ * history behind the 90-day donut. Future-dated payments are left out, as
+ * in revenueSplit.
+ */
+export function revenueByMonth(payments: GymPayment[], now: Date = new Date()): RevenueMonth[] {
+  const buckets = new Map<string, RevenueMonth>();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    buckets.set(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, {
+      month: monthLabel(d.getFullYear(), d.getMonth()),
+      byCategory: { membership: 0, pt: 0, other: 0 },
+      total: 0,
+    });
+  }
+  const until = now.toISOString();
+  for (const p of payments) {
+    if (p.paidAt > until) continue;
+    const b = buckets.get(localDateISO(new Date(p.paidAt)).slice(0, 7));
+    if (!b) continue;
+    b.byCategory[p.category ?? 'membership'] += p.amount;
+    b.total += p.amount;
+  }
+  return [...buckets.values()];
 }
 
 export interface ClvCac {

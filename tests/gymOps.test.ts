@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   acquisitionChurnSeries, applyEquipmentStatus, clvCac, computeMrr, equipmentHealth, formatInr,
-  revenueSplit, slippingAway, trainerUtilisation,
+  revenueSplit, slippingAway, trainerUtilisation, mrrSeries, revenueByMonth,
 } from '../src/gym/gymOps';
 import type { GymCheckin, GymClass, GymClassSession, GymEquipment, GymMember, GymPayment, GymPlan } from '../src/types';
 
@@ -284,5 +284,71 @@ describe('equipment', () => {
   it('never reports worse than nothing, and is a clean 100% with no machines', () => {
     expect(equipmentHealth([machine({ downtimeMin: 999_999 })], NOW).health).toBe(0);
     expect(equipmentHealth([], NOW).health).toBe(1);
+  });
+});
+
+describe('mrrSeries', () => {
+  const plans: GymPlan[] = [{ id: 'm1', name: 'Monthly', months: 1, price: 1000, active: true }];
+  const now = new Date(2026, 8, 12); // 12 Sep 2026
+
+  it('returns twelve months ending with the current one', () => {
+    const series = mrrSeries([], plans, now);
+    expect(series).toHaveLength(12);
+    expect(series[11].month).toBe('Sep 26');
+    expect(series[0].month).toBe('Oct 25');
+    expect(series.every((p) => p.value === 0)).toBe(true);
+  });
+
+  it('counts a member only in the months their plan covered', () => {
+    const m = member({ uid: 'a', planId: 'm1', joinedAt: '2026-06-01T00:00:00.000Z', planStart: '2026-06-01', planEnd: '2026-08-15' });
+    const series = mrrSeries([m], plans, now);
+    const byMonth = Object.fromEntries(series.map((p) => [p.month, p.value]));
+    expect(byMonth['Jun 26']).toBe(1000);   // 30 Jun is inside the plan
+    expect(byMonth['Jul 26']).toBe(1000);
+    expect(byMonth['Aug 26']).toBe(0);      // 31 Aug is past planEnd
+    expect(byMonth['May 26']).toBe(0);
+  });
+});
+
+describe('revenueByMonth', () => {
+  const now = new Date(2026, 8, 12);
+  const pay = (paidAt: string, amount: number, category?: GymPayment['category']): GymPayment =>
+    ({ id: paidAt + amount, uid: 'u', amount, method: 'upi', paidAt, months: 1, recordedBy: 's', ...(category ? { category } : {}) });
+
+  it('buckets by local month and category, defaulting to membership', () => {
+    const rows = revenueByMonth([
+      pay('2026-09-02T10:00:00.000Z', 3000),
+      pay('2026-09-05T10:00:00.000Z', 1500, 'pt'),
+      pay('2026-08-20T10:00:00.000Z', 500, 'other'),
+      pay('2026-12-01T10:00:00.000Z', 9999), // advance: not taken yet
+    ], now);
+    expect(rows).toHaveLength(12);
+    const sep = rows[11]; const aug = rows[10];
+    expect(sep.byCategory).toEqual({ membership: 3000, pt: 1500, other: 0 });
+    expect(sep.total).toBe(4500);
+    expect(aug.byCategory.other).toBe(500);
+    expect(rows.reduce((s, r) => s + r.total, 0)).toBe(5000);
+  });
+});
+
+describe('slippingAway rows', () => {
+  it('carries both counts, biggest drop first', () => {
+    const now = new Date(2026, 8, 12, 12);
+    const at = (daysAgo: number) => new Date(now.getTime() - daysAgo * 86_400_000).toISOString();
+    const c = (uid: string, daysAgo: number): GymCheckin => ({ id: uid + daysAgo, uid, at: at(daysAgo), date: at(daysAgo).slice(0, 10), method: 'code', byUid: uid });
+    const members = [
+      member({ uid: 'big', planId: 'p', planStart: '2026-01-01', planEnd: '2027-01-01' }),
+      member({ uid: 'small', planId: 'p', planStart: '2026-01-01', planEnd: '2027-01-01' }),
+    ];
+    const checkins = [
+      // big: 8 earlier, 1 recent
+      ...[35, 38, 41, 44, 47, 50, 53, 56].map((d) => c('big', d)), c('big', 3),
+      // small: 2 earlier, 0 recent
+      c('small', 40), c('small', 45),
+    ];
+    const r = slippingAway(checkins, members, now);
+    expect(r.rows.map((x) => x.member.uid)).toEqual(['big', 'small']);
+    expect(r.rows[0]).toMatchObject({ recent: 1, earlier: 8 });
+    expect(r.members).toHaveLength(2);
   });
 });

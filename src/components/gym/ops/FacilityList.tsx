@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Info } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Card } from '../../../ui';
 import { H2 } from '../../../ui/styles';
@@ -29,9 +29,11 @@ interface RowProps {
   sub: string;
   /** When given, the row becomes a disclosure for its breakdown. */
   detail?: ReactNode;
+  /** Opens the metric's explainer. */
+  onInfo?: () => void;
 }
 
-function FacilityRow({ label, value, fill, meterClass = 'bg-accent', sub, detail }: RowProps) {
+function FacilityRow({ label, value, fill, meterClass = 'bg-accent', sub, detail, onInfo }: RowProps) {
   const [open, setOpen] = useState(false);
   const body = (
     <>
@@ -51,13 +53,26 @@ function FacilityRow({ label, value, fill, meterClass = 'bg-accent', sub, detail
 
   return (
     <div className="py-2.5">
-      {detail ? (
-        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="w-full text-left flex flex-col gap-1.5 min-h-10">
-          {body}
-        </button>
-      ) : (
-        <div className="flex flex-col gap-1.5">{body}</div>
-      )}
+      <div className="flex items-start gap-1">
+        {detail ? (
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex-1 min-w-0 text-left flex flex-col gap-1.5 min-h-10">
+            {body}
+          </button>
+        ) : (
+          <div className="flex-1 min-w-0 flex flex-col gap-1.5">{body}</div>
+        )}
+        {onInfo && (
+          // A sibling of the disclosure, never inside it — a button in a button is invalid.
+          <button
+            type="button"
+            onClick={onInfo}
+            aria-label={`About ${label}`}
+            className="shrink-0 -mr-2 -mt-1.5 w-9 h-9 flex items-center justify-center rounded-control text-subtle hover:text-text"
+          >
+            <Info className="w-4 h-4" strokeWidth={2} />
+          </button>
+        )}
+      </div>
       {detail && open && <div className="mt-2 pl-0.5 flex flex-col gap-1.5">{detail}</div>}
     </div>
   );
@@ -80,14 +95,19 @@ function BreakdownRow({ name, sub, value }: { name: string; sub: string; value: 
  * utilisation is not PT-chair occupancy, and uptime is against opening
  * hours, not the clock.
  */
+export type FacilityMetric = 'trainers' | 'classFill' | 'equipment';
+
 export function FacilityList({
   trainers,
   classFill,
   equipment,
+  onInfo,
 }: {
   trainers: TrainerUtilisation;
   classFill: DashboardStats['classFill'];
   equipment: EquipmentHealthResult;
+  /** Opens the explainer for one of the three rows. */
+  onInfo?: (metric: FacilityMetric) => void;
 }) {
   const capped = classFill.filter((c) => c.capacity && c.capacity > 0);
   const fillRate = capped.length
@@ -104,6 +124,7 @@ export function FacilityList({
       <h2 className={`${H2} mb-1`}>Facility</h2>
       <div className="divide-y divide-border">
         <FacilityRow
+          onInfo={onInfo ? () => onInfo('trainers') : undefined}
           label="Trainer class utilisation"
           value={trainers.scheduled > 0 ? pct(trainers.utilisation) : '—'}
           fill={trainers.utilisation}
@@ -127,6 +148,7 @@ export function FacilityList({
         />
 
         <FacilityRow
+          onInfo={onInfo ? () => onInfo('classFill') : undefined}
           label="Class fill rate"
           value={capped.length ? pct(fillRate) : '—'}
           fill={fillRate}
@@ -152,6 +174,7 @@ export function FacilityList({
         />
 
         <FacilityRow
+          onInfo={onInfo ? () => onInfo('equipment') : undefined}
           label="Equipment asset health"
           value={equipment.machines > 0 ? pct(equipment.health) : '—'}
           fill={equipment.machines > 0 ? equipment.health : 0}

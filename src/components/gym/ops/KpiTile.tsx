@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Info } from 'lucide-react';
 import { StatTile } from '../../../ui';
 
 interface KpiTileProps {
@@ -33,7 +33,14 @@ export function KpiTile({ eyebrow, value, changePct, changeLabel, sub, tone, onC
     <StatTile
       compact
       onClick={onClick}
-      eyebrow={eyebrow}
+      // The small "i" is the promise that tapping explains the number —
+      // MRR and CLV mean nothing to most owners until they have read it once.
+      eyebrow={onClick ? (
+        <span className="inline-flex items-center gap-1 min-w-0">
+          <span className="truncate">{eyebrow}</span>
+          <Info className="w-3 h-3 shrink-0 text-subtle" strokeWidth={2.25} aria-hidden />
+        </span>
+      ) : eyebrow}
       value={value}
       tone={tone}
       sub={
