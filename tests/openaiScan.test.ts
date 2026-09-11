@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildOpenAiScanRequest, estimateOpenAiCostUsd, extractOpenAiText, OPENAI_PRICES_USD } from '../api/_openaiScan';
+import { buildOpenAiScanRequest } from '../api/_openaiScan';
+import { estimateOpenAiCostUsd, extractOpenAiText, OPENAI_PRICES_USD } from '../api/_openai';
 import { SCAN_PROMPT } from '../api/_scanParse';
 
 describe('OpenAI scan request', () => {

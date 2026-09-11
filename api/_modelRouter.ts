@@ -283,20 +283,27 @@ export function classifyFailure(status: number, message = '', body?: unknown): F
 
 // ---------------------------------------------------------------- OpenAI spend
 
-export interface OpenAiSpend { calls: number; usd: number; inputTokens: number; outputTokens: number }
+export interface OpenAiSpend {
+  calls: number;
+  usd: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Which surface spent it — Zen's share is the number that must stay small. */
+  byPurpose?: Record<string, { calls: number; usd: number }>;
+}
 
 /** What the paid fallback has cost today, on the same day-doc as the Gemini counters. */
 export async function openAiSpentToday(db: Firestore, now?: Date): Promise<OpenAiSpend> {
   const snap = await quotaRef(db, now).get();
   const o = (snap.exists ? (snap.data() as { openai?: Partial<OpenAiSpend> }).openai : undefined) ?? {};
-  return { calls: o.calls ?? 0, usd: o.usd ?? 0, inputTokens: o.inputTokens ?? 0, outputTokens: o.outputTokens ?? 0 };
+  return { calls: o.calls ?? 0, usd: o.usd ?? 0, inputTokens: o.inputTokens ?? 0, outputTokens: o.outputTokens ?? 0, byPurpose: o.byPurpose ?? {} };
 }
 
 /** Adds one paid call to today's tally. Best-effort — a lost increment is a
  *  slightly low number, not a broken scan. */
 export async function recordOpenAiSpend(
   db: Firestore,
-  call: { usd: number; inputTokens: number; outputTokens: number },
+  call: { usd: number; inputTokens: number; outputTokens: number; purpose: string },
   now?: Date,
 ): Promise<void> {
   const ref = quotaRef(db, now);
@@ -304,12 +311,14 @@ export async function recordOpenAiSpend(
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       const cur = ((snap.exists ? (snap.data() as { openai?: Partial<OpenAiSpend> }).openai : undefined) ?? {}) as Partial<OpenAiSpend>;
+      const mine = cur.byPurpose?.[call.purpose] ?? { calls: 0, usd: 0 };
       tx.set(ref, {
         openai: {
           calls: (cur.calls ?? 0) + 1,
           usd: Math.round(((cur.usd ?? 0) + call.usd) * 1e6) / 1e6,
           inputTokens: (cur.inputTokens ?? 0) + call.inputTokens,
           outputTokens: (cur.outputTokens ?? 0) + call.outputTokens,
+          byPurpose: { [call.purpose]: { calls: mine.calls + 1, usd: Math.round((mine.usd + call.usd) * 1e6) / 1e6 } },
         },
         updatedAt: Date.now(),
       }, { merge: true });

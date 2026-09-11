@@ -1,36 +1,16 @@
-// OpenAI as the plate scanner's safety net.
+// The plate scan's OpenAI fallback — request shape only; the client and the
+// pricing live in _openai.ts. Runs when the whole Gemini cascade has given up.
 //
-// Gemini's free tier is the primary scanner and stays so: it is free and its
-// 3.x flash models read Indian plates well. But on a bad minute every flash
-// model answers 503 "high demand" and the flash-lites time out, and the user
-// sees "Couldn't read that plate" for a photo that was fine. This module is
-// what runs when the whole Gemini cascade has given up: one paid call, so the
-// scan completes.
-//
-// Model: gpt-5.6-luna — OpenAI's nano tier for high-volume work, $0.20/M in,
-// $0.02/M cached, $1.20/M out (verified 2026-09-12). Independent benchmarks
-// put it ahead of gpt-5.4-nano on every shared test including MMMU-Pro
-// (vision) at the same price, and ahead of gpt-5-nano on 14 of 15, which is
-// why it beats the cheaper nano here despite costing 3× per token: a
-// fallback that misreads the plate is not a fallback.
-//
-// Cost per scan ≈ $0.001 (922 image tokens for 1024×768, the ~2.5K-token
-// prompt served from cache after the first call, ~600 tokens out with low
-// reasoning). At the expected 20–60 scans/day with OpenAI taking the failed
-// fraction, $8 of credit lasts well past its 12-month expiry.
+// Cost per scan ≈ $0.001: a 1024×768 photo is 768 patches × 1.2 = 922 tokens
+// on gpt-5.6-luna, the ~2.5K-token prompt is served from cache after the
+// first call, and low reasoning keeps output near 600 tokens.
 
 import { SCAN_PROMPT } from './_scanParse.js';
+import { OPENAI_MODEL, postOpenAiResponse } from './_openai.js';
+import type { OpenAiCallResult } from './_openai.js';
 
-export const OPENAI_SCAN_MODEL = process.env.OPENAI_SCAN_MODEL || 'gpt-5.6-luna';
-/** Per-1M-token prices for the fallback model, for the spend counter. */
-export const OPENAI_PRICES_USD = { input: 0.2, cachedInput: 0.02, output: 1.2 };
-
-export interface OpenAiUsage {
-  input_tokens?: number;
-  input_tokens_details?: { cached_tokens?: number };
-  output_tokens?: number;
-  output_tokens_details?: { reasoning_tokens?: number };
-}
+export { estimateOpenAiCostUsd, extractOpenAiText, OPENAI_PRICES_USD } from './_openai.js';
+export const OPENAI_SCAN_MODEL = OPENAI_MODEL;
 
 /** The JSON the client consumes — mirrored from _scanParse so the model is
  *  told the shape, not just asked for it. `strict` stays off: a confidence
@@ -73,7 +53,7 @@ export function buildOpenAiScanRequest(
   opts: { withSchema?: boolean; model?: string } = {},
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
-    model: opts.model ?? OPENAI_SCAN_MODEL,
+    model: opts.model ?? OPENAI_MODEL,
     instructions: SCAN_PROMPT,
     input: [
       {
@@ -97,82 +77,12 @@ export function buildOpenAiScanRequest(
   return body;
 }
 
-/** Dollars for one call, from the usage block. */
-export function estimateOpenAiCostUsd(usage: OpenAiUsage | undefined, prices = OPENAI_PRICES_USD): number {
-  if (!usage) return 0;
-  const cached = usage.input_tokens_details?.cached_tokens ?? 0;
-  const input = Math.max(0, (usage.input_tokens ?? 0) - cached);
-  const output = usage.output_tokens ?? 0;
-  return (input * prices.input + cached * prices.cachedInput + output * prices.output) / 1_000_000;
-}
-
-interface OpenAiResponse {
-  output_text?: string;
-  output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
-  usage?: OpenAiUsage;
-  error?: { message?: string; type?: string; code?: string };
-  status?: string;
-  incomplete_details?: { reason?: string };
-}
-
-/** The reply text, whichever field the API used. */
-export function extractOpenAiText(body: OpenAiResponse): string {
-  if (typeof body.output_text === 'string' && body.output_text) return body.output_text;
-  const parts: string[] = [];
-  for (const item of body.output ?? []) {
-    if (item.type && item.type !== 'message') continue;
-    for (const c of item.content ?? []) if (c.type === 'output_text' && c.text) parts.push(c.text);
-  }
-  return parts.join('\n');
-}
-
-export interface OpenAiScanResult {
-  status: number;
-  text: string;
-  usage?: OpenAiUsage;
-  error?: string;
-  costUsd: number;
-  model: string;
-}
-
-/**
- * One scan through OpenAI. Reports failure as a status, like callGemini, so
- * the handler decides what the user hears. A 400 that objects to the JSON
- * schema is retried once without it — the prompt already demands JSON.
- */
-export async function callOpenAiScan(
+/** One scan through OpenAI. */
+export function callOpenAiScan(
   image: { mimeType: string; data: string },
   hint: string,
   apiKey: string,
   timeoutMs: number,
-): Promise<OpenAiScanResult> {
-  const model = OPENAI_SCAN_MODEL;
-  const attempt = async (withSchema: boolean): Promise<{ status: number; body: OpenAiResponse }> => {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const r = await fetch('https://api.openai.com/v1/responses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(buildOpenAiScanRequest(image, hint, { withSchema, model })),
-        signal: ctrl.signal,
-      });
-      const body = (await r.json().catch(() => ({}))) as OpenAiResponse;
-      return { status: r.status, body };
-    } catch (err) {
-      const aborted = (err as Error).name === 'AbortError';
-      console.error('[foodscan] OpenAI fetch failed', aborted ? 'timeout' : (err as Error).message);
-      return { status: aborted ? 504 : 502, body: {} };
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-
-  let r = await attempt(true);
-  if (r.status === 400 && /format|schema/i.test(r.body.error?.message ?? '')) r = await attempt(false);
-  const costUsd = estimateOpenAiCostUsd(r.body.usage);
-  if (r.status < 200 || r.status >= 300) {
-    return { status: r.status, text: '', usage: r.body.usage, error: r.body.error?.message || `HTTP ${r.status}`, costUsd, model };
-  }
-  return { status: r.status, text: extractOpenAiText(r.body), usage: r.body.usage, costUsd, model };
+): Promise<OpenAiCallResult> {
+  return postOpenAiResponse((withSchema) => buildOpenAiScanRequest(image, hint, { withSchema }), apiKey, timeoutMs);
 }

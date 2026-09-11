@@ -8,7 +8,8 @@ _Decided 2026-09-12. Prices verified against the providers' own pages that day._
 |---|---|---|---|---|
 | Zen chat | Gemini API, free tier (unbilled project) | gemma-4-31b-it → gemma-4-26b-a4b-it | ₹0 (Gemma has no paid tier) | 6/min · 60/day per user, 24/min global |
 | Plate scan | Gemini API, free tier | 3.6-flash → 3.5-flash → 3.5-flash-lite → 3.1-flash-lite → 3.7-flash | ₹0 | 10/day per user, per-model RPD in `api/_modelRouter.ts` |
-| Plate scan **fallback** | OpenAI, prepaid $8 | gpt-5.6-luna | ≈ $0.001 per scan | runaway guard $2/day (`OPENAI_DAILY_USD_CAP`) |
+| Plate scan **fallback** | OpenAI, prepaid $8 | gpt-5.6-luna | ≈ $0.001 per scan | runaway guard $2/day (`OPENAI_DAILY_USD_CAP`, shared) |
+| Zen chat **fallback** | OpenAI, prepaid $8 | gpt-5.6-luna | ≈ $0.0015 per turn | same guard; only after BOTH Gemma models fail, or one times out, or the reply is empty |
 
 Measured volume before this change: **31 scans in 14 days (~5/day)** across 23 users.
 Expected at 50–100 users, most of them gym members scanning about once a day: **20–60 scans/day**.
@@ -77,6 +78,19 @@ Timing inside Vercel's 60 s `maxDuration`: Gemini attempts stop starting at
 22 s, one Gemini timeout is 26 s, the OpenAI call has 20 s — worst case 46 s.
 The client waits 75 s.
 
+### Zen's fallback, and why it must stay rare
+
+Gemma stays primary — it is free and Zen is tuned for it. OpenAI takes a
+turn only when Gemma has actually given up: both Gemma models returned a
+switchable status (429/404/5xx), or one timed out (final on Gemma), or the
+reply was empty. The same system turn Zen built (persona, data protocol,
+context pack) goes across as `instructions`; the conversation is the input;
+`reasoning.effort: low`; 15 s timeout (what is left of the 120 s maxDuration
+after a full Gemma timeout). A Zen turn is ~5K tokens in, so it costs about
+1.5× a scan — the per-purpose tally (`aiQuota/{day}.openai.byPurpose.zen`)
+is how "rare" gets checked rather than assumed. If that number climbs, the
+fix is on the Gemma side (limits, model preference), not a bigger budget.
+
 ## Runbook
 
 - **Enable the fallback:** `vercel env add OPENAI_API_KEY production` (paste
@@ -84,9 +98,13 @@ The client waits 75 s.
   redeploy the API (any push to `main` does it). Without the variable the
   scanner behaves exactly as before.
 - **Watch spend:** `aiQuota/{YYYY-MM-DD}.openai` = `{ calls, usd,
-  inputTokens, outputTokens }`. The function logs a warning past 25% of the
-  daily cap and stops falling back at the cap (`OPENAI_DAILY_USD_CAP`,
-  default 2).
+  inputTokens, outputTokens, byPurpose: { scan, zen } }`. The functions log a
+  warning past 25% of the daily cap and stop falling back at the cap
+  (`OPENAI_DAILY_USD_CAP`, default 2).
+- **Exercise the paid path on purpose** (admin uid + `debug: true`): scan
+  with `forceFallback: true` in the body; Zen with `tuning: { forceFallback:
+  true }`. Skips Gemini/Gemma so the OpenAI wiring can be verified in
+  production for a fraction of a cent.
 - **Change the model:** `OPENAI_SCAN_MODEL` env var; update
   `OPENAI_PRICES_USD` in `api/_openaiScan.ts` so the tally stays honest.
 - **Prices move:** Gemini 3.x promotional pricing doubles on 2027-01-01;

@@ -31,6 +31,7 @@ import {
   releaseReservation,
 } from './_modelRouter.js';
 import { callOpenAiScan } from './_openaiScan.js';
+import { OPENAI_DAILY_USD_CAP } from './_openai.js';
 import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js';
 
 // A vision call on a flash model answers in 2–8 s; the ceiling is here for
@@ -53,12 +54,6 @@ const GEMINI_TIMEOUT_MS = 26_000;
  */
 const RETRY_DEADLINE_MS = 22_000;
 const OPENAI_TIMEOUT_MS = 20_000;
-/**
- * A runaway guard, not a budget: at ~$0.001 a scan this is ~2,000 paid scans
- * in a day, which nothing but abuse produces. Below it the fallback always
- * runs — the whole point is that a scan completes.
- */
-const OPENAI_DAILY_USD_CAP = Number(process.env.OPENAI_DAILY_USD_CAP) || 2;
 
 function getAdmin() {
   if (admin.apps.length) return admin;
@@ -221,14 +216,21 @@ async function scan(
   image: ScanImage,
   hint: string,
   debug: ScanDebug[] | null = null,
+  forceFallback = false,
 ): Promise<{ payload: ScanPayload; model: string }> {
   const openAiKey = process.env.OPENAI_API_KEY;
-  let geminiFailure: HttpError | null = null;
-  try {
-    return await scanWithGemini(db, prompt, image, debug);
-  } catch (err) {
-    if (!(err instanceof HttpError)) throw err;
-    geminiFailure = err;
+  let geminiFailure: HttpError;
+  if (forceFallback && openAiKey) {
+    // Admin diagnostics only: exercise the paid path without waiting for
+    // Gemini to fail, so the fallback can be verified in production.
+    geminiFailure = new HttpError(503, 'Gemini skipped (forceFallback).', { reason: 'busy' });
+  } else {
+    try {
+      return await scanWithGemini(db, prompt, image, debug);
+    } catch (err) {
+      if (!(err instanceof HttpError)) throw err;
+      geminiFailure = err;
+    }
   }
 
   // Every Gemini path that did not produce a plate ends here: 503 spikes,
@@ -247,6 +249,7 @@ async function scan(
       usd: r.costUsd,
       inputTokens: r.usage.input_tokens ?? 0,
       outputTokens: r.usage.output_tokens ?? 0,
+      purpose: 'scan',
     });
   }
   debug?.push({ model: r.model, status: r.status, finishReason: r.error, sample: r.text.slice(0, 200), usage: r.usage as unknown as ScanDebug['usage'] });
@@ -388,7 +391,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let payload: ScanPayload;
     let model: string;
     try {
-      ({ payload, model } = await scan(db, prompt, image, hint, debug));
+      ({ payload, model } = await scan(db, prompt, image, hint, debug, !!debug && body.forceFallback === true));
     } catch (err) {
       // A scan that never produced anything shouldn't cost one of the day's
       // ten. The user retrying our own flakiness was burning their budget.

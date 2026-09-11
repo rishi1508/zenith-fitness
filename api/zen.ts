@@ -34,6 +34,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { assertPremium, consumeLimit, DAY_MS, HttpError, MINUTE_MS } from './_limits.js';
 import {
+  type ZenMessage,
   buildContents,
   buildSystemTurn,
   isSwitchableStatus,
@@ -45,6 +46,9 @@ import {
   trimMessages,
   type GeminiContent,
 } from './_zenProtocol.js';
+import { openAiSpentToday, recordOpenAiSpend } from './_modelRouter.js';
+import { OPENAI_DAILY_USD_CAP } from './_openai.js';
+import { callOpenAiChat } from './_openaiChat.js';
 
 // Gemma at 700 output tokens can take 15–25 s. A model switch means up to
 // two sequential calls, so this is kept well under half of maxDuration.
@@ -53,6 +57,8 @@ export const config = { maxDuration: 120 };
 const DEFAULT_MODEL = 'gemma-4-31b-it';
 const DEFAULT_FALLBACK_MODEL = 'gemma-4-26b-a4b-it'; // the only other Gemma 4 model on the key (verified via the models listing)
 const GEMINI_TIMEOUT_MS = 100_000; // Gemma 4 thinks for 20–60 s; a timeout is final (no second model attempt)
+/** What is left of maxDuration after a full Gemma timeout, less a margin. */
+const OPENAI_TIMEOUT_MS = 15_000;
 const LIMITS = {
   userPerMinute: 6,
   userPerDay: 60,
@@ -109,7 +115,7 @@ interface GeminiResponse {
   error?: { message?: string; status?: string };
 }
 
-interface Tuning { maxOutputTokens?: number; thinkingBudget?: number; thinkingLevel?: string; model?: string }
+interface Tuning { maxOutputTokens?: number; thinkingBudget?: number; thinkingLevel?: string; model?: string; forceFallback?: boolean }
 // Gemma 4 accepts thinkingLevel ("minimal" verified live; "low" and thinkingBudget are
 // rejected). Unconstrained it thinks for 20–60 s and can spend the whole output cap
 // on private reasoning, so minimal is the default; ZEN_THINKING_LEVEL overrides.
@@ -176,12 +182,67 @@ function describe(model: string, r: { status: number; body: GeminiResponse }): Z
   };
 }
 
+type Generated = { text: string; model: string; usage?: { promptTokens: number; outputTokens: number } };
+
+/**
+ * Gemma first, always; OpenAI only when Gemma has given up — both models
+ * failed, or one timed out (final on Gemma), or the reply came back empty.
+ * That is the rare path and it is counted (aiQuota.openai.byPurpose.zen),
+ * so "rare" can be checked rather than assumed.
+ */
 async function generate(
+  contents: GeminiContent[],
+  systemTurn: string,
+  messages: ZenMessage[],
+  db: admin.firestore.Firestore,
+  debug: ZenDebug[] | null = null,
+  tuning: Tuning = {},
+): Promise<Generated> {
+  const openAiKey = process.env.OPENAI_API_KEY;
+  let gemmaFailure: HttpError;
+  if (tuning.forceFallback && openAiKey) {
+    gemmaFailure = new HttpError(503, 'Gemma skipped (forceFallback).', { reason: 'busy' });
+  } else {
+    try {
+      return await generateWithGemma(contents, db, debug, tuning);
+    } catch (err) {
+      if (!(err instanceof HttpError)) throw err;
+      gemmaFailure = err;
+    }
+  }
+  if (!openAiKey) throw gemmaFailure;
+
+  const spent = await withTimeout(openAiSpentToday(db), 8_000, 'openai-spend');
+  if (spent.usd >= OPENAI_DAILY_USD_CAP) {
+    console.error(`[zen] OpenAI daily cap reached ($${spent.usd.toFixed(2)}) — not falling back`);
+    throw gemmaFailure;
+  }
+  console.warn(`[zen] Gemma gave up (${gemmaFailure.status} ${gemmaFailure.message.slice(0, 80)}) — falling back to OpenAI`);
+  const r = await callOpenAiChat(systemTurn, messages, openAiKey, OPENAI_TIMEOUT_MS, tuning.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS);
+  if (r.usage) {
+    await recordOpenAiSpend(db, {
+      usd: r.costUsd,
+      inputTokens: r.usage.input_tokens ?? 0,
+      outputTokens: r.usage.output_tokens ?? 0,
+      purpose: 'zen',
+    });
+  }
+  debug?.push({ model: r.model, status: r.status, error: r.error, usage: r.usage });
+  if (r.status < 200 || r.status >= 300) {
+    console.error(`[zen] OpenAI fallback failed ${r.status}: ${r.error}`);
+    throw gemmaFailure;
+  }
+  if (!r.text.trim()) throw gemmaFailure;
+  console.log(`[zen] model=${r.model} (fallback) in=${r.usage?.input_tokens ?? '?'} out=${r.usage?.output_tokens ?? '?'} usd=${r.costUsd.toFixed(5)}`);
+  return { text: r.text, model: r.model, usage: r.usage ? { promptTokens: r.usage.input_tokens ?? 0, outputTokens: r.usage.output_tokens ?? 0 } : undefined };
+}
+
+async function generateWithGemma(
   contents: GeminiContent[],
   db: admin.firestore.Firestore,
   debug: ZenDebug[] | null = null,
   tuning: Tuning = {},
-): Promise<{ text: string; model: string; usage?: { promptTokens: number; outputTokens: number } }> {
+): Promise<Generated> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new HttpError(503, 'Zen is not configured on the server yet.');
   const primary = process.env.GEMINI_MODEL || DEFAULT_MODEL;
@@ -284,10 +345,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       thinkingBudget: typeof t.thinkingBudget === 'number' ? Math.max(0, t.thinkingBudget) : undefined,
       thinkingLevel: typeof t.thinkingLevel === 'string' && /^[a-z]{2,12}$/.test(t.thinkingLevel) ? t.thinkingLevel : undefined,
       model: typeof t.model === 'string' && /^[a-z0-9.-]{3,40}$/.test(t.model) ? t.model : undefined,
+      forceFallback: !!debug && t.forceFallback === true,
     };
 
-    const contents = buildContents(buildSystemTurn({ context, dataAnswer, tz }), messages);
-    const { text, model, usage } = await generate(contents, db, debug, tuning);
+    const systemTurn = buildSystemTurn({ context, dataAnswer, tz });
+    const contents = buildContents(systemTurn, messages);
+    const { text, model, usage } = await generate(contents, systemTurn, messages, db, debug, tuning);
 
     // One-round data protocol. With dataAnswer already supplied we never
     // ask again — any stray request block is stripped and the text returned.
