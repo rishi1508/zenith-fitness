@@ -65,7 +65,7 @@ export function UpdateChecker() {
           <Download className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold">Update Available!</div>
+          <div className="font-semibold">Update available</div>
           <div className="text-sm opacity-90">
             Version {update.tag_name} is ready
           </div>
