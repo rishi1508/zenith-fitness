@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ScanLine, CalendarDays, Megaphone, CreditCard, MonitorSmartphone, Users, ListChecks,
-  IndianRupee, AlertTriangle,
+  IndianRupee, AlertTriangle, BarChart3,
 } from 'lucide-react';
 import type { GymViewProps } from './types';
 import type { GymClass } from '../../types';
@@ -161,6 +161,7 @@ function ManageSection({ gym, isDark, isManagerPlus, onNavigate }: ManageSection
           <PeakHours counts={stats.checkinsPerHour} isDark={isDark} />
 
           <Card padding="list">
+            <ListRow icon={BarChart3} title="Analytics" subtitle="Revenue, churn, slipping members, floor" onClick={() => onNavigate('gym-ops')} />
             <ListRow icon={Users} title="Members" subtitle={`${stats.expiringIn7} expiring this week`} onClick={() => onNavigate('gym-members')} />
             <ListRow icon={MonitorSmartphone} title="Check-in console" subtitle="Today's code · scan · manual" onClick={() => onNavigate('gym-console')} />
             <ListRow icon={ListChecks} title="Classes" onClick={() => onNavigate('gym-classes-manage')} />

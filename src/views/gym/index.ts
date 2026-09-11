@@ -8,6 +8,7 @@ export { ClassDetailView } from './ClassDetailView';
 export { AnnouncementsView } from './AnnouncementsView';
 export { MembershipView } from './MembershipView';
 export { GymDashboardView } from './GymDashboardView';
+export { GymOpsView } from './GymOpsView';
 export { MembersView } from './MembersView';
 export { MemberDetailView } from './MemberDetailView';
 export { CheckinConsoleView } from './CheckinConsoleView';

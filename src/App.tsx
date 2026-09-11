@@ -53,6 +53,7 @@ const ClassDetailView = lazyNamed(() => import('./views/gym'), 'ClassDetailView'
 const AnnouncementsView = lazyNamed(() => import('./views/gym'), 'AnnouncementsView');
 const MembershipView = lazyNamed(() => import('./views/gym'), 'MembershipView');
 const GymDashboardView = lazyNamed(() => import('./views/gym'), 'GymDashboardView');
+const GymOpsView = lazyNamed(() => import('./views/gym'), 'GymOpsView');
 const MembersView = lazyNamed(() => import('./views/gym'), 'MembersView');
 const MemberDetailView = lazyNamed(() => import('./views/gym'), 'MemberDetailView');
 const CheckinConsoleView = lazyNamed(() => import('./views/gym'), 'CheckinConsoleView');
@@ -1845,6 +1846,9 @@ function App() {
         )}
         {view === 'gym-membership' && (
           <MembershipView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
+        )}
+        {view === 'gym-ops' && (
+          <GymOpsView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-dashboard' && (
           <GymDashboardView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
