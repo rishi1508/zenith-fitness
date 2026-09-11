@@ -14,6 +14,18 @@ _Decided 2026-09-12. Prices verified against the providers' own pages that day._
 Measured volume before this change: **31 scans in 14 days (~5/day)** across 23 users.
 Expected at 50–100 users, most of them gym members scanning about once a day: **20–60 scans/day**.
 
+### Measured in production, 2026-09-12 (admin `forceFallback`)
+
+| Path | Model | Time | Tokens in / out | Cost |
+|---|---|---|---|---|
+| Scan (6 items on the test plate) | gpt-5.6-luna | 13.8 s | 820 / 452 | **$0.00071** |
+| Zen turn (context pack + question) | gpt-5.6-luna | 8.1 s | 752 / 92 | **$0.00026** |
+
+Cheaper than the estimates above: the prompt is shorter in tokens than its
+byte count suggested, and `detail: auto` sized the photo below 922 patches.
+At these rates $8 is ~11,000 scans or ~30,000 Zen turns — and it only ever
+pays for the fraction Gemini drops.
+
 ## Why the cascade changed
 
 Live probes on 2026-09-12: `gemini-3.8-flash` and `gemini-3.7-flash` answered
