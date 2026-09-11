@@ -42,14 +42,22 @@ export interface ModelBudget {
   perDay: number;
 }
 
-/** Strongest first. All ids verified on the key on 2026-09-07. */
+/**
+ * Most AVAILABLE first, not strongest first. Measured 2026-09-12: 3.8 and 3.7
+ * answered 503 "high demand" on every probe and had landed 0–3 scans a day
+ * for a fortnight, each miss costing 1–2 s (or 26 s on a timeout) before
+ * 3.6 answered. 3.6 and 3.5 answer; the lites are 500 a day and rarely
+ * spike. 3.8 is dropped outright (Rishi's call); 3.7 stays as a last resort
+ * because when it does answer it is the best reader of the lot. All ids
+ * verified on the key on 2026-09-07. When every one of these has given up,
+ * api/_openaiScan.ts takes the request.
+ */
 export const MODEL_CASCADE: ModelBudget[] = [
-  { model: 'gemini-3.8-flash', perDay: 20 },
-  { model: 'gemini-3.7-flash', perDay: 20 },
   { model: 'gemini-3.6-flash', perDay: 20 },
   { model: 'gemini-3.5-flash', perDay: 20 },
   { model: 'gemini-3.5-flash-lite', perDay: 500 },
   { model: 'gemini-3.1-flash-lite', perDay: 500 },
+  { model: 'gemini-3.7-flash', perDay: 20 },
 ];
 
 /**
@@ -271,4 +279,42 @@ export function classifyFailure(status: number, message = '', body?: unknown): F
     return { kind: 'cooldown', cooldownMs: COOLDOWN_MS.glitch, refund: true };
   }
   return { kind: 'fatal' };
+}
+
+// ---------------------------------------------------------------- OpenAI spend
+
+export interface OpenAiSpend { calls: number; usd: number; inputTokens: number; outputTokens: number }
+
+/** What the paid fallback has cost today, on the same day-doc as the Gemini counters. */
+export async function openAiSpentToday(db: Firestore, now?: Date): Promise<OpenAiSpend> {
+  const snap = await quotaRef(db, now).get();
+  const o = (snap.exists ? (snap.data() as { openai?: Partial<OpenAiSpend> }).openai : undefined) ?? {};
+  return { calls: o.calls ?? 0, usd: o.usd ?? 0, inputTokens: o.inputTokens ?? 0, outputTokens: o.outputTokens ?? 0 };
+}
+
+/** Adds one paid call to today's tally. Best-effort — a lost increment is a
+ *  slightly low number, not a broken scan. */
+export async function recordOpenAiSpend(
+  db: Firestore,
+  call: { usd: number; inputTokens: number; outputTokens: number },
+  now?: Date,
+): Promise<void> {
+  const ref = quotaRef(db, now);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const cur = ((snap.exists ? (snap.data() as { openai?: Partial<OpenAiSpend> }).openai : undefined) ?? {}) as Partial<OpenAiSpend>;
+      tx.set(ref, {
+        openai: {
+          calls: (cur.calls ?? 0) + 1,
+          usd: Math.round(((cur.usd ?? 0) + call.usd) * 1e6) / 1e6,
+          inputTokens: (cur.inputTokens ?? 0) + call.inputTokens,
+          outputTokens: (cur.outputTokens ?? 0) + call.outputTokens,
+        },
+        updatedAt: Date.now(),
+      }, { merge: true });
+    });
+  } catch (err) {
+    console.warn('[modelRouter] openai spend not recorded:', (err as Error).message);
+  }
 }

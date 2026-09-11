@@ -27,8 +27,10 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { assertPremium, consumeLimit, DAY_MS, HttpError, refundLimit } from './_limits.js';
 import {
-  classifyFailure, markCooldown, markExhausted, MAX_MODEL_ATTEMPTS, pickModel, releaseReservation,
+  classifyFailure, markCooldown, markExhausted, MAX_MODEL_ATTEMPTS, openAiSpentToday, pickModel, recordOpenAiSpend,
+  releaseReservation,
 } from './_modelRouter.js';
+import { callOpenAiScan } from './_openaiScan.js';
 import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js';
 
 // A vision call on a flash model answers in 2–8 s; the ceiling is here for
@@ -44,8 +46,19 @@ const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png']);
  * the next model timed out at 20 s).
  */
 const GEMINI_TIMEOUT_MS = 26_000;
-/** Stop starting new model attempts past this point so we answer before maxDuration. */
-const RETRY_DEADLINE_MS = 30_000;
+/**
+ * Stop starting new GEMINI attempts past this point, so that even after one
+ * full timeout there is room for the OpenAI fallback (20 s) inside the 60 s
+ * maxDuration: 26 s + 20 s = 46 s worst case.
+ */
+const RETRY_DEADLINE_MS = 22_000;
+const OPENAI_TIMEOUT_MS = 20_000;
+/**
+ * A runaway guard, not a budget: at ~$0.001 a scan this is ~2,000 paid scans
+ * in a day, which nothing but abuse produces. Below it the fallback always
+ * runs — the whole point is that a scan completes.
+ */
+const OPENAI_DAILY_USD_CAP = Number(process.env.OPENAI_DAILY_USD_CAP) || 2;
 
 function getAdmin() {
   if (admin.apps.length) return admin;
@@ -206,6 +219,56 @@ async function scan(
   db: admin.firestore.Firestore,
   prompt: string,
   image: ScanImage,
+  hint: string,
+  debug: ScanDebug[] | null = null,
+): Promise<{ payload: ScanPayload; model: string }> {
+  const openAiKey = process.env.OPENAI_API_KEY;
+  let geminiFailure: HttpError | null = null;
+  try {
+    return await scanWithGemini(db, prompt, image, debug);
+  } catch (err) {
+    if (!(err instanceof HttpError)) throw err;
+    geminiFailure = err;
+  }
+
+  // Every Gemini path that did not produce a plate ends here: 503 spikes,
+  // timeouts, the day's quota gone, a garbled reply. The scan still has to
+  // complete, so one paid call takes it — unless the day's runaway guard
+  // has tripped, in which case the user hears what Gemini said.
+  if (!openAiKey) throw geminiFailure;
+  const spent = await openAiSpentToday(db);
+  if (spent.usd >= OPENAI_DAILY_USD_CAP) {
+    console.error(`[foodscan] OpenAI daily cap reached ($${spent.usd.toFixed(2)} of $${OPENAI_DAILY_USD_CAP}) — not falling back`);
+    throw geminiFailure;
+  }
+  const r = await callOpenAiScan(image, hint, openAiKey, OPENAI_TIMEOUT_MS);
+  if (r.usage) {
+    await recordOpenAiSpend(db, {
+      usd: r.costUsd,
+      inputTokens: r.usage.input_tokens ?? 0,
+      outputTokens: r.usage.output_tokens ?? 0,
+    });
+  }
+  debug?.push({ model: r.model, status: r.status, finishReason: r.error, sample: r.text.slice(0, 200), usage: r.usage as unknown as ScanDebug['usage'] });
+  if (r.status < 200 || r.status >= 300) {
+    console.error(`[foodscan] OpenAI fallback failed ${r.status}: ${r.error}`);
+    throw geminiFailure;
+  }
+  const payload = parseScanPayload(r.text);
+  if (!payload) {
+    console.warn('[foodscan] OpenAI reply unparseable', r.text.slice(0, 200));
+    throw geminiFailure;
+  }
+  const spentNow = spent.usd + r.costUsd;
+  if (spentNow >= OPENAI_DAILY_USD_CAP * 0.25) console.warn(`[foodscan] OpenAI spend today $${spentNow.toFixed(3)}`);
+  console.log(`[foodscan] model=${r.model} (fallback) items=${payload.items.length} in=${r.usage?.input_tokens ?? '?'} cached=${r.usage?.input_tokens_details?.cached_tokens ?? 0} out=${r.usage?.output_tokens ?? '?'} usd=${r.costUsd.toFixed(5)}`);
+  return { payload, model: r.model };
+}
+
+async function scanWithGemini(
+  db: admin.firestore.Firestore,
+  prompt: string,
+  image: ScanImage,
   debug: ScanDebug[] | null = null,
 ): Promise<{ payload: ScanPayload; model: string }> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -325,7 +388,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let payload: ScanPayload;
     let model: string;
     try {
-      ({ payload, model } = await scan(db, prompt, image, debug));
+      ({ payload, model } = await scan(db, prompt, image, hint, debug));
     } catch (err) {
       // A scan that never produced anything shouldn't cost one of the day's
       // ten. The user retrying our own flakiness was burning their budget.
