@@ -11,6 +11,7 @@ import { prepareScanImage, scaleScanItem, ScanError, scanItemToEntry, scanPrepar
 import type { ScanErrorKind, ScanItem } from '../../nutrition/scan';
 import { ScanItemSheet } from './ScanItemSheet';
 import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
+import { consumeRestoredPhoto } from '../../captureRestore';
 
 export interface FoodScanViewProps {
   onBack: () => void;
@@ -140,13 +141,24 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
       return;
     }
     try {
-      const blob = await capturePhoto(source);
+      const blob = await capturePhoto(source, 'food-scan', { date: targetDate, meal: target });
       await runScan(blob);
     } catch (err) {
       if (err instanceof PhotoCancelled) return;
       setError(err instanceof Error ? err.message : 'The camera could not be opened.');
     }
   };
+
+  // A plate photographed just before Android recycled the app arrives here
+  // on the way back in (src/captureRestore.ts) — scan it as if the camera
+  // had returned normally.
+  useEffect(() => {
+    const restoredPhoto = consumeRestoredPhoto('food-scan');
+    if (!restoredPhoto) return;
+    // Deferred a tick so the screen paints before the scan flips it to "preparing".
+    const t = window.setTimeout(() => { void runScan(restoredPhoto.blob); }, 0);
+    return () => window.clearTimeout(t);
+  }, [runScan]);
 
   const reset = () => {
     setPreviewUrl((old) => { if (old) URL.revokeObjectURL(old); return null; });

@@ -63,8 +63,13 @@ export function useElasticScroll(
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
       // Anything that handles its own drag — charts, sliders, the peak-hours
-      // scrubber — opts out and keeps the gesture.
-      if ((e.target as HTMLElement | null)?.closest('[data-elastic-skip]')) return;
+      // scrubber — opts out and keeps the gesture. So does anything inside a
+      // fixed overlay: the pull moves the content by `transform`, and a
+      // `position: fixed` element inside a transformed ancestor is laid out
+      // against that ancestor instead of the viewport — the photo viewer
+      // collapsed into a square mid-page on every scroll for exactly this
+      // reason. Chat scrollers opt out because they scroll themselves.
+      if ((e.target as HTMLElement | null)?.closest('[data-elastic-skip], .fixed, [role="dialog"], [aria-modal="true"]')) return;
       startY = e.touches[0].clientY;
       startX = e.touches[0].clientX;
       pulling = null;

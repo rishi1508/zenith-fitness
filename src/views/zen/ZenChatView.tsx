@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Send, Sparkles, Trash2 } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { useGym } from '../../gym/GymContext';
@@ -152,7 +152,10 @@ export function ZenChatView({ onBack, initialPrompt, onConsumePrompt }: ZenChatV
         right={history.length > 0 ? <IconButton icon={Trash2} label="Clear chat" size="sm" onClick={clearAll} /> : undefined}
       />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3">
+      {/* `data-elastic-skip`: this list scrolls itself. Without it the shell's
+          rubber-band hook saw <main> as un-scrollable (the chat is h-full) and
+          treated every swipe as a pull on the whole app. */}
+      <div ref={scrollRef} data-elastic-skip className="flex-1 overflow-y-auto px-4 py-3" style={{ overscrollBehavior: 'contain' }}>
         {history.length === 0 && !pending && <FirstUseState suggestions={suggestions} onPick={(s) => send(s)} />}
 
         {history.length > 0 && (
@@ -195,7 +198,10 @@ export function ZenChatView({ onBack, initialPrompt, onConsumePrompt }: ZenChatV
   );
 }
 
-function Bubble({ entry, onRetry }: { entry: ChatEntry; onRetry?: () => void }) {
+// Memoised: the thinking indicator re-renders the list twice a second while
+// Zen replies, and re-parsing every earlier reply's markdown each tick is
+// what made a long chat stutter.
+const Bubble = memo(function Bubble({ entry, onRetry }: { entry: ChatEntry; onRetry?: () => void }) {
   if (entry.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -220,7 +226,7 @@ function Bubble({ entry, onRetry }: { entry: ChatEntry; onRetry?: () => void }) 
       </div>
     </div>
   );
-}
+});
 
 function FirstUseState({ suggestions, onPick }: { suggestions: string[]; onPick: (s: string) => void }) {
   return (

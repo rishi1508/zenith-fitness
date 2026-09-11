@@ -95,8 +95,16 @@ export function AppShell({
   const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [view]);
   // Both ends give a little and spring back, so anything sitting under the
-  // tab bar or a floating button can be pulled into view.
-  useElasticScroll(scrollRef, contentRef);
+  // tab bar or a floating button can be pulled into view. Not for the chat
+  // views: they scroll themselves inside an h-full box, so <main> never
+  // scrolls and every swipe looked like a pull on the whole app.
+  useElasticScroll(scrollRef, contentRef, !NO_PADDING_VIEWS.has(view));
+
+  // Tab roots own the bar (title, streak, buddies). A pushed screen draws
+  // its own back arrow and title inline, so the bar above it was ~66px of
+  // empty chrome on every sub-screen — gone, with a little top padding in
+  // its place so the inline header does not sit against the status bar.
+  const showBar = !!(title || eyebrow);
 
   const right =
     view === 'you' ? (
@@ -129,12 +137,12 @@ export function AppShell({
         }}
       />
       <div className="flex-1 flex flex-col min-w-0">
-        <AppBar title={title} eyebrow={eyebrow} right={right} />
+        {showBar && <AppBar title={title} eyebrow={eyebrow} right={right} />}
         <GetAppBanner />
         {banner}
         <main
           ref={scrollRef}
-          className={`flex-1 overflow-y-auto overflow-x-hidden ${NO_PADDING_VIEWS.has(view) ? 'p-0' : 'px-5 pt-1'}`}
+          className={`flex-1 overflow-y-auto overflow-x-hidden ${NO_PADDING_VIEWS.has(view) ? 'p-0' : showBar ? 'px-5 pt-1' : 'px-5 pt-4'}`}
           style={{ overscrollBehavior: 'none', overflowAnchor: 'none' }}
         >
           {/* Chat and Zen lay themselves out with `h-full`, which only

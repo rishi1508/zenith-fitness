@@ -9,7 +9,6 @@ import { effectiveProfilePhoto } from './profilePhoto';
 import { followBuddy } from './followService';
 import { levelForVolume } from './levels';
 import { deliverPush } from './pushService';
-import { computeStreak } from './streakService';
 
 /** Recursively strip `undefined` values so Firestore's setDoc doesn't
  *  reject them. Preserves arrays, nulls, and primitives as-is. */
@@ -27,7 +26,7 @@ function scrubUndefined<T>(value: T): T {
 }
 import type {
   UserProfile, BuddyRequest, BuddyRelationship,
-  ChatMessage, BuddyNotification, Workout, UserStats, BuddyCompareStats,
+  ChatMessage, BuddyNotification, UserStats, BuddyCompareStats,
 } from './types';
 
 // ============ USER PROFILES ============
@@ -275,7 +274,12 @@ export async function sendBuddyRequest(toUid: string, toName: string, toPhoto?: 
     createdAt: new Date().toISOString(),
   };
 
-  const requestRef = await addDoc(collection(db, 'buddyRequests'), request);
+  // One document per direction, at a path the rules can name: a request
+  // notification is only accepted when `buddyRequests/<from>__<to>` exists,
+  // which is what stops a stranger writing into someone's notification
+  // stream. Re-sending after a decline overwrites the old request.
+  const requestRef = doc(db, 'buddyRequests', `${user.uid}__${toUid}`);
+  await setDoc(requestRef, request);
 
   // Send notification to recipient. `requestId` lets the heads-up card answer
   // the request in place instead of sending them to the Buddies screen, and
@@ -470,52 +474,6 @@ export async function areBuddies(uid1: string, uid2: string): Promise<boolean> {
   const pairId = getBuddyPairId(uid1, uid2);
   const snap = await getDoc(doc(db, 'buddies', pairId));
   return snap.exists();
-}
-
-/** Get a buddy's workout history from their Firestore data. */
-export async function getBuddyWorkouts(buddyUid: string): Promise<Workout[]> {
-  const ref = doc(db, 'users', buddyUid, 'data', 'workouts');
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return [];
-  const data = snap.data();
-  return (data.value as Workout[]) || [];
-}
-
-/** Get a buddy's stats from their workout data. */
-export async function getBuddyStats(buddyUid: string): Promise<UserStats | null> {
-  const workouts = await getBuddyWorkouts(buddyUid);
-  if (workouts.length === 0) return null;
-
-  const completed = workouts.filter((w) => w.completed && w.type !== 'rest');
-  const totalVolume = completed.reduce((sum, w) => {
-    return sum + w.exercises.reduce((eSum, ex) => {
-      return eSum + ex.sets.reduce((sSum, s) => sSum + (s.weight * s.reps), 0);
-    }, 0);
-  }, 0);
-
-  // Weekly streak at 1 day/week — we don't know the buddy's commitment
-  // from their raw workouts, so report the base level.
-  const { current: currentStreak, longest: longestStreak } = computeStreak(completed, 1);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // This week's workouts
-  const startOfWeek = new Date(today);
-  startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
-  const thisWeekWorkouts = completed.filter(
-    (w) => new Date(w.date) >= startOfWeek
-  ).length;
-
-  return {
-    totalWorkouts: completed.length,
-    currentStreak,
-    longestStreak,
-    streakLevel: 1,
-    thisWeekWorkouts,
-    lastWorkoutDate: completed[0]?.date,
-    totalVolume,
-    avgVolumePerSession: completed.length > 0 ? Math.round(totalVolume / completed.length) : 0,
-  };
 }
 
 // ============ CHAT ============

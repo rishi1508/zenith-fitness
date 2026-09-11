@@ -91,16 +91,24 @@ service cloud.firestore {
     }
 
     // ---------- buddy requests ----------
+    // One document per direction at `<from>__<to>` (3.26.0), so a request
+    // notification can be checked against the request it announces. Either
+    // party may move `status` and nothing else — the answer is the only thing
+    // that changes after a request is sent.
     match /buddyRequests/{requestId} {
       allow read:   if signedIn() && (
         request.auth.uid == resource.data.fromUid ||
         request.auth.uid == resource.data.toUid
       );
-      allow create: if signedIn() && request.auth.uid == request.resource.data.fromUid;
-      allow update: if signedIn() && (
-        request.auth.uid == resource.data.fromUid ||
-        request.auth.uid == resource.data.toUid
-      );
+      allow create: if signedIn()
+        && request.auth.uid == request.resource.data.fromUid
+        && request.resource.data.toUid is string
+        && request.resource.data.toUid != request.auth.uid
+        && requestId == request.resource.data.fromUid + '__' + request.resource.data.toUid
+        && request.resource.data.status == 'pending';
+      allow update: if signedIn()
+        && (request.auth.uid == resource.data.fromUid || request.auth.uid == resource.data.toUid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
       allow delete: if signedIn() && (
         request.auth.uid == resource.data.fromUid ||
         request.auth.uid == resource.data.toUid
@@ -115,19 +123,43 @@ service cloud.firestore {
     // Instead we authorise the probe by reading the caller's uid out of
     // the deterministic pairId — only the two buddies can construct it
     // anyway, so no new information leaks.
+    // A pair may only be written by the person who was ASKED, and only
+    // against a pending request addressed to them by the other half — that
+    // is the consent. Before 3.26.0 anyone signed in could make themselves
+    // anybody's buddy (and so open a chat with them) with one write.
+    function consentsToPair(reqId, other) {
+      return reqId is string
+        && exists(/databases/$(database)/documents/buddyRequests/$(reqId))
+        && get(/databases/$(database)/documents/buddyRequests/$(reqId)).data.toUid == request.auth.uid
+        && get(/databases/$(database)/documents/buddyRequests/$(reqId)).data.fromUid == other
+        && get(/databases/$(database)/documents/buddyRequests/$(reqId)).data.status == 'pending';
+    }
     match /buddies/{pairId} {
       allow get:    if signedIn() &&
         pairId.split('_').hasAny([request.auth.uid]);
       allow list:   if signedIn() && request.auth.uid in resource.data.users;
-      allow create: if signedIn() && request.auth.uid in request.resource.data.users;
+      allow create: if signedIn()
+        && request.resource.data.users.size() == 2
+        && request.auth.uid in request.resource.data.users
+        && pairId == buddyPairId(request.resource.data.users[0], request.resource.data.users[1])
+        && consentsToPair(
+          request.resource.data.requestId,
+          request.resource.data.users[0] == request.auth.uid ? request.resource.data.users[1] : request.resource.data.users[0]
+        );
       allow update: if signedIn() && request.auth.uid in resource.data.users;
       allow delete: if signedIn() && request.auth.uid in resource.data.users;
     }
 
     // ---------- chats + messages ----------
+    // A chat exists only for a buddy pair, and is written in the same batch
+    // as the pair — hence existsAfter.
     match /chats/{chatId} {
       allow read:   if signedIn() && request.auth.uid in resource.data.users;
-      allow create: if signedIn() && request.auth.uid in request.resource.data.users;
+      allow create: if signedIn()
+        && request.resource.data.users.size() == 2
+        && request.auth.uid in request.resource.data.users
+        && chatId == 'chat_' + buddyPairId(request.resource.data.users[0], request.resource.data.users[1])
+        && existsAfter(/databases/$(database)/documents/buddies/$(buddyPairId(request.resource.data.users[0], request.resource.data.users[1])));
       allow update: if signedIn() && request.auth.uid in resource.data.users;
 
       match /messages/{messageId} {
@@ -151,11 +183,20 @@ service cloud.firestore {
     // include buddy requests, chat notifications, session invites, etc.).
     match /notifications/{uid}/items/{notifId} {
       allow read:   if signedIn() && request.auth.uid == uid;
-      // The sender must be who they say they are; keeps the in-app toast
-      // and the push title honest and stops third parties spamming a user.
+      // The sender must be who they say they are, and must have a reason to
+      // reach this person: they are buddies, or this is the request that
+      // would make them buddies (checked against the request document), or
+      // it is the self-test. Anyone else writing into a stream is spam
+      // straight into the heads-up cards.
       allow create: if signedIn()
         && request.resource.data.fromUid == request.auth.uid
-        && request.resource.data.message is string && request.resource.data.message.size() <= 500;
+        && request.resource.data.message is string && request.resource.data.message.size() <= 500
+        && (
+          uid == request.auth.uid
+          || areBuddies(request.auth.uid, uid)
+          || (request.resource.data.type == 'buddy_request'
+            && exists(/databases/$(database)/documents/buddyRequests/$(request.auth.uid + '__' + uid)))
+        );
       allow update: if signedIn() && request.auth.uid == uid;
       allow delete: if signedIn() && request.auth.uid == uid;
     }

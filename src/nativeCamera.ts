@@ -1,5 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraErrorCode, CameraResultType, CameraSource } from '@capacitor/camera';
+import { clearPendingCapture, markPendingCapture } from './captureRestore';
+import type { CapturePurpose } from './captureRestore';
 
 /**
  * Taking a photo on Android, the way that does not kill the app.
@@ -15,9 +17,14 @@ import { Camera, CameraErrorCode, CameraResultType, CameraSource } from '@capaci
  *      side, the app "crashed" and the photo is gone.
  *
  * `@capacitor/camera` fixes both: it owns the permission prompt, and the
- * Capacitor bridge saves and restores the pending plugin call across an
- * activity that was recreated. It also writes an already-downscaled file,
- * so the 12 MP original never has to be decoded in the WebView at all.
+ * Capacitor bridge saves the pending plugin call across an activity that
+ * was recreated. It also writes an already-downscaled file, so the 12 MP
+ * original never has to be decoded in the WebView at all.
+ *
+ * But "saves" is not "restores": after a recreate the photo comes back
+ * through `appRestoredResult`, not through the promise below, which no
+ * longer exists. `src/captureRestore.ts` owns that half — which is why every
+ * call here says what the photo is FOR, so it can be routed when it arrives.
  *
  * On the web there is no plugin worth using — `nativePhotoCapture()` says
  * so and the caller keeps its `<input>`.
@@ -55,7 +62,11 @@ const CANCEL_TEXT = /cancel|no image picked|user cancelled/i;
  * Throws `PhotoCancelled` when the user backed out — callers should treat
  * that as "nothing happened", not as an error worth showing.
  */
-export async function capturePhoto(source: 'camera' | 'gallery'): Promise<Blob> {
+export async function capturePhoto(
+  source: 'camera' | 'gallery',
+  purpose?: CapturePurpose,
+  extra?: Record<string, string>,
+): Promise<Blob> {
   try {
     // Ask before launching. The plugin would prompt anyway, but doing it here
     // means the grant is settled BEFORE any capture intent starts — the exact
@@ -78,6 +89,9 @@ export async function capturePhoto(source: 'camera' | 'gallery'): Promise<Blob> 
     // `getPhoto` is the long-standing Capacitor flow — a plain
     // ACTION_IMAGE_CAPTURE through our own FileProvider, with the pending
     // call saved across an activity Android decides to recycle.
+    // Written BEFORE the intent starts, because if Android recycles us the
+    // JavaScript that knows why this photo was taken is gone with the page.
+    if (purpose) markPendingCapture(purpose, extra);
     const photo = await Camera.getPhoto({
       source: source === 'camera' ? CameraSource.Camera : CameraSource.Photos,
       resultType: CameraResultType.Uri,
@@ -87,12 +101,15 @@ export async function capturePhoto(source: 'camera' | 'gallery'): Promise<Blob> 
       saveToGallery: false,
       allowEditing: false,
     });
+    // The promise resolved, so the process lived: this capture needs no restore.
+    clearPendingCapture();
     const src = photo.webPath ?? (photo.path ? Capacitor.convertFileSrc(photo.path) : null);
     if (!src) throw new Error('The camera returned nothing we can read.');
     const response = await fetch(src);
     if (!response.ok) throw new Error('That photo could not be read back.');
     return await response.blob();
   } catch (err) {
+    clearPendingCapture();
     if (err instanceof PhotoCancelled) throw err;
     const code = (err as { code?: string }).code;
     const message = err instanceof Error ? err.message : '';

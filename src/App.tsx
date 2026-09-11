@@ -90,6 +90,8 @@ import { feedback } from './feedback';
 import { startActivityAutoSync } from './activity';
 import { claimGymInvite } from './gymStaffHelpers';
 import { syncBuddyFollows } from './followService';
+import { installCaptureRestore } from './captureRestore';
+import type { RestoreOutcome } from './captureRestore';
 import { refreshBadges } from './badgeSync';
 import { badgeById } from './badges';
 import type { BadgeDef } from './badges';
@@ -156,6 +158,9 @@ function App() {
   const { confirm: confirmDialog } = useConfirm();
   // Which day/meal the food search or plate scan adds to (docs/HEALTH_SPEC.md §7).
   const [foodNav, setFoodNav] = useState<{ date: string; meal: MealSlot }>({ date: healthToday(), meal: 'snacks' });
+  // A photo that came back after Android recycled the app behind the camera
+  // (src/captureRestore.ts). Held until auth settles, then routed.
+  const [restoredCapture, setRestoredCapture] = useState<RestoreOutcome | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [workoutHistory, setWorkoutHistory] = useState<Workout[]>([]);
@@ -843,11 +848,39 @@ function App() {
       }
     })();
 
+    // The retained camera result, if this launch is a recreate. Registered
+    // here, in the same one-time setup, so it is listening before the first
+    // paint settles.
+    const disposeRestore = installCaptureRestore(setRestoredCapture);
+
     return () => {
       cancelled = true;
       cleanup?.();
+      disposeRestore();
     };
   }, []);
+
+  // Route the restored photo once we know who is signed in — navigating
+  // before that would be undone by the first-paint routing.
+  useEffect(() => {
+    if (!restoredCapture || authLoading || !user) return;
+    const { purpose, extra, ok } = restoredCapture;
+    setRestoredCapture(null);
+    if (!ok) {
+      showToast('Android closed Zenith while the camera was open, so that photo was lost. Try again.', 'error');
+      return;
+    }
+    if (purpose === 'food-scan') {
+      if (extra?.date && extra?.meal) setFoodNav({ date: extra.date, meal: extra.meal as MealSlot });
+      navigateTo('food-scan');
+    } else {
+      // Feed and announcement composers live under the My Gym tab; the
+      // screen picks the photo up with consumeRestoredPhoto on mount.
+      navigateTo('gym-home');
+    }
+    showToast('Picked your photo back up after Android restarted the app.');
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- navigateTo/showToast are stable callbacks
+  }, [restoredCapture, authLoading, user]);
 
   const startWorkout = async (template: WorkoutTemplate, sessionId?: string) => {
     // Already running this session's workout — the lobby can call us again

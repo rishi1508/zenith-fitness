@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MessageCircle, Send, X } from 'lucide-react';
 import type { GymFeedComment, GymFeedPost } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
@@ -67,7 +68,10 @@ export function PhotoViewer({ gymId, post, onClose }: { gymId: string; post: Gym
   for (const emoji of Object.values(reactions)) counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
   const mineEmoji = user ? reactions[user.uid] : undefined;
 
-  return (
+  // Portaled: rendered inside the profile it would sit inside the shell's
+  // scroll content, and a rubber-band pull transforms that content — which
+  // re-anchors a fixed element to it. Full screen means a child of <body>.
+  return createPortal(
     <div className="fixed inset-0 z-[120] flex flex-col bg-bg" role="dialog" aria-modal="true" aria-label="Photo">
       <div
         className="flex-none flex items-center gap-2 px-4 pb-2"
@@ -147,6 +151,7 @@ export function PhotoViewer({ gymId, post, onClose }: { gymId: string; post: Gym
           <Send className="w-4 h-4" strokeWidth={2} />
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
