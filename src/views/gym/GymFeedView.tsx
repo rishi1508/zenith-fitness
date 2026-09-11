@@ -11,10 +11,12 @@ import type { GymFeedComment, GymFeedPost, Workout } from '../../types';
 import {
   addComment, createPost, deletePost, getPostImage, listComments, listenToFeed, toggleReaction, workoutSummary,
 } from '../../gymFeed';
+import { listenToAnnouncements } from '../../gymService';
 import { prepareScanImage } from '../../nutrition/scan';
 import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
-import { Button, Card, EmptyState, Sheet, Skeleton, useConfirm, useToast, CAPTION, SUB } from '../../ui';
+import { Button, Card, EmptyState, SegmentedControl, Sheet, Skeleton, useConfirm, useToast, CAPTION, SUB } from '../../ui';
 import { getUserProfile } from '../../buddyService';
+import { AnnouncementComposer, AnnouncementsPanel } from './AnnouncementsPanel';
 
 /** Three reactions, not twenty: a nod across the floor, not a taxonomy. */
 const REACTIONS = ['👊', '🔥', '💪'];
@@ -44,6 +46,23 @@ function shareableWorkouts(): Workout[] {
 
 type Composing = 'text' | 'photo' | 'workout' | null;
 
+type FeedTab = 'public' | 'announcements';
+
+/** Survives the feed unmounting while a gym sub-screen is open, the way
+ *  GymHomeView remembers its segment. */
+let lastTab: FeedTab = 'public';
+
+/** ISO of the newest notice this device has already looked at. */
+const seenKey = (gymId: string) => `zenith_gym_ann_seen_${gymId}`;
+
+function readSeen(gymId: string): string {
+  try {
+    return localStorage.getItem(seenKey(gymId)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /**
  * The gym feed — what the people on the same floor did today.
  *
@@ -59,10 +78,40 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
 
   const [posts, setPosts] = useState<GymFeedPost[] | null>(null);
   const [composing, setComposing] = useState<Composing>(null);
+  const [tab, setTabState] = useState<FeedTab>(() => lastTab);
+  const tabRef = useRef<FeedTab>(lastTab);
+  const [newestNotice, setNewestNotice] = useState<string | null>(null);
+  const [seenNotice, setSeenNotice] = useState(() => (gym ? readSeen(gym.id) : ''));
+
+  /** Looking at the tab is what marks a notice seen — on this device only. */
+  const markSeen = (gymId: string, at: string | null) => {
+    if (!at) return;
+    try { localStorage.setItem(seenKey(gymId), at); } catch { /* quota ignore */ }
+    setSeenNotice(at);
+  };
+
+  const setTab = (next: FeedTab) => {
+    lastTab = next;
+    tabRef.current = next;
+    setTabState(next);
+    if (next === 'announcements' && gym) markSeen(gym.id, newestNotice);
+  };
 
   useEffect(() => {
     if (!gym?.id) return;
     return listenToFeed(gym.id, setPosts);
+  }, [gym?.id]);
+
+  // One document, just to know whether there is something new to look at. A
+  // notice that lands while the tab is open counts as seen straight away.
+  useEffect(() => {
+    if (!gym?.id) return;
+    const gymId = gym.id;
+    return listenToAnnouncements(gymId, (rows) => {
+      const at = rows[0]?.at ?? null;
+      setNewestNotice(at);
+      if (tabRef.current === 'announcements') markSeen(gymId, at);
+    }, 1);
   }, [gym?.id]);
 
   // Staff and Zenith admins can take down anything; rules agree.
@@ -89,59 +138,88 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
 
   if (!gym) return null;
 
+  const unseenNotice = tab !== 'announcements' && !!newestNotice && newestNotice > seenNotice;
+
   return (
     <div className="space-y-3">
-      {/* Composer: three ways in, each one a chip that fits. */}
-      <Card padding="md">
-        <div className="flex items-center gap-2">
-          <Avatar name={user?.displayName || 'You'} photoURL={user?.photoURL} />
-          <button
-            onClick={() => setComposing('text')}
-            className="flex-1 min-w-0 h-10 px-3 rounded-full bg-surface-2 border border-border text-left text-sm text-subtle truncate"
-          >
-            Share something with {gym.name}
-          </button>
-        </div>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          <ComposerChip icon={Dumbbell} label="Session" onClick={() => setComposing('workout')} />
-          <ComposerChip icon={Camera} label="Photo" onClick={() => setComposing('photo')} />
-          <ComposerChip icon={PenLine} label="Post" onClick={() => setComposing('text')} />
-        </div>
-      </Card>
+      <SegmentedControl
+        label="Feed section"
+        options={[
+          { value: 'public', label: 'Public feed' },
+          {
+            value: 'announcements',
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                Announcements
+                {unseenNotice && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" aria-label="new" />}
+              </span>
+            ),
+          },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
 
-      {posts === null && <><Skeleton className="h-40 w-full" /><Skeleton className="h-40 w-full" /></>}
+      {tab === 'announcements' ? (
+        <>
+          <AnnouncementComposer />
+          <AnnouncementsPanel onOpenProfile={onOpenProfile} />
+        </>
+      ) : (
+        <>
+          {/* Composer: three ways in, each one a chip that fits. */}
+          <Card padding="md">
+            <div className="flex items-center gap-2">
+              <Avatar name={user?.displayName || 'You'} photoURL={user?.photoURL} />
+              <button
+                onClick={() => setComposing('text')}
+                className="flex-1 min-w-0 h-10 px-3 rounded-full bg-surface-2 border border-border text-left text-sm text-subtle truncate"
+              >
+                Share something with {gym.name}
+              </button>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <ComposerChip icon={Dumbbell} label="Session" onClick={() => setComposing('workout')} />
+              <ComposerChip icon={Camera} label="Photo" onClick={() => setComposing('photo')} />
+              <ComposerChip icon={PenLine} label="Post" onClick={() => setComposing('text')} />
+            </div>
+          </Card>
 
-      {posts?.length === 0 && (
-        <EmptyState
-          icon={ImageIcon}
-          title="Nothing here yet"
-          body="Share a session, a progress photo or just how training is going. Only members of this gym can see it."
-        />
-      )}
+          {posts === null && <><Skeleton className="h-40 w-full" /><Skeleton className="h-40 w-full" /></>}
 
-      {posts?.map((post) => (
-        <PostCard
-          key={post.id}
-          gymId={gym.id}
-          post={post}
-          myUid={user?.uid}
-          mine={post.uid === user?.uid}
-          canModerate={canModerate}
-          onOpenProfile={onOpenProfile}
-          onReact={(emoji) => {
-            void toggleReaction(gym.id, post.id, emoji).catch(() => showToast('Could not react.', 'error'));
-          }}
-          onDelete={() => { void remove(post); }}
-        />
-      ))}
+          {posts?.length === 0 && (
+            <EmptyState
+              icon={ImageIcon}
+              title="Nothing here yet"
+              body="Share a session, a progress photo or just how training is going. Only members of this gym can see it."
+            />
+          )}
 
-      {composing && (
-        <ComposerSheet
-          gymId={gym.id}
-          mode={composing}
-          onClose={() => setComposing(null)}
-          onPosted={() => { setComposing(null); showToast(`Shared with ${gym.name}`); }}
-        />
+          {posts?.map((post) => (
+            <PostCard
+              key={post.id}
+              gymId={gym.id}
+              post={post}
+              myUid={user?.uid}
+              mine={post.uid === user?.uid}
+              canModerate={canModerate}
+              onOpenProfile={onOpenProfile}
+              onReact={(emoji) => {
+                void toggleReaction(gym.id, post.id, emoji).catch(() => showToast('Could not react.', 'error'));
+              }}
+              onDelete={() => { void remove(post); }}
+            />
+          ))}
+
+          {composing && (
+            <ComposerSheet
+              gymId={gym.id}
+              mode={composing}
+              onClose={() => setComposing(null)}
+              onPosted={() => { setComposing(null); showToast(`Shared with ${gym.name}`); }}
+            />
+          )}
+        </>
       )}
     </div>
   );

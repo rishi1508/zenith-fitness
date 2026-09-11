@@ -4,12 +4,12 @@ import {
   IndianRupee, AlertTriangle,
 } from 'lucide-react';
 import type { GymViewProps } from './types';
-import type { GymClass, GymAnnouncement } from '../../types';
+import type { GymClass } from '../../types';
 import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { useGymDashboard } from '../../gym/useGymDashboard';
-import { listenToClasses, listenToAnnouncements, upcomingSessions } from '../../gymService';
+import { listenToClasses, upcomingSessions } from '../../gymService';
 import { formatTime12h } from '../../gymMemberHelpers';
 import { MembershipCard } from '../../components';
 import { JoinGymView } from './JoinGymView';
@@ -23,7 +23,8 @@ type Segment = 'feed' | 'member' | 'manage';
 let lastSegment: Segment = 'feed';
 
 /** Member home: membership card + QR, big Check in button, today's
- *  classes, latest announcements, and quick links. Staff (trainer/
+ *  classes, and quick links — announcements moved under the Feed tab.
+ *  Staff (trainer/
  *  manager/owner) get a Member | Manage segmented control (docs/
  *  REVAMP_SPEC.md §4) — Manage reuses `useGymDashboard` for owner/
  *  manager, or a lighter row list for trainers. Renders JoinGymView
@@ -35,7 +36,6 @@ export function GymHomeView(props: GymViewProps) {
   const { user } = useAuth();
 
   const [classes, setClasses] = useState<GymClass[] | null>(null);
-  const [announcements, setAnnouncements] = useState<GymAnnouncement[] | null>(null);
   // The feed is what a member opens My Gym for on most days; the card, plan
   // and QR are one tap away and rarely change. Remembered across a trip into
   // a pushed screen — coming back from Members used to dump you on Feed.
@@ -45,11 +45,6 @@ export function GymHomeView(props: GymViewProps) {
   useEffect(() => {
     if (!gym?.id) return;
     return listenToClasses(gym.id, setClasses);
-  }, [gym?.id]);
-
-  useEffect(() => {
-    if (!gym?.id) return;
-    return listenToAnnouncements(gym.id, setAnnouncements, 3);
   }, [gym?.id]);
 
   const todaySessions = useMemo(() => upcomingSessions(classes ?? [], new Date(), 1), [classes]);
@@ -115,24 +110,8 @@ export function GymHomeView(props: GymViewProps) {
             )}
           </div>
 
-          <div className="space-y-2">
-            <SectionHeader caption="Announcements" />
-            {announcements === null ? (
-              <p className={SUB}>Loading…</p>
-            ) : announcements.length === 0 ? (
-              <p className={SUB}>Nothing posted yet.</p>
-            ) : (
-              <Card padding="list">
-                {announcements.map((a) => (
-                  <ListRow key={a.id} icon={Megaphone} title={a.text} subtitle={a.byName} trailing={null} />
-                ))}
-              </Card>
-            )}
-          </div>
-
           <Card padding="list">
             <ListRow icon={CalendarDays} title="Classes" onClick={() => onNavigate('gym-classes')} />
-            <ListRow icon={Megaphone} title="Announcements" subtitle="What the gym has posted" onClick={() => onNavigate('gym-announcements')} />
             <ListRow icon={CreditCard} title="Membership" onClick={() => onNavigate('gym-membership')} />
           </Card>
         </>
