@@ -206,6 +206,7 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
           target={targets?.kcal ?? 0}
           unit="kcal"
           tone="accent"
+          met={(v, t) => Math.abs(v - t) <= t * 0.1}
           formatValue={(v) => Math.round(v).toLocaleString('en-IN')}
           label="This week · kcal"
         />

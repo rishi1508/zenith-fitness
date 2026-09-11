@@ -17,6 +17,9 @@ export interface WeeklyBarsProps {
   formatValue: (value: number) => string;
   /** Caption, e.g. "This week · kcal". */
   label: string;
+  /** What counts as hitting the target. Default: value ≥ target (water).
+   *  Calories pass a band instead — over is not "on target" on a cut. */
+  met?: (value: number, target: number) => boolean;
 }
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -43,7 +46,7 @@ const TONE = {
  * out reading the viewed day (the last one in `days`). Muted bars missed
  * `target`, full-tone bars met it; a dashed line marks the target itself.
  */
-export function WeeklyBars({ days, target, unit, tone, formatValue, label }: WeeklyBarsProps) {
+export function WeeklyBars({ days, target, unit, tone, formatValue, label, met = (v, t) => v >= t }: WeeklyBarsProps) {
   const [active, setActive] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const viewedIndex = days.length - 1;
@@ -55,7 +58,7 @@ export function WeeklyBars({ days, target, unit, tone, formatValue, label }: Wee
   const targetPct = hasTarget ? Math.min(100, (target / maxValue) * 100) : 0;
 
   const logged = days.filter((d) => d.value > 0);
-  const onTarget = logged.filter((d) => d.value >= target).length;
+  const onTarget = logged.filter((d) => met(d.value, target)).length;
 
   /** Which bar sits under this x position, so a slide reads continuously
    *  rather than only when a finger happens to land on a bar. */
@@ -80,9 +83,7 @@ export function WeeklyBars({ days, target, unit, tone, formatValue, label }: Wee
 
       <div className="relative h-14">
         {hasTarget && (
-          <div className="absolute left-0 right-0 border-t border-dashed border-border" style={{ bottom: `${targetPct}%` }}>
-            <span className="absolute right-0 -top-3 text-[9px] font-semibold text-subtle">target</span>
-          </div>
+          <div aria-hidden className="absolute left-0 right-0 border-t border-dashed border-border" style={{ bottom: `${targetPct}%` }} />
         )}
         <div
           ref={trackRef}
@@ -95,7 +96,7 @@ export function WeeklyBars({ days, target, unit, tone, formatValue, label }: Wee
           onPointerLeave={() => setActive(null)}
         >
           {days.map((d, i) => {
-            const met = hasTarget && d.value >= target;
+            const hit = hasTarget && met(d.value, target);
             const pct = d.value > 0 ? Math.max((d.value / maxValue) * 100, 4) : 2;
             return (
               <button
@@ -110,7 +111,7 @@ export function WeeklyBars({ days, target, unit, tone, formatValue, label }: Wee
               >
                 <span
                   className={`w-full rounded-t-[4px] transition-colors ${
-                    i === active ? colors.full : met ? colors.full : colors.muted
+                    i === active ? colors.full : hit ? colors.full : colors.muted
                   }`}
                   style={{ height: `${pct}%` }}
                 />
