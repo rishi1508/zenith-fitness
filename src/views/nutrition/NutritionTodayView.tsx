@@ -3,19 +3,20 @@ import { ArrowLeft, ChevronLeft, ChevronRight, CopyPlus, GlassWater, Minus, Penc
 import type { FoodEntry, FoodItem, MealSlot } from '../../types';
 import {
   addDaysISO, fetchNutritionDay, getCustomFoods, getNutritionDay, getRecentFoods, getTargets,
-  localDateISO, saveMeal, saveNutritionDay, subscribeHealth, sumMacros,
+  listNutritionDays, localDateISO, saveMeal, saveNutritionDay, subscribeHealth, sumMacros,
 } from '../../health/store';
 import { getFood } from '../../nutrition';
 import { hapticImpact } from '../../haptics';
 import {
   Button, Card, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, SUB, useConfirm, TAB_BAR_HEIGHT,
 } from '../../ui';
+import { WeeklyBars } from '../../components';
 import { NutritionRing } from './NutritionRing';
 import { FoodEntrySheet } from './FoodEntrySheet';
 import {
   GLASS_ML, MEALS, MEAL_LABEL, canEditFood, canGoForward, copyDayEntries, dayLabel, entriesForMeal,
   foodFromEntry, basisLabel, formatQty, glassesFor, mealKcal, publishSharedFood, removeEntry, shiftDate,
-  toSavedItem,
+  toSavedItem, weeklySeries,
 } from './nutritionHelpers';
 import { SaveMealSheet } from './MealsSheet';
 import { publishMeal } from './sharedMeals';
@@ -74,6 +75,19 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
   const targets = useMemo(() => getTargets(), [tick]);
   const totals = useMemo(() => sumMacros(day), [day]);
   const yesterday = useMemo(() => getNutritionDay(addDaysISO(date, -1)), [date, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trailing 7 days ending on the viewed day, for the weekly bar charts.
+  const weekFrom = useMemo(() => addDaysISO(date, -6), [date]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const weekDays = useMemo(() => listNutritionDays(weekFrom, date), [weekFrom, date, tick]);
+  const kcalWeek = useMemo(
+    () => weeklySeries(weekDays, weekFrom, date, (d) => sumMacros(d).kcal, targets?.kcal ?? 0),
+    [weekDays, weekFrom, date, targets],
+  );
+  const waterWeek = useMemo(
+    () => weeklySeries(weekDays, weekFrom, date, (d) => glassesFor(d.waterMl), targets?.waterMl ? glassesFor(targets.waterMl) : 0),
+    [weekDays, weekFrom, date, targets],
+  );
 
   const { confirm: confirmDialog } = useConfirm();
   // Saved meals (docs/HEALTH_SPEC.md §3): pick one to add, or save a section.
@@ -184,6 +198,28 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
             />
           </div>
         ) : null}
+      </Card>
+
+      <Card>
+        <WeeklyBars
+          days={kcalWeek.days}
+          target={targets?.kcal ?? 0}
+          unit="kcal"
+          tone="accent"
+          formatValue={(v) => Math.round(v).toLocaleString('en-IN')}
+          label="This week · kcal"
+        />
+      </Card>
+
+      <Card>
+        <WeeklyBars
+          days={waterWeek.days}
+          target={targets?.waterMl ? glassesFor(targets.waterMl) : 0}
+          unit="glasses"
+          tone="info"
+          formatValue={(v) => Math.round(v).toLocaleString('en-IN')}
+          label="This week · water"
+        />
       </Card>
 
       {MEALS.map((meal) => {
