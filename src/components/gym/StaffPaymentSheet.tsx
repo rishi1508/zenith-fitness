@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import type { GymMember, GymPayment, GymPlan, PaymentMethod } from '../../types';
+import type { GymMember, GymPayment, GymPlan, PaymentMethod, RevenueCategory } from '../../types';
 import { recordPayment } from '../../gymService';
 import { localDateISO } from '../../gymStats';
 
@@ -8,6 +8,12 @@ const METHODS: Array<{ id: PaymentMethod; label: string }> = [
   { id: 'upi', label: 'UPI' },
   { id: 'cash', label: 'Cash' },
   { id: 'card', label: 'Card' },
+  { id: 'other', label: 'Other' },
+];
+
+const CATEGORIES: Array<{ id: RevenueCategory; label: string }> = [
+  { id: 'membership', label: 'Membership' },
+  { id: 'pt', label: 'Personal training' },
   { id: 'other', label: 'Other' },
 ];
 
@@ -31,6 +37,7 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
   const activePlans = plans.filter((p) => p.active || p.id === member.planId);
   const [planId, setPlanId] = useState(member.planId ?? activePlans[0]?.id ?? '');
   const plan = plans.find((p) => p.id === planId);
+  const [category, setCategory] = useState<RevenueCategory>('membership');
   const [amount, setAmount] = useState(String(plan?.price ?? ''));
   const [months, setMonths] = useState(String(plan?.months ?? 1));
   const [method, setMethod] = useState<PaymentMethod>('upi');
@@ -38,6 +45,12 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
   const [date, setDate] = useState(localDateISO(new Date()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** A PT or retail amount has nothing to do with the plan price. */
+  const chooseCategory = (id: RevenueCategory) => {
+    setCategory(id);
+    setAmount(id === 'membership' && plan ? String(plan.price) : '');
+  };
 
   const choosePlan = (id: string) => {
     setPlanId(id);
@@ -50,11 +63,13 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
   }`;
   const labelCls = `text-xs font-medium mb-1 block ${isDark ? 'text-zinc-400' : 'text-gray-500'}`;
 
+  const isMembership = category === 'membership';
+
   const handleSubmit = async () => {
     const amountNum = Number(amount);
     const monthsNum = Number(months);
     if (!amountNum || amountNum <= 0) { setError('Enter a valid amount'); return; }
-    if (!monthsNum || monthsNum <= 0) { setError('Enter valid months'); return; }
+    if (isMembership && (!monthsNum || monthsNum <= 0)) { setError('Enter valid months'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -62,8 +77,11 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
         uid: member.uid,
         amount: amountNum,
         method,
-        months: monthsNum,
-        planId: planId || undefined,
+        // Personal training and retail are revenue, not time on the
+        // membership — no plan, no months, so nothing gets renewed.
+        months: isMembership ? monthsNum : 0,
+        planId: isMembership ? planId || undefined : undefined,
+        category,
         note: note.trim() || undefined,
         paidAt: new Date(`${date}T00:00:00`).toISOString(),
       });
@@ -94,7 +112,32 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
         </div>
 
         <div className="p-4 space-y-3">
-          {activePlans.length > 0 && (
+          <div>
+            <label className={labelCls}>What for</label>
+            <div className="flex flex-wrap gap-1.5">
+              {CATEGORIES.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => chooseCategory(c.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    category === c.id
+                      ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white'
+                      : isDark ? 'bg-[#252525] text-zinc-400 hover:bg-[#303030]' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+            {!isMembership && (
+              <p className={`text-xs mt-1.5 ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
+                Recorded as revenue only — the membership is not renewed.
+              </p>
+            )}
+          </div>
+
+          {isMembership && activePlans.length > 0 && (
             <div>
               <label className={labelCls}>Plan</label>
               <div className="flex flex-wrap gap-1.5">
@@ -116,15 +159,17 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={isMembership ? 'grid grid-cols-2 gap-3' : ''}>
             <div>
               <label className={labelCls}>Amount (₹)</label>
               <input type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={inputCls} />
             </div>
-            <div>
-              <label className={labelCls}>Months</label>
-              <input type="number" inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} className={inputCls} />
-            </div>
+            {isMembership && (
+              <div>
+                <label className={labelCls}>Months</label>
+                <input type="number" inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} className={inputCls} />
+              </div>
+            )}
           </div>
 
           <div>

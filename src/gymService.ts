@@ -8,9 +8,10 @@ import { auth, db } from './firebase';
 import { deliverPush } from './pushService';
 import { effectiveProfilePhoto } from './profilePhoto';
 import { membershipStatus, localDateISO, addMonthsISO } from './gymStats';
+import { applyEquipmentStatus } from './gym/gymOps';
 import type {
   Gym, GymPlan, GymMember, GymPayment, GymCheckin, GymDailyStat, GymClass, GymClassSession, GymAnnouncement,
-  GymContext, GymRole, CheckinMethod, PaymentMethod, MembershipStatus, UserProfile,
+  GymContext, GymEquipment, GymRole, CheckinMethod, PaymentMethod, MembershipStatus, RevenueCategory, UserProfile,
 } from './types';
 
 /**
@@ -221,7 +222,7 @@ export async function createGym(input: { name: string; address?: string; phone?:
  *  AdminGymsView's edit sheet. */
 export async function updateGym(
   gymId: string,
-  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'location' | 'geofenceM' | 'upiVpa' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
+  patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'location' | 'geofenceM' | 'upiVpa' | 'marketingSpendMonthly' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
 ): Promise<void> {
   await updateDoc(doc(db, 'gyms', gymId), stripUndefined({ ...patch }));
 }
@@ -427,10 +428,12 @@ export async function renewMembership(
 
 /** Manager: records a payment and renews the member's plan (extending
  *  from their current planEnd when they still have time left, so an
- *  early renewal doesn't waste remaining days). */
+ *  early renewal doesn't waste remaining days). Only a membership
+ *  payment carries a `planId` — personal training and retail are
+ *  revenue, not time on the membership. */
 export async function recordPayment(
   gymId: string,
-  input: { uid: string; amount: number; method: PaymentMethod; months: number; planId?: string; note?: string; paidAt?: string },
+  input: { uid: string; amount: number; method: PaymentMethod; months: number; planId?: string; category?: RevenueCategory; note?: string; paidAt?: string },
 ): Promise<GymPayment> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
@@ -444,6 +447,7 @@ export async function recordPayment(
     paidAt: input.paidAt ?? new Date().toISOString(),
     months: input.months,
     planId: input.planId,
+    category: input.category,
     note: input.note,
     recordedBy: user.uid,
   });
@@ -739,4 +743,44 @@ export async function deleteAnnouncement(gymId: string, id: string, hasImage?: b
     await deleteDoc(doc(db, 'gyms', gymId, 'announcements', id, 'media', 'image')).catch(() => {});
   }
   await deleteDoc(doc(db, 'gyms', gymId, 'announcements', id));
+}
+
+// ============ EQUIPMENT ============
+
+/** The machines on the floor, for GymOpsView's asset-health row. A gym
+ *  has tens of these, so one unbounded read is the whole collection. */
+export async function listEquipment(gymId: string): Promise<GymEquipment[]> {
+  const snap = await getDocs(collection(db, 'gyms', gymId, 'equipment'));
+  return snap.docs.map((d) => d.data() as GymEquipment).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Manager: adds a machine, or renames one. */
+export async function saveEquipment(gymId: string, input: { id?: string; name: string }): Promise<GymEquipment> {
+  const id = input.id ?? doc(collection(db, 'gyms', gymId, 'equipment')).id;
+  const ref = doc(db, 'gyms', gymId, 'equipment', id);
+  if (input.id) {
+    await updateDoc(ref, { name: input.name, updatedAt: new Date().toISOString() });
+    const snap = await getDoc(ref);
+    return snap.data() as GymEquipment;
+  }
+  const machine: GymEquipment = { id, name: input.name, status: 'ok', downtimeMin: 0, updatedAt: new Date().toISOString() };
+  await setDoc(ref, machine);
+  return machine;
+}
+
+/** Manager: flips a machine up or down. The elapsed-minutes maths lives
+ *  in gymOps.applyEquipmentStatus so it can be tested without Firestore. */
+export async function setEquipmentStatus(gymId: string, machine: GymEquipment, status: 'ok' | 'down'): Promise<GymEquipment> {
+  const patch = applyEquipmentStatus(machine, status);
+  await updateDoc(doc(db, 'gyms', gymId, 'equipment', machine.id), {
+    status: patch.status,
+    downtimeMin: patch.downtimeMin,
+    updatedAt: patch.updatedAt,
+    downSince: patch.downSince ?? deleteField(),
+  });
+  return { ...machine, status: patch.status, downtimeMin: patch.downtimeMin, updatedAt: patch.updatedAt, downSince: patch.downSince ?? undefined };
+}
+
+export async function deleteEquipment(gymId: string, id: string): Promise<void> {
+  await deleteDoc(doc(db, 'gyms', gymId, 'equipment', id));
 }

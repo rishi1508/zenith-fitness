@@ -416,6 +416,10 @@ service cloud.firestore {
                                  && request.resource.data.keys().hasOnly(['date', 'count', 'hours'])
                                  && request.resource.data.date == date && request.resource.data.count == resource.data.count + 1
                                  && exists(/databases/$(database)/documents/gyms/$(gymId)/checkins/$(request.auth.uid + '_' + date))); }
+      // Machines on the floor (GymOpsView's asset health). Any staff can
+      // see what is out of service; only a manager flips it.
+      match /equipment/{id} { allow read: if isGymStaff(gymId) || isAdmin();
+                              allow write: if isGymManager(gymId) || isAdmin(); }
       match /classes/{id}    { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin(); allow write: if isGymManager(gymId) || isAdmin();
         match /sessions/{date} { allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
                                  // Staff/admin: anything. Member: may CREATE the session doc as the first
