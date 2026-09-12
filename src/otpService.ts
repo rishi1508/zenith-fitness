@@ -52,6 +52,13 @@ export async function verifyOTP(email: string, code: string): Promise<VerifyResu
   return call<VerifyResult>('verify', { email: email.trim(), code: code.trim() });
 }
 
-export async function completeRegistration(email: string, ticket: string, displayName: string): Promise<{ token: string }> {
-  return call<{ token: string }>('complete', { email: email.trim(), ticket, displayName });
+export interface RegistrationDetails {
+  displayName: string;
+  phone: string;
+  dob?: string;
+  sex?: 'male' | 'female' | 'other';
+}
+
+export async function completeRegistration(email: string, ticket: string, details: RegistrationDetails): Promise<{ token: string }> {
+  return call<{ token: string }>('complete', { email: email.trim(), ticket, ...details });
 }

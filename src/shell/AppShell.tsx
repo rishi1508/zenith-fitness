@@ -8,6 +8,7 @@ import { TABS, viewToTab } from './tabs';
 import { useElasticScroll } from '../hooks/useElasticScroll';
 import type { Tab } from './tabs';
 import { GetAppBanner } from './GetAppBanner';
+import { useGym } from '../gym/GymContext';
 import type { View } from '../App';
 import type { UserStats } from '../types';
 
@@ -77,8 +78,10 @@ export function AppShell({
   userName, userSub, userAvatar, userPhotoURL, onOpenProfile, banner, children,
 }: AppShellProps) {
   const tab = viewToTab[view];
+  const { unseenAnnouncements } = useGym();
   const base = hasGym ? TABS : TABS.filter((t) => t.id !== 'gym');
-  // "You" is the user's own face, ringed by their experience level.
+  // "You" is the user's own face, ringed by their experience level; My Gym
+  // carries the count of notices not yet looked at.
   const items = base.map((t) => (t.id === 'you'
     ? {
       ...t,
@@ -86,7 +89,7 @@ export function AppShell({
         <LevelRing size={26} totalVolumeKg={stats?.totalVolume ?? 0} photoURL={userPhotoURL} name={userName} muted={!active} />
       ),
     }
-    : t));
+    : t.id === 'gym' ? { ...t, badge: unseenAnnouncements } : t));
   const { title, eyebrow } = barContent(view, gymName, firstName);
 
   // `main` is one persistent scroll container for every route, so without

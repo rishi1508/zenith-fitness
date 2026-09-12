@@ -12,6 +12,7 @@ import {
   addComment, createPost, deletePost, getPostImage, listComments, listenToFeed, toggleReaction, workoutSummary,
 } from '../../gymFeed';
 import { listenToAnnouncements } from '../../gymService';
+import { announcementsSeenKey } from '../../gym/announcementsSeen';
 import { prepareScanImage } from '../../nutrition/scan';
 import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
 import { consumeRestoredPhoto, hasRestoredPhoto } from '../../captureRestore';
@@ -53,8 +54,7 @@ type FeedTab = 'public' | 'announcements';
  *  GymHomeView remembers its segment. */
 let lastTab: FeedTab = 'public';
 
-/** ISO of the newest notice this device has already looked at. */
-const seenKey = (gymId: string) => `zenith_gym_ann_seen_${gymId}`;
+const seenKey = announcementsSeenKey;
 
 function readSeen(gymId: string): string {
   try {
@@ -72,7 +72,7 @@ function readSeen(gymId: string): string {
  * PR or an achievement. Nothing posts itself; sharing is always a tap.
  */
 export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) => void } = {}) {
-  const { gym, role } = useGym();
+  const { gym, role, unseenAnnouncements, markAnnouncementsSeen } = useGym();
   const { user } = useAuth();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
@@ -97,7 +97,7 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
     lastTab = next;
     tabRef.current = next;
     setTabState(next);
-    if (next === 'announcements' && gym) markSeen(gym.id, newestNotice);
+    if (next === 'announcements' && gym) { markSeen(gym.id, newestNotice); markAnnouncementsSeen(); }
   };
 
   useEffect(() => {
@@ -113,8 +113,10 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
     return listenToAnnouncements(gymId, (rows) => {
       const at = rows[0]?.at ?? null;
       setNewestNotice(at);
-      if (tabRef.current === 'announcements') markSeen(gymId, at);
+      if (tabRef.current === 'announcements') { markSeen(gymId, at); markAnnouncementsSeen(); }
     }, 1);
+  // markAnnouncementsSeen is recreated as notices arrive; the listener only needs the gym.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gym?.id]);
 
   // Staff and Zenith admins can take down anything; rules agree.
@@ -142,6 +144,7 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
   if (!gym) return null;
 
   const unseenNotice = tab !== 'announcements' && !!newestNotice && newestNotice > seenNotice;
+  const unseenCount = tab !== 'announcements' ? unseenAnnouncements : 0;
 
   return (
     <div className="space-y-3">
@@ -154,7 +157,13 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
             label: (
               <span className="inline-flex items-center gap-1.5">
                 Announcements
-                {unseenNotice && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" aria-label="new" />}
+                {unseenCount > 0 ? (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-white text-[11px] font-bold leading-[18px] text-center shrink-0" aria-label={`${unseenCount} new`}>
+                    {unseenCount > 9 ? '9+' : unseenCount}
+                  </span>
+                ) : unseenNotice ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" aria-label="new" />
+                ) : null}
               </span>
             ),
           },

@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
+import { useHoldScrub } from '../../useHoldScrub';
 import { Info } from 'lucide-react';
 import { Card } from '../../../ui';
 import { H2, SUB } from '../../../ui/styles';
@@ -23,22 +24,23 @@ function signed(n: number): string {
  * capture on the track, and every column is a real focusable button.
  */
 export function AcquisitionChurnChart({ series, onInfo }: { series: AcquisitionMonth[]; onInfo?: () => void }) {
-  const [active, setActive] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
   const max = Math.max(1, ...series.map((m) => Math.max(m.new, m.churned)));
   const empty = series.every((m) => m.new === 0 && m.churned === 0);
-  const shown = series[active ?? series.length - 1];
   const labels = labelIndices(series.length);
 
   /** Which column is under this x — so a slide reads continuously rather
    *  than only when a finger lands on a bar. */
-  const columnAt = (clientX: number): number | null => {
+  const columnAt = useCallback((clientX: number): number | null => {
     const box = trackRef.current?.getBoundingClientRect();
     if (!box || box.width === 0) return null;
     const i = Math.floor(((clientX - box.left) / box.width) * series.length);
     return i >= 0 && i < series.length ? i : null;
-  };
+  }, [series.length]);
+  // Hold, then slide — a plain swipe over the chart scrolls the page.
+  const { active, setActive, handlers } = useHoldScrub(columnAt);
+  const shown = series[active ?? series.length - 1];
 
   return (
     <Card>
@@ -81,12 +83,9 @@ export function AcquisitionChurnChart({ series, onInfo }: { series: AcquisitionM
             <div
               ref={trackRef}
               data-elastic-skip
-              className="relative flex-1 h-[124px] flex touch-none select-none"
-              onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setActive(columnAt(e.clientX)); }}
-              onPointerMove={(e) => { if (e.buttons > 0 || e.pointerType === 'touch') setActive(columnAt(e.clientX)); }}
-              onPointerUp={() => setActive(null)}
-              onPointerCancel={() => setActive(null)}
-              onPointerLeave={() => setActive(null)}
+              className="relative flex-1 h-[124px] flex select-none"
+              style={{ touchAction: 'pan-y' }}
+              {...handlers}
             >
               {/* Zero rule — the only gridline this chart needs; the two
                   halves share one scale so the y labels carry the rest. */}

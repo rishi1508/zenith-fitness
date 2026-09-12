@@ -14,7 +14,7 @@ import {
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { auth } from '../firebase';
+import { auth, resetFirestoreCache } from '../firebase';
 import { migrateLocalStorageToFirestore, pullFirestoreToLocalStorage, setupFirestoreListeners, teardownFirestoreListeners, flushPendingWrites, setCurrentUserId } from '../firestoreSync';
 import { startSharedExerciseSync, stopSharedExerciseSync } from '../sharedExercises';
 import * as otpService from '../otpService';
@@ -57,7 +57,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   sendEmailOTP: (email: string) => Promise<void>;
   verifyEmailOTP: (email: string, code: string) => Promise<{ isNewUser: boolean }>;
-  completeOTPRegistration: (email: string, displayName: string) => Promise<void>;
+  completeOTPRegistration: (email: string, details: otpService.RegistrationDetails) => Promise<void>;
   signOut: () => Promise<void>;
   enterGuestMode: () => void;
   exitGuestMode: () => void;
@@ -134,7 +134,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // account, so it is left alone.
         try {
           const lastUid = localStorage.getItem(LAST_UID_KEY);
-          if (lastUid && lastUid !== firebaseUser.uid) clearLocalUserData();
+          if (lastUid && lastUid !== firebaseUser.uid) {
+            // Another account on this device: nothing of the previous one may
+            // survive — local storage, the Firestore cache, in-memory state.
+            // Auth persists across the reload, so the new account lands clean.
+            clearLocalUserData();
+            localStorage.setItem(LAST_UID_KEY, firebaseUser.uid);
+            void resetFirestoreCache().finally(() => window.location.reload());
+            return;
+          }
           localStorage.setItem(LAST_UID_KEY, firebaseUser.uid);
         } catch { /* ignore */ }
         setUser(firebaseUser);
@@ -240,12 +248,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Complete OTP registration: the server creates the account with the
   // display name already set and returns a custom token, so
   // onAuthStateChanged fires with the name ready.
-  const completeOTPRegistration = useCallback(async (email: string, displayName: string) => {
+  const completeOTPRegistration = useCallback(async (email: string, details: otpService.RegistrationDetails) => {
     const pending = pendingOtpTicket.current;
     if (!pending || pending.email !== email.trim().toLowerCase()) {
       throw new Error('Verification expired. Please request a new code.');
     }
-    const { token } = await otpService.completeRegistration(email, pending.ticket, displayName);
+    const { token } = await otpService.completeRegistration(email, pending.ticket, details);
     pendingOtpTicket.current = null;
     const credential = await signInWithCustomToken(auth, token);
     setUser({ ...credential.user } as User);
@@ -262,6 +270,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearLocalUserData();
     try { localStorage.removeItem(LAST_UID_KEY); } catch { /* ignore */ }
     setUser(null);
+    // The Firestore cache still holds this account's documents on disk; the
+    // next person to sign in on this phone must not inherit them. Clearing
+    // it needs the client terminated, so the app restarts on the login screen.
+    await resetFirestoreCache();
+    window.location.reload();
   }, []);
 
   const enterGuestMode = useCallback(() => {

@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { Flame, Mail, Chrome, ArrowLeft, Loader2, User, Check } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { ProfileFields } from '../profile/ProfileFields';
+import { EMPTY_DRAFT, draftToDetails, validateDraft, type ProfileDraft } from '../profile/profileDraft';
 
 type Step = 'main' | 'otp-email' | 'otp-code' | 'otp-name';
 
@@ -14,8 +16,7 @@ export function LoginView({ isDark }: { isDark: boolean }) {
   const [step, setStep] = useState<Step>('main');
   const [email, setEmail] = useState('');
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [draft, setDraft] = useState<ProfileDraft>(EMPTY_DRAFT);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState<string | null>(null);
   const [resendTimer, setResendTimer] = useState(0);
@@ -110,15 +111,13 @@ export function LoginView({ isDark }: { isDark: boolean }) {
   };
 
   const handleCompleteName = async () => {
-    if (!firstName.trim()) {
-      setError('First name is required');
-      return;
-    }
+    const problem = validateDraft(draft, { requireName: true });
+    if (problem) { setError(problem); return; }
     setError('');
     setLoading('otp-name');
     try {
-      const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
-      await completeOTPRegistration(email.trim(), displayName);
+      const details = draftToDetails(draft, { includeName: true });
+      await completeOTPRegistration(email.trim(), { ...details, displayName: details.displayName ?? '' });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to save profile');
     } finally {
@@ -349,34 +348,17 @@ export function LoginView({ isDark }: { isDark: boolean }) {
               <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mx-auto mb-3">
                 <User className="w-7 h-7 text-white" />
               </div>
-              <h2 className="text-lg font-bold">Welcome!</h2>
+              <h2 className="text-lg font-bold">Welcome</h2>
               <p className={`text-sm ${subtleText}`}>
-                Tell us your name to get started
+                A few details and your account is ready
               </p>
             </div>
 
-            <div className="space-y-3">
-              <input
-                type="text"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                placeholder="First name *"
-                className={inputClass}
-                autoFocus
-              />
-              <input
-                type="text"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCompleteName()}
-                placeholder="Last name (optional)"
-                className={inputClass}
-              />
-            </div>
+            <ProfileFields draft={draft} onChange={setDraft} isDark={isDark} showName autoFocus />
 
             <button
               onClick={handleCompleteName}
-              disabled={loading !== null || !firstName.trim()}
+              disabled={loading !== null || !draft.firstName.trim()}
               className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               {loading === 'otp-name' ? (
@@ -384,7 +366,7 @@ export function LoginView({ isDark }: { isDark: boolean }) {
               ) : (
                 <Flame className="w-5 h-5" />
               )}
-              Let's Go!
+              Create my account
             </button>
           </>
         )}

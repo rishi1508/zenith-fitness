@@ -32,8 +32,8 @@ import type { CapturePurpose } from './captureRestore';
 
 /** Longest edge the OS hands back. Comfortably above the 1024 px the food
  *  scanner sends, so the resize below is still doing the final framing. */
-const CAPTURE_PX = 1600;
-const JPEG_QUALITY = 85;
+const CAPTURE_PX = 1280;
+const JPEG_QUALITY = 80;
 
 /** True when the plugin should be used instead of an `<input type="file">`. */
 export function nativePhotoCapture(): boolean {

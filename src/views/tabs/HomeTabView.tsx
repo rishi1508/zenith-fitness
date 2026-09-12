@@ -274,9 +274,9 @@ export function HomeTabView({
         <Card className="flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-text">Is your gym on Zenith?</p>
-            <p className={SUB}>Link your membership with a join code.</p>
+            <p className={SUB}>Ask the front desk to add your number.</p>
           </div>
-          <Button variant="secondary" size="sm" onClick={onOpenGymJoin}>Enter gym code</Button>
+          <Button variant="secondary" size="sm" onClick={onOpenGymJoin}>How it works</Button>
         </Card>
       )}
 

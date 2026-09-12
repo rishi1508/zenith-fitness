@@ -533,6 +533,9 @@ export function ActiveWorkoutView({
           <Plus className="w-5 h-5" />
           Add Exercise
         </button>
+        {/* The sticky rest timer is fixed to the bottom; leave room so the
+            button above stays reachable while it counts down. */}
+        {restTimer !== null && <div aria-hidden className="h-28" />}
       </div>
 
       <ExercisePickerSheet

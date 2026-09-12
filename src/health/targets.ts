@@ -43,7 +43,8 @@ export function computeTargets(input: {
   const fat = Math.round((kcal * 0.25) / 9);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   return {
-    kcal, protein, carbs, fat, waterMl: Math.round(input.weightKg * 35 / 50) * 50, mode: 'auto',
+    // A glass is 250 ml, so the target is whole glasses — 2,600 could never be met one glass at a time.
+    kcal, protein, carbs, fat, waterMl: Math.max(250, Math.round(input.weightKg * 35 / 250) * 250), mode: 'auto',
     updatedAt: new Date().toISOString(),
     ...(input.maintenanceBasis ? { maintenanceBasis: input.maintenanceBasis } : {}),
   };

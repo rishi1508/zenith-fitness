@@ -117,7 +117,7 @@ html {
 body {
   /* Add padding for status bar on native platforms */
   /* The 24px is typical Android status bar height */
-  padding-top: env(safe-area-inset-top, 0);
+  padding-top: max(env(safe-area-inset-top, 0px), var(--status-bar-h, 0px));
   /* Bottom safe area for navigation bar */
   padding-bottom: env(safe-area-inset-bottom, 0);
 }

@@ -16,7 +16,8 @@
 //   send     { email }                       → { ok, expiresInSec }
 //   verify   { email, code }                 → { token, isNewUser:false }  existing account
 //                                            → { isNewUser:true, ticket }   new email, collect name next
-//   complete { email, ticket, displayName }  → { token, isNewUser:true }
+//   complete { email, ticket, displayName, phone, dob?, sex? }
+//                                            → { token, isNewUser:true }   phone is required and unique (api/_profile.ts)
 //
 // Limits (fixed windows, Firestore-backed so they hold across instances):
 //   per email: 3 codes / hour, 6 / day      per IP: 15 codes / day, 60 verify attempts / hour
@@ -35,6 +36,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import type admin from 'firebase-admin';
 import crypto from 'node:crypto';
 import { clientIp, getAdmin, replyNotConfigured, setCors } from './_http.js';
+import { completeProfile, normalizeDob, normalizeName, normalizePhone, normalizeSex, uidForPhone } from './_profile.js';
 
 export const config = { maxDuration: 30 };
 
@@ -266,20 +268,37 @@ async function handleVerify(a: typeof admin, db: admin.firestore.Firestore, req:
   return { isNewUser: true, ticket };
 }
 
-async function handleComplete(a: typeof admin, db: admin.firestore.Firestore, email: string, ticketRaw: unknown, nameRaw: unknown) {
+async function handleComplete(
+  a: typeof admin, db: admin.firestore.Firestore, email: string,
+  ticketRaw: unknown, details: { displayName: unknown; phone: unknown; dob: unknown; sex: unknown },
+) {
   const ticket = typeof ticketRaw === 'string' ? ticketRaw : '';
-  const displayName = typeof nameRaw === 'string' ? nameRaw.trim().replace(/\s+/g, ' ').slice(0, 60) : '';
-  if (!displayName) throw new HttpError(400, 'Please enter your name.');
+  const displayName = normalizeName(details.displayName);
+  const phone = normalizePhone(details.phone);
+  normalizeDob(details.dob); normalizeSex(details.sex); // reject bad input before anything is created
   const { ref, data } = await loadCode(db, email);
   if (!data.verifiedAt || !data.ticketHash || sha256(ticket) !== data.ticketHash) {
     throw new HttpError(401, 'Verification expired. Please request a new code.');
   }
-  let uid: string;
-  try {
-    uid = (await a.auth().getUserByEmail(email)).uid; // raced with another sign-up — fine
-  } catch {
-    uid = (await a.auth().createUser({ email, displayName, emailVerified: true })).uid;
+  // The number decides the account: if a gym already set this person up by
+  // phone, the e-mail joins THAT account instead of making a second one.
+  let uid: string | null = await uidForPhone(db, phone);
+  if (uid) {
+    const holder = await a.auth().getUser(uid).catch(() => null);
+    if (holder?.email && holder.email.toLowerCase() !== email) {
+      throw new HttpError(409, 'This phone number is already on a Zenith account with a different e-mail. Sign in with that e-mail, or ask your gym to check the number.');
+    }
+    if (holder && !holder.email) await a.auth().updateUser(uid, { email, emailVerified: true }).catch(() => { /* fine */ });
+  } else {
+    try {
+      uid = (await a.auth().getUserByEmail(email)).uid; // raced with another sign-up — fine
+    } catch {
+      uid = (await a.auth().createUser({ email, displayName, emailVerified: true })).uid;
+    }
   }
+  await completeProfile(a.auth(), db, uid, {
+    displayName, phone, dob: details.dob as string | undefined, sex: details.sex as never, email,
+  }, { kind: 'self' });
   await ref.delete();
   return { token: await mintToken(a, uid), isNewUser: true };
 }
@@ -304,7 +323,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'verify':
         res.status(200).json(await handleVerify(a, db, req, email, body.code)); return;
       case 'complete':
-        res.status(200).json(await handleComplete(a, db, email, body.ticket, body.displayName)); return;
+        res.status(200).json(await handleComplete(a, db, email, body.ticket, { displayName: body.displayName, phone: body.phone, dob: body.dob, sex: body.sex })); return;
       default:
         throw new HttpError(400, 'Unknown action');
     }

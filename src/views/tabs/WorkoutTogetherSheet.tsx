@@ -77,6 +77,7 @@ export function WorkoutTogetherSheet({ plan, initialDay, onClose, onStart }: Wor
     setBusy(true);
     try {
       const name = `${plan.name} - ${day.name}`;
+      // createSession refuses while another of this person's sessions is open.
       const id = await sessionService.createSession(name, 'custom', day.exercises);
       setSessionId(id);
       for (const uid of picked) {

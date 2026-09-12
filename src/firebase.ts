@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, connectFirestoreEmulator, enableIndexedDbPersistence, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBUuyPSwfCVm98ArAY1wCZioBXn2mqFCrs",
@@ -23,6 +23,17 @@ enableIndexedDbPersistence(db).catch((err) => {
     console.warn('[Firebase] Persistence not available in this browser');
   }
 });
+
+/** Drop everything Firestore cached on this device. The client is unusable
+ *  afterwards, so callers reload the page right after. */
+export async function resetFirestoreCache(): Promise<void> {
+  try {
+    await terminate(db);
+    await clearIndexedDbPersistence(db);
+  } catch (err) {
+    console.warn('[Firebase] cache reset failed:', err);
+  }
+}
 
 // Connect to emulators in development
 if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true') {

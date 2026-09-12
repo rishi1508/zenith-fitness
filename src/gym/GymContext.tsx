@@ -2,9 +2,10 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import type { ReactNode } from 'react';
 import type { Gym, GymMember, GymRole } from '../types';
 import { useAuth } from '../auth/AuthContext';
-import { getMyGymContext, listenToGym, listenToMyMembership } from '../gymService';
+import { getMyGymContext, listenToGym, listenToMyMembership, listenToAnnouncements } from '../gymService';
 import { startGymLibrarySync } from '../gymLibrary';
 import { readHint, writeHint, type GymHint } from './gymHint';
+import { announcementsSeenKey, readAnnouncementsSeen } from './announcementsSeen';
 
 /**
  * Gym OS lite (Tier A) membership context. Loads the cached
@@ -26,7 +27,13 @@ interface GymContextValue {
   hasGymHint: boolean;
   /** Re-reads the profile's gym pointer — call after joining/leaving/creating a gym. */
   refresh: () => void;
+  /** Notices posted since this device last opened the Announcements tab (0–25). */
+  unseenAnnouncements: number;
+  /** Looking at the tab is what marks them seen — on this device only. */
+  markAnnouncementsSeen: () => void;
 }
+
+
 
 const GymCtx = createContext<GymContextValue | null>(null);
 
@@ -47,6 +54,8 @@ export function GymProvider({ children }: { children: ReactNode }) {
   const [gymId, setGymId] = useState<string | null>(() => readHint()?.gymId ?? null);
   const [gym, setGym] = useState<Gym | null>(null);
   const [membership, setMembership] = useState<GymMember | null>(null);
+  const [noticeTimes, setNoticeTimes] = useState<string[]>([]);
+  const [seenNotice, setSeenNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -123,8 +132,20 @@ export function GymProvider({ children }: { children: ReactNode }) {
     // The gym's exercise library feeds the pickers and the workout screen
     // (src/gymLibrary.ts) — one small listener, cleared on leaving.
     const unsubLibrary = startGymLibrarySync(gymId);
-    return () => { unsubGym(); unsubMembership(); unsubLibrary(); };
+    // The 25 newest notices' timestamps, for the unseen count on the tab.
+    setSeenNotice(readAnnouncementsSeen(gymId));
+    const unsubNotices = listenToAnnouncements(gymId, (rows) => setNoticeTimes(rows.map((a) => a.at)), 25);
+    return () => { unsubGym(); unsubMembership(); unsubLibrary(); unsubNotices(); setNoticeTimes([]); };
   }, [gymId, user, isGuest]);
+
+  const unseenAnnouncements = noticeTimes.filter((at) => at > seenNotice).length;
+  const markAnnouncementsSeen = useCallback(() => {
+    if (!gymId) return;
+    const newest = noticeTimes[0];
+    if (!newest || newest <= seenNotice) return;
+    try { localStorage.setItem(announcementsSeenKey(gymId), newest); } catch { /* quota */ }
+    setSeenNotice(newest);
+  }, [gymId, noticeTimes, seenNotice]);
 
   // Remember the gym for the next launch, so the shell never has to guess.
   useEffect(() => {
@@ -157,7 +178,7 @@ export function GymProvider({ children }: { children: ReactNode }) {
     : gym.ownerUid === uid ? 'owner' : (gym.staff?.[uid] ?? membership?.role ?? null);
 
   return (
-    <GymCtx.Provider value={{ gym, membership, role, loading, hasGymHint: !!hint, refresh }}>
+    <GymCtx.Provider value={{ gym, membership, role, loading, hasGymHint: !!hint, refresh, unseenAnnouncements, markAnnouncementsSeen }}>
       {children}
     </GymCtx.Provider>
   );

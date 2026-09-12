@@ -16,6 +16,8 @@ import {
   PushPermissionPrompt, SessionInviteBanner, WelcomeTour, BadgeUnlockModal,
 } from './components';
 import { tourSeen } from './tourState';
+import { useMyProfile } from './profile/useMyProfile';
+import { ProfileSetupView } from './profile/ProfileSetupView';
 import { effectiveProfilePhoto } from './profilePhoto';
 import { useElasticScroll } from './hooks/useElasticScroll';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -125,6 +127,7 @@ export type Theme = 'dark' | 'light';
 
 function App() {
   const { user, loading: authLoading, isGuest } = useAuth();
+  const myProfile = useMyProfile();
   const { gym, role: gymRole, loading: gymLoading, hasGymHint } = useGym();
   // While the gym is still loading, trust what this device remembers: adding
   // the My Gym tab 300 ms after launch shifted the whole bar under the thumb.
@@ -548,17 +551,20 @@ function App() {
         sessionSyncTimer.current = setTimeout(() => {
           sessionService.syncProgress(activeSessionId, activeWorkout.exercises);
         }, 2000);
-        // Host-only template broadcast — fast (500ms) so participants
-        // see structural changes promptly. We don't sync set values
-        // (that's per-user via syncProgress); only the EXERCISE LIST
-        // and per-exercise SET COUNT, derived via templateFromWorkout.
-        if (sessionMode === 'host') {
+        // Shared template broadcast — fast (500ms) so the other phones see
+        // a structural change promptly. Set values stay per-user (that is
+        // syncProgress); only the EXERCISE LIST and per-exercise SET COUNT
+        // travel, via templateFromWorkout. Any joined participant may
+        // write it: the session is one shared workout. Skipped when the
+        // list already matches what the session holds, so applying a
+        // change we just received does not echo it straight back.
+        if (sessionMode) {
           if (templateSyncTimer.current) clearTimeout(templateSyncTimer.current);
           templateSyncTimer.current = setTimeout(() => {
-            sessionService.syncHostTemplate(
-              activeSessionId,
-              templateFromWorkout(activeWorkout),
-            );
+            const tpl = templateFromWorkout(activeWorkout);
+            if (templatesEqual(lastSeenTemplateRef.current ?? undefined, tpl)) return;
+            lastSeenTemplateRef.current = tpl;
+            sessionService.syncSessionTemplate(activeSessionId, tpl);
           }, 500);
         }
       }
@@ -619,13 +625,11 @@ function App() {
           exercises: s.currentTemplateExercises ?? s.templateExercises,
         }, s.id);
       }
-      // PARTICIPANT-SIDE: reconcile our workout when the host's live
-      // template changes (they added/removed/swapped an exercise or
-      // added/removed sets). Skip when WE are the host (our workout
-      // IS the source of truth) and when the session is no longer
-      // active (post-completion changes shouldn't mutate our workout).
+      // Reconcile our workout when the shared template changes (somebody
+      // added/removed/swapped an exercise or changed a set count) — host
+      // included, since any participant may change it now. Not once the
+      // session is over: post-completion writes must not mutate history.
       if (
-        !iAmHost &&
         activeWorkoutRef.current?.sessionId === activeSessionId &&
         s.status === 'active' &&
         s.currentTemplateExercises
@@ -879,6 +883,13 @@ function App() {
         await StatusBar.setStyle({ style: Style.Dark });
         await StatusBar.setBackgroundColor({ color: '#0f0f0f' });
         await StatusBar.show();
+        // Edge-to-edge Android draws the page under the status bar while the
+        // WebView reports env(safe-area-inset-top) as 0, so a header could
+        // sit against the clock. Publish the bar's real height for the CSS.
+        const info = await StatusBar.getInfo() as { overlays?: boolean; height?: number };
+        if (info.overlays && typeof info.height === 'number' && info.height > 0) {
+          document.documentElement.style.setProperty('--status-bar-h', `${info.height}px`);
+        }
       } catch (e) {
         console.warn('StatusBar setup error:', e);
       }
@@ -997,10 +1008,12 @@ function App() {
     setActiveWorkout(workout);
     navigateTo('active');
 
-    // Notify buddies & set working-out status
+    // Notify buddies & set working-out status. In a group session the
+    // buddies already hold an invite — and every participant starting at
+    // once would otherwise "start a workout" at each other (double toasts).
     if (user) {
       buddyService.setWorkingOutStatus(true, workout.name, workout.startedAt);
-      buddyService.notifyBuddiesWorkoutStarted(workout.name);
+      if (!sessionId) buddyService.notifyBuddiesWorkoutStarted(workout.name);
     }
   };
   
@@ -1459,6 +1472,11 @@ function App() {
   // Show login if not authenticated and not in guest mode
   if (!user && !isGuest) {
     return <LoginView isDark={isDark} />;
+  }
+  // An account without a phone number finishes its profile first — once.
+  // Accounts a gym's desk created arrive complete and skip straight past.
+  if (user && !isGuest && myProfile.loaded && !myProfile.profile?.phone) {
+    return <ProfileSetupView isDark={isDark} currentName={myProfile.profile?.displayName || user.displayName || ''} onDone={() => { /* the profile listener flips the gate */ }} />;
   }
   
   return (

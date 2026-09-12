@@ -5,8 +5,9 @@ import type { GymMember, GymPlan, MembershipStatus, PaymentMethod } from '../../
 import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
-import { addMember, listenToMembers, membershipStatus, recordPayment } from '../../gymService';
-import { inviteMemberByEmail, searchUserProfiles } from '../../gymStaffHelpers';
+import { listenToMembers, membershipStatus, recordPayment } from '../../gymService';
+import { searchUserProfiles } from '../../gymStaffHelpers';
+import { createMemberAccount } from '../../memberAdmin';
 import { localDateISO } from '../../gymStats';
 import { StaffMemberRow } from '../../components/gym/StaffMemberRow';
 import { useToast } from '../../ui';
@@ -156,11 +157,22 @@ interface AddMemberSheetProps {
   onSuccess: () => void;
 }
 
+/**
+ * The front desk adds a member. Name and mobile number are required: the
+ * server (api/members.ts) finds the person's Zenith account by number, or
+ * e-mail, or makes one — so every member is an account, and whichever way
+ * they later sign in (Google, e-mail code, SMS one day) lands in it, with
+ * the profile already filled. Picking somebody from the Zenith search links
+ * that account directly.
+ */
 function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: AddMemberSheetProps) {
   const activePlans = plans.filter((p) => p.active);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [dob, setDob] = useState('');
+  const [sex, setSex] = useState<'' | 'male' | 'female' | 'other'>('');
+  const [pickedUid, setPickedUid] = useState<string | null>(null);
   const [planId, setPlanId] = useState('');
   const [startDate, setStartDate] = useState(localDateISO(new Date()));
   const [trainerUid, setTrainerUid] = useState('');
@@ -172,7 +184,6 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
   const [lookup, setLookup] = useState('');
   const [found, setFound] = useState<Array<{ uid: string; name: string; email?: string }>>([]);
   const [searching, setSearching] = useState(false);
-  const [invite, setInvite] = useState(false);
 
   // Debounced people search — two queries, only once the term is worth it.
   useEffect(() => {
@@ -199,9 +210,11 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
   }`;
   const labelCls = `text-xs font-medium mb-1 block ${isDark ? 'text-zinc-400' : 'text-gray-500'}`;
   const subtle = isDark ? 'text-zinc-500' : 'text-gray-500';
+  const phoneOk = /^(\+?91)?[6-9]\d{9}$/.test(phone.replace(/[\s\-().]/g, '')) || /^\+[1-9]\d{7,14}$/.test(phone.replace(/[\s\-().]/g, ''));
 
   const handleSubmit = async () => {
     if (!name.trim()) { setError('Name is required'); return; }
+    if (!phoneOk) { setError('A 10-digit mobile number is required'); return; }
     if (recordNow && !planId) { setError('Pick a plan to record a payment'); return; }
     setSaving(true);
     setError(null);
@@ -209,26 +222,18 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
       // When a first payment is recorded, the plan is assigned via
       // recordPayment (which renews from scratch since the member has no
       // existing planEnd yet) — passing planId/planStart here too would
-      // double the period by having addMember set the dates AND
-      // recordPayment's renewal extend them again.
-      // An invite creates the same membership and a claim record keyed to
-      // the email; anything else is the plain add, which already links to an
-      // existing Zenith account when the address matches one.
-      const created = invite && email.trim()
-        ? { uid: (await inviteMemberByEmail(gymId, {
-          name: name.trim(),
-          email: email.trim(),
-          phone: phone.trim() || undefined,
-          planId: recordNow ? undefined : (planId || undefined),
-        })).uid }
-        : await addMember(gymId, {
-          name: name.trim(),
-          phone: phone.trim() || undefined,
-          email: email.trim() || undefined,
-          planId: recordNow ? undefined : (planId || undefined),
-          planStart: recordNow ? undefined : startDate,
-          trainerUid: trainerUid || undefined,
-        });
+      // double the period.
+      const created = await createMemberAccount(gymId, {
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
+        dob: dob || undefined,
+        sex: sex || undefined,
+        planId: recordNow ? undefined : (planId || undefined),
+        planStart: recordNow ? undefined : startDate,
+        trainerUid: trainerUid || undefined,
+        uid: pickedUid ?? undefined,
+      });
       if (recordNow && planId) {
         const plan = plans.find((p) => p.id === planId);
         await recordPayment(gymId, {
@@ -263,14 +268,12 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
         </div>
 
         <div className="p-4 space-y-3">
-          {/* Most people the front desk adds already have Zenith. Look them up
-              rather than retyping what the app already knows. */}
           <div>
-            <label className={labelCls}>Find them on Zenith</label>
+            <label className={labelCls}>Already on Zenith? Find them</label>
             <input
               type="text"
               value={lookup}
-              onChange={(e) => setLookup(e.target.value)}
+              onChange={(e) => { setLookup(e.target.value); setPickedUid(null); }}
               placeholder="Name or email"
               className={inputCls}
             />
@@ -281,7 +284,7 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
                   <button
                     key={u.uid}
                     type="button"
-                    onClick={() => { setName(u.name); setEmail(u.email ?? ''); setLookup(''); setFound([]); }}
+                    onClick={() => { setName(u.name); setEmail(u.email ?? ''); setPickedUid(u.uid); setLookup(''); setFound([]); }}
                     className="w-full px-3 py-2.5 flex items-center gap-2.5 text-left"
                   >
                     <span className="flex-1 min-w-0">
@@ -293,12 +296,7 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
                 ))}
               </div>
             )}
-            {lookup.trim().length >= 2 && !searching && found.length === 0 && (
-              <p className={`text-xs mt-1 ${subtle}`}>
-                Nobody on Zenith by that name. Fill the details below and tick "invite by email" to
-                set them up — they join by signing in with that address.
-              </p>
-            )}
+            {pickedUid && <p className="text-xs mt-1 text-emerald-500">Linking to their existing Zenith account.</p>}
           </div>
 
           <div>
@@ -307,24 +305,32 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Phone</label>
-              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputCls} />
+              <label className={labelCls}>Mobile number</label>
+              <input type="tel" inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="10 digits" className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Email (optional)</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
             </div>
           </div>
-
-          {email.trim() && (
-            <label className="flex items-start gap-2 text-xs cursor-pointer">
-              <input type="checkbox" checked={invite} onChange={(e) => setInvite(e.target.checked)} className="mt-0.5" />
-              <span className={subtle}>
-                Invite by email — they claim this membership the first time they sign in to Zenith with
-                that address. No password to send: Zenith signs them in by email.
-              </span>
-            </label>
-          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Date of birth (optional)</label>
+              <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Sex (optional)</label>
+              <select value={sex} onChange={(e) => setSex(e.target.value as typeof sex)} className={inputCls}>
+                <option value="">—</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+          <p className={`text-xs ${subtle}`}>
+            This creates their Zenith account. When they sign in with this number's e-mail or with Google, they land in it with everything filled — only the app tour to go.
+          </p>
 
           <div>
             <label className={labelCls}>Plan</label>

@@ -50,10 +50,51 @@ export async function createSession(
     currentTemplateExercises: templateExercises,
     createdAt: new Date().toISOString(),
     participants: { [user.uid]: hostParticipant },
+    participantUids: [user.uid],
   };
 
+  await assertNoOpenSession();
   await setDoc(doc(db, 'workoutSessions', sessionId), session);
   return sessionId;
+}
+
+/** The sessions this person is part of that have not ended: hosting, or
+ *  joined as a participant. Anything left 'waiting' for over six hours is a
+ *  lobby somebody walked away from — cancelled on sight so it cannot block
+ *  a new one. An unanswered invite is not a commitment and does not count. */
+export async function getMyOpenSessions(): Promise<WorkoutSession[]> {
+  const user = auth.currentUser;
+  if (!user) return [];
+  const [hosted, joined] = await Promise.all([
+    getDocs(query(collection(db, 'workoutSessions'), where('hostUid', '==', user.uid))),
+    getDocs(query(collection(db, 'workoutSessions'), where('participantUids', 'array-contains', user.uid))).catch(() => null),
+  ]);
+  const seen = new Map<string, WorkoutSession>();
+  for (const d of [...hosted.docs, ...(joined?.docs ?? [])]) seen.set(d.id, { id: d.id, ...d.data() } as WorkoutSession);
+  const open: WorkoutSession[] = [];
+  const staleBefore = Date.now() - 6 * 60 * 60 * 1000;
+  for (const s of seen.values()) {
+    if (s.status !== 'waiting' && s.status !== 'active') continue;
+    const isHost = s.hostUid === user.uid;
+    const mine = s.participants?.[user.uid];
+    if (!isHost && (!mine || mine.status === 'declined' || mine.status === 'invited' || mine.status === 'completed')) continue;
+    if (s.status === 'waiting' && Date.parse(s.createdAt) < staleBefore) {
+      if (isHost) void cancelSession(s.id).catch(() => { /* best-effort */ });
+      continue;
+    }
+    open.push(s);
+  }
+  return open;
+}
+
+/** Throws when this person is already hosting or has joined a live session.
+ *  Two sessions at once is how the lists stopped matching (2026-09-12). */
+export async function assertNoOpenSession(except?: string): Promise<void> {
+  const open = (await getMyOpenSessions()).filter((s) => s.id !== except);
+  if (open.length === 0) return;
+  const s = open[0];
+  const who = auth.currentUser?.uid === s.hostUid ? 'hosting' : 'in';
+  throw new Error(`You are already ${who} a session (${s.workoutName}). Finish or leave it before starting another.`);
 }
 
 /** Invite a buddy to a session. */
@@ -88,6 +129,7 @@ export async function inviteToSession(
 
   await updateDoc(sessionRef, {
     [`participants.${buddyUid}`]: participant,
+    participantUids: arrayUnion(buddyUid),
   });
 
   // Send in-app notification (drives the toast) + system push so the
@@ -115,6 +157,7 @@ export async function joinSession(sessionId: string): Promise<void> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
 
+  await assertNoOpenSession(sessionId);
   const sessionRef = doc(db, 'workoutSessions', sessionId);
   await updateDoc(sessionRef, {
     [`participants.${user.uid}.status`]: 'joined',
@@ -383,7 +426,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
  * triggers on host writes anyway, so writing as a non-host is wasted
  * work).
  */
-export async function syncHostTemplate(
+export async function syncSessionTemplate(
   sessionId: string,
   exercises: TemplateExercise[],
   workoutName?: string,
@@ -395,17 +438,25 @@ export async function syncHostTemplate(
     const snap = await getDoc(ref);
     if (!snap.exists()) return;
     const session = snap.data() as WorkoutSession;
-    if (session.hostUid !== user.uid) return;
+    const isHost = session.hostUid === user.uid;
+    const me = session.participants?.[user.uid];
+    // Any joined participant may change the shared list; only the host
+    // renames the workout or changes what the lobby shows.
+    if (!isHost && (!me || (me.status !== 'joined' && me.status !== 'active'))) return;
     if (session.status !== 'active' && session.status !== 'waiting') return;
+    if (workoutName && !isHost) return;
     await updateDoc(ref, {
       currentTemplateExercises: exercises,
       // The host may still be choosing which day to do while buddies join.
       ...(workoutName ? { workoutName, templateExercises: exercises } : {}),
     });
   } catch (err) {
-    console.warn('[Session] syncHostTemplate failed:', err);
+    console.warn('[Session] syncSessionTemplate failed:', err);
   }
 }
+
+/** @deprecated older call sites — see syncSessionTemplate. */
+export const syncHostTemplate = syncSessionTemplate;
 
 /**
  * Broadcast a newly-created custom exercise to all participants of the

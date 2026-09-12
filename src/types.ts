@@ -274,6 +274,15 @@ export interface UserProfile {
   /** ISO timestamp of the last heartbeat from the user's app.
    *  Used to render the online/offline/busy dot on buddy avatars. */
   lastActive?: string;
+  /** E.164 phone number — the key that ties sign-in methods to one account (api/_profile.ts). */
+  phone?: string;
+  dob?: string;                  // YYYY-MM-DD
+  sex?: 'male' | 'female' | 'other';
+  /** Set once name + phone (+ dob/sex) have been collected — by the person
+   *  or by a gym's front desk. Until then the app shows the profile setup. */
+  profileComplete?: boolean;
+  createdBy?: 'self' | 'staff';
+  createdByGym?: string;
   /** Cached pointer to the gym this user belongs to (member or staff),
    *  mirrored from gyms/{gymId}/members/{uid}. null once they leave.
    *  See GymContext in the Gym OS lite section below. */
@@ -380,6 +389,9 @@ export interface WorkoutSession {
   startedAt?: string;
   completedAt?: string;
   participants: Record<string, SessionParticipant>;
+  /** Everyone hosting or ever invited — an array so "my open sessions" is
+   *  one array-contains query (rules read it too). */
+  participantUids?: string[];
   /** Custom exercises created by ANY participant during this session.
    *  Other clients pick these up via the session listener and add them
    *  to their local library if they don't already have them, so the

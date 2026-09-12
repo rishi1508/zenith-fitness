@@ -49,12 +49,12 @@ export function UpgradeSheet({ open, onClose, feature, onJoinGym }: UpgradeSheet
         <div className="rounded-card border border-border bg-surface-2 p-3">
           <div className={`${CAPTION} mb-1`}>Included with your gym</div>
           <p className={SUB}>
-            If your gym runs on Zenith, Premium is already part of your membership. Enter the join code from the front desk.
+            If your gym runs on Zenith, Premium is already part of your membership. The front desk adds you by your mobile number — sign in with the same number's account and it is all here.
           </p>
         </div>
 
         {onJoinGym ? (
-          <Button variant="primary" size="lg" full onClick={() => { onClose(); onJoinGym(); }}>I have a gym code</Button>
+          <Button variant="primary" size="lg" full onClick={() => { onClose(); onJoinGym(); }}>My gym uses Zenith</Button>
         ) : null}
         <p className="text-xs text-subtle text-center">Individual plans are coming. Nothing you use today will be taken away.</p>
         {!onJoinGym && <Button variant="secondary" size="lg" full onClick={onClose}>Got it</Button>}

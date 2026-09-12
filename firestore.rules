@@ -222,7 +222,8 @@ service cloud.firestore {
     match /workoutSessions/{sessionId} {
       allow read:   if signedIn() && (
         request.auth.uid == resource.data.hostUid ||
-        request.auth.uid in resource.data.participants
+        request.auth.uid in resource.data.participants ||
+        request.auth.uid in resource.data.get('participantUids', [])
       );
       allow create: if signedIn() && request.auth.uid == request.resource.data.hostUid;
       allow update: if signedIn() && (
@@ -312,6 +313,11 @@ service cloud.firestore {
     // Keyed by the invited email address, lower-cased, so the rule can check
     // the caller really is that person. Staff write them; the invitee reads
     // and deletes their own on the first sign-in that claims it.
+    // phone → uid, written only by the server (api/_profile.ts). One number, one account.
+    match /phoneIndex/{e164} {
+      allow read, write: if false;
+    }
+
     match /gymInvites/{email} {
       allow get:    if signedIn() && (
         (request.auth.token.email != null && request.auth.token.email.lower() == email)
@@ -390,21 +396,14 @@ service cloud.firestore {
         allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == uid
                     // The placeholder membership created against my e-mail, which I am claiming.
                     || (signedIn() && request.auth.token.email != null && myInvite().gymId == gymId && myInvite().memberUid == uid);
-        // joining: a signed-in user creates their own member doc with role
-        // 'member' — but only with a join code that really belongs to this
-        // gym (the code is the invitation; without this check anyone who
-        // knew a gym id could enrol themselves).
-        allow create: if isGymManager(gymId) || isAdmin() || (
+        // Membership is the desk's job (2026-09-12): staff add members, and
+        // api/members.ts makes the account. Nobody enrols themselves any more —
+        // the join-code and e-mail-invite paths are closed. (An invitee may
+        // still finish claiming a placeholder the old way, below.)
+        allow create: if isGymStaff(gymId) || isAdmin() || (
           signedIn() && request.auth.uid == uid && request.resource.data.role == 'member'
-          && (
-            // A join code the front desk gave them...
-            (request.resource.data.joinCode is string
-              && get(/databases/$(database)/documents/gymJoinCodes/$(request.resource.data.joinCode)).data.gymId == gymId)
-            // ...or an invite the gym already created against their email,
-            // which they are now signing in to claim (src/gymStaffHelpers.ts).
-            || (request.auth.token.email != null
-              && get(/databases/$(database)/documents/gymInvites/$(request.auth.token.email.lower())).data.gymId == gymId)
-          )
+          && request.auth.token.email != null
+          && get(/databases/$(database)/documents/gymInvites/$(request.auth.token.email.lower())).data.gymId == gymId
         );
         allow update: if isGymManager(gymId) || isAdmin()
                       || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d', 'checkinDates']))

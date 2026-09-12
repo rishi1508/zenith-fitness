@@ -84,8 +84,6 @@ const cases = [
   ['DENY',  'joining member bumps memberCount by two', upd(A, 'gyms/g1', GYM, { ...GYM, memberCount: 12 }), [...gymMocks(), mockExistsAfter(`gyms/g1/members/${A}`, true)]],
   ['DENY',  'stranger bumps memberCount without a member doc', upd(A, 'gyms/g1', GYM, { ...GYM, memberCount: 11 }), [...gymMocks(), mockExistsAfter(`gyms/g1/members/${A}`, false)]],
   ['DENY',  'member changes the plans alongside', upd(A, 'gyms/g1', GYM, { ...GYM, memberCount: 11, plans: [] }), [...gymMocks(), mockExistsAfter(`gyms/g1/members/${A}`, true)]],
-  ['ALLOW', 'member creates own member doc with a valid join code', req(A, 'create', `gyms/g1/members/${A}`, { uid: A, role: 'member', joinCode: 'ABC123' }), [...gymMocks(), mockGet('gymJoinCodes/ABC123', { gymId: 'g1' })]],
-  ['DENY',  'member creates own member doc with another gym\'s code', req(A, 'create', `gyms/g1/members/${A}`, { uid: A, role: 'member', joinCode: 'ABC123' }), [...gymMocks(), mockGet('gymJoinCodes/ABC123', { gymId: 'g2' })]],
 
   // the daily code lives in a staff-only doc
   ['DENY',  'member reads private/dailyCode', req(A, 'get', 'gyms/g1/private/dailyCode'), gymMocks({ member: true })],
@@ -146,6 +144,14 @@ const cases = [
   ['DENY',  'trainer reads ratings', req(TRAINER, 'get', 'gyms/g1/ratings/r1'), gymMocks()],
   ['DENY',  'member reads ratings', req(A, 'get', 'gyms/g1/ratings/r1'), gymMocks({ member: true })],
   ['DENY',  'manager writes a rating directly', req(MANAGER, 'create', 'gyms/g1/ratings/r1', { stars: 5 }), gymMocks()],
+
+  // membership is the desk's job; the phone index is server-only
+  ['DENY',  'member self-enrols with a join code (closed)', req(A, 'create', `gyms/g1/members/${A}`, { uid: A, role: 'member', joinCode: 'ABC123' }), [...gymMocks(), mockGet('gymJoinCodes/ABC123', { gymId: 'g1' })]],
+  ['ALLOW', 'trainer creates a member doc', req(TRAINER, 'create', `gyms/g1/members/${A}`, { uid: A, role: 'member' }), gymMocks()],
+  ['DENY',  'signed-in user reads phoneIndex', req(A, 'get', 'phoneIndex/+919876543210')],
+  ['DENY',  'signed-in user writes phoneIndex', req(A, 'create', 'phoneIndex/+919876543210', { uid: A })],
+  ['ALLOW', 'invited participant reads a session via participantUids', { ...req(B, 'get', 'workoutSessions/s1'), __existing: { data: { hostUid: A, participants: {}, participantUids: [A, B] } } }],
+  ['DENY',  'stranger reads a session', { ...req(C, 'get', 'workoutSessions/s1'), __existing: { data: { hostUid: A, participants: {}, participantUids: [A, B] } } }],
 ];
 
 const body = { source: { files: [{ name: 'firestore.rules', content: source }] }, testSuite: { testCases: cases.map(([expectation, , request, functionMocks]) => { const { __existing, ...rest } = request; return { expectation, request: rest, ...(__existing ? { resource: __existing } : {}), functionMocks: functionMocks ?? [] }; }) } };

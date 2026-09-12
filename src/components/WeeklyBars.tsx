@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useRef, useCallback } from 'react';
+import { useHoldScrub } from './useHoldScrub';
 import { CAPTION } from '../ui/styles';
 
 export interface WeeklyBarDay {
@@ -47,10 +48,8 @@ const TONE = {
  * `target`, full-tone bars met it; a dashed line marks the target itself.
  */
 export function WeeklyBars({ days, target, unit, tone, formatValue, label, met = (v, t) => v >= t }: WeeklyBarsProps) {
-  const [active, setActive] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const viewedIndex = days.length - 1;
-  const shown = active ?? viewedIndex;
   const colors = TONE[tone];
 
   const maxValue = Math.max(target, ...days.map((d) => d.value), 1);
@@ -62,12 +61,15 @@ export function WeeklyBars({ days, target, unit, tone, formatValue, label, met =
 
   /** Which bar sits under this x position, so a slide reads continuously
    *  rather than only when a finger happens to land on a bar. */
-  const barAt = (clientX: number): number | null => {
+  const barAt = useCallback((clientX: number): number | null => {
     const box = trackRef.current?.getBoundingClientRect();
     if (!box || box.width === 0) return null;
     const i = Math.floor(((clientX - box.left) / box.width) * days.length);
     return i >= 0 && i < days.length ? i : null;
-  };
+  }, [days.length]);
+  // Hold, then slide — a plain swipe over the bars scrolls the page.
+  const { active, setActive, handlers } = useHoldScrub(barAt);
+  const shown = active ?? viewedIndex;
 
   const shownValue = days[shown]?.value ?? 0;
 
@@ -88,12 +90,9 @@ export function WeeklyBars({ days, target, unit, tone, formatValue, label, met =
         <div
           ref={trackRef}
           data-elastic-skip
-          className="relative flex items-stretch gap-1 h-full touch-none select-none"
-          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setActive(barAt(e.clientX)); }}
-          onPointerMove={(e) => { if (e.buttons > 0 || e.pointerType === 'touch') setActive(barAt(e.clientX)); }}
-          onPointerUp={() => setActive(null)}
-          onPointerCancel={() => setActive(null)}
-          onPointerLeave={() => setActive(null)}
+          className="relative flex items-stretch gap-1 h-full select-none"
+          style={{ touchAction: 'pan-y' }}
+          {...handlers}
         >
           {days.map((d, i) => {
             const hit = hasTarget && met(d.value, target);

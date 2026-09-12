@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef } from 'react';
+import { useHoldScrub } from '../useHoldScrub';
 
 /** "6 PM" / "12 AM" for an hour index. */
 function hourLabel(hour: number): string {
@@ -15,7 +16,6 @@ function hourLabel(hour: number): string {
  * screen reader.
  */
 export function PeakHours({ counts, isDark }: { counts: number[]; isDark: boolean }) {
-  const [active, setActive] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const max = Math.max(1, ...counts);
   const total = counts.reduce((a, b) => a + b, 0);
@@ -23,12 +23,14 @@ export function PeakHours({ counts, isDark }: { counts: number[]; isDark: boolea
 
   /** Which bar is under this x position — so a slide reads continuously
    *  rather than only when a finger happens to land on a bar. */
-  const barAt = (clientX: number): number | null => {
+  const barAt = useCallback((clientX: number): number | null => {
     const box = trackRef.current?.getBoundingClientRect();
     if (!box || box.width === 0) return null;
     const i = Math.floor(((clientX - box.left) / box.width) * counts.length);
     return i >= 0 && i < counts.length ? i : null;
-  };
+  }, [counts.length]);
+  // Hold, then slide — a plain swipe over the bars scrolls the page.
+  const { active, setActive, handlers } = useHoldScrub(barAt);
 
   const shown = active ?? busiest;
   const cardCls = `rounded-xl border p-4 ${isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-white border-gray-200'}`;
@@ -45,12 +47,9 @@ export function PeakHours({ counts, isDark }: { counts: number[]; isDark: boolea
 
       <div
         ref={trackRef}
-        className="flex items-end gap-0.5 h-24 touch-none select-none"
-        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setActive(barAt(e.clientX)); }}
-        onPointerMove={(e) => { if (e.buttons > 0 || e.pointerType === 'touch') setActive(barAt(e.clientX)); }}
-        onPointerUp={() => setActive(null)}
-        onPointerCancel={() => setActive(null)}
-        onPointerLeave={() => setActive(null)}
+        className="flex items-end gap-0.5 h-24 select-none"
+        style={{ touchAction: 'pan-y' }}
+        {...handlers}
       >
         {counts.map((count, hour) => (
           <button

@@ -1,24 +1,23 @@
 import type { Workout, WorkoutExercise, WorkoutSet, TemplateExercise } from './types';
 
 /**
- * Pure diff-and-merge between the host's broadcast template and a
+ * Pure diff-and-merge between the session's shared template and one
  * participant's current workout. Used by App.tsx (in the session
- * listener) to apply host modifications to non-host workouts without
- * trampling the participant's own state.
+ * listener) to apply everybody else's structural changes to this phone
+ * without trampling the sets this person has logged.
  *
  * Rules
  * -----
  *   ADDED  (in new template, not in prev):
- *     The host added an exercise. Append it to the participant's
- *     workout with `defaultSets` empty sets. Skip if the participant
- *     already has it (e.g. they added the same one locally).
+ *     Somebody added an exercise. Insert it into this workout at the
+ *     position it holds in the template, with `defaultSets` empty sets.
+ *     Skip if the participant already has it.
  *
  *   REMOVED (in prev, not in new):
- *     The host removed an exercise. Drop it from the participant's
- *     workout — UNLESS they've already logged at least one set on it,
- *     in which case we keep it locally so they don't lose their
- *     completed work. (Non-destructive sync: host changes never erase
- *     participant data.)
+ *     Somebody removed an exercise. Drop it here too, logged sets or not —
+ *     the session is one shared workout, and a removal that only half the
+ *     room saw is what made lists drift apart (reported 2026-09-12). The
+ *     sets already in Firestore progress are kept for the summary.
  *
  *   SET COUNT CHANGED (in both, defaultSets differs):
  *     - Increased: append empty sets up to the new count.
@@ -55,17 +54,17 @@ export function reconcileWorkoutWithTemplate(
     }
   }
 
-  if (added.length === 0 && removedIds.size === 0 && setCountChanges.size === 0) {
+  const orderChanged = newTemplate.map((t) => t.exerciseId).join('|') !== prevTemplate.map((t) => t.exerciseId).join('|');
+  if (added.length === 0 && removedIds.size === 0 && setCountChanges.size === 0 && !orderChanged) {
     return null;
   }
 
   let exercises: WorkoutExercise[] = [...workout.exercises];
   let changed = false;
 
-  // 1. REMOVE — only when no logged set exists for that exercise
+  // 1. REMOVE — the shared list is the list, for everyone.
   exercises = exercises.filter((ex) => {
     if (!removedIds.has(ex.exerciseId)) return true;
-    if (hasLoggedSet(ex)) return true; // preserve user data
     changed = true;
     return false;
   });
@@ -94,8 +93,7 @@ export function reconcileWorkoutWithTemplate(
     return { ...ex, sets: next };
   });
 
-  // 3. ADD — append exercises the host introduced that the participant
-  //    doesn't already have.
+  // 3. ADD — exercises somebody introduced that this workout lacks.
   for (const tpl of added) {
     if (exercises.some((ex) => ex.exerciseId === tpl.exerciseId)) continue;
     const newSets: WorkoutSet[] = Array.from(
@@ -116,6 +114,16 @@ export function reconcileWorkoutWithTemplate(
     });
     changed = true;
   }
+
+  // 4. ORDER — exercises in the template take the template's positions
+  //    (an exercise added third lands third on every phone); anything this
+  //    person added on their own follows, in the order they added it.
+  const position = new Map(newTemplate.map((t, i) => [t.exerciseId, i]));
+  const ordered = exercises
+    .map((ex, i) => ({ ex, key: position.has(ex.exerciseId) ? position.get(ex.exerciseId) as number : newTemplate.length + i }))
+    .sort((a, b) => a.key - b.key)
+    .map((x) => x.ex);
+  if (ordered.some((ex, i) => ex !== exercises[i])) { exercises = ordered; changed = true; }
 
   return changed ? { ...workout, exercises } : null;
 }
@@ -163,10 +171,6 @@ export function templatesEqual(
 
 function isLogged(s: WorkoutSet): boolean {
   return !!s.completed || (s.weight > 0 && s.reps > 0);
-}
-
-function hasLoggedSet(ex: WorkoutExercise): boolean {
-  return ex.sets.some(isLogged);
 }
 
 function emptySet(): WorkoutSet {

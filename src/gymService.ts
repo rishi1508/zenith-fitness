@@ -112,45 +112,8 @@ export function listenToMyMembership(gymId: string, cb: (m: GymMember | null) =>
 /** Joins a gym by its 6-char code: looks up gymJoinCodes, creates the
  *  caller's own members/{uid} doc (role 'member'), bumps memberCount,
  *  and caches the pointer on the caller's profile. */
-export async function joinGymByCode(code: string): Promise<{ gym: Gym; member: GymMember }> {
-  const user = auth.currentUser;
-  if (!user) throw new Error('Not authenticated');
-
-  const normalized = code.trim().toUpperCase();
-  const codeSnap = await getDoc(doc(db, 'gymJoinCodes', normalized));
-  if (!codeSnap.exists()) throw new Error('Invalid join code');
-  const { gymId } = codeSnap.data() as { gymId: string };
-
-  const gymSnap = await getDoc(doc(db, 'gyms', gymId));
-  if (!gymSnap.exists()) throw new Error('Gym not found');
-  const gym = { id: gymSnap.id, ...gymSnap.data() } as Gym;
-
-  const memberRef = doc(db, 'gyms', gymId, 'members', user.uid);
-  const existingSnap = await getDoc(memberRef);
-  const now = new Date().toISOString();
-  const member: GymMember = existingSnap.exists()
-    ? (existingSnap.data() as GymMember)
-    : stripUndefined({
-        uid: user.uid,
-        joinCode: normalized,
-        name: user.displayName || 'Member',
-        email: user.email || undefined,
-        photoURL: user.photoURL || null,
-        role: 'member',
-        joinedAt: now,
-      });
-
-  const batch = writeBatch(db);
-  if (!existingSnap.exists()) {
-    batch.set(memberRef, member);
-    batch.update(doc(db, 'gyms', gymId), { memberCount: increment(1) });
-  }
-  const context: GymContext = { gymId, gymRole: member.role, joinedAt: member.joinedAt };
-  batch.set(doc(db, 'userProfiles', user.uid), { gym: context }, { merge: true });
-  await batch.commit();
-
-  return { gym, member };
-}
+// Joining by code was removed on 2026-09-12: membership is the front desk's
+// job (api/members.ts creates the account and the membership together).
 
 /**
  * Member-initiated "leave" — clears the cached gym pointer on the
@@ -736,9 +699,10 @@ export async function postAnnouncement(
     });
   }
 
-  // One server call fans out to every member (api/push.ts `announce`);
-  // best-effort — the announcement itself is already saved.
-  await deliverAnnouncementPush({ gymId, title: 'Gym announcement', body: text, data: { type: 'gym_announcement' } })
+  // One server call fans out to every member (api/push.ts `announce`).
+  // Not awaited: the notice is saved, and a 300-member fan-out taking a few
+  // seconds was what left the composer on "Posting…" after it had posted.
+  void deliverAnnouncementPush({ gymId, title: 'Gym announcement', body: text, data: { type: 'gym_announcement' } })
     .catch((err) => console.warn('[Gym] announcement push fan-out failed:', err));
 }
 

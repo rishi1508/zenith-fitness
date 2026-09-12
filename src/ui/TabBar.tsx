@@ -9,6 +9,8 @@ export interface TabItem<T extends string = string> {
   icon: LucideIcon;
   /** Rendered as the elevated 56px accent disc in the middle of the bar. */
   center?: boolean;
+  /** Unread count shown as a small pill on the icon (hidden when 0). */
+  badge?: number;
 }
 
 interface TabBarProps<T extends string> {
@@ -36,8 +38,16 @@ export function TabBar<T extends string>({ items, active, onChange }: TabBarProp
       }}
       aria-label="Primary"
     >
-      {items.map(({ id, label, icon: Icon, center, render }) => {
+      {items.map(({ id, label, icon: Icon, center, render, badge }) => {
         const on = id === active;
+        const pill = badge && badge > 0 ? (
+          <span
+            className={`absolute -top-1 ${center ? 'right-0' : '-right-2'} min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-white text-[11px] font-bold leading-[18px] text-center border-2 border-bg`}
+            aria-label={`${badge} new`}
+          >
+            {badge > 9 ? '9+' : badge}
+          </span>
+        ) : null;
         return (
           <button
             key={id}
@@ -48,13 +58,16 @@ export function TabBar<T extends string>({ items, active, onChange }: TabBarProp
               on ? 'text-accent' : 'text-subtle hover:text-muted'
             } ${center ? '-mt-[30px]' : ''}`}
           >
-            {render ? render(on) : center ? (
-              <span className="w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center border-4 border-bg shadow-lg shadow-accent/35">
-                <Icon className="w-[26px] h-[26px]" strokeWidth={2} />
-              </span>
-            ) : (
-              <Icon className="w-6 h-6" strokeWidth={1.75} />
-            )}
+            <span className="relative inline-flex">
+              {render ? render(on) : center ? (
+                <span className="w-14 h-14 rounded-full bg-accent text-white flex items-center justify-center border-4 border-bg shadow-lg shadow-accent/35">
+                  <Icon className="w-[26px] h-[26px]" strokeWidth={2} />
+                </span>
+              ) : (
+                <Icon className="w-6 h-6" strokeWidth={1.75} />
+              )}
+              {pill}
+            </span>
             <span>{label}</span>
           </button>
         );

@@ -171,34 +171,6 @@ export function inviteKey(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/**
- * Invites somebody who is not on Zenith yet: the membership is created now
- * (so the owner can set their plan and take payment), and a `gymInvites`
- * record lets that person claim it the first time they sign in with the same
- * email — no temporary password to email around, because Zenith's own email
- * sign-in is the credential.
- */
-export async function inviteMemberByEmail(
-  gymId: string,
-  input: { name: string; email: string; phone?: string; planId?: string },
-): Promise<{ uid: string; key: string }> {
-  const key = inviteKey(input.email);
-  if (!key.includes('@')) throw new Error('That does not look like an email address');
-
-  const existing = await findUserProfileByEmail(key);
-  if (existing) throw new Error(`${existing.name} already has a Zenith account — add them by search instead.`);
-
-  const { addMember } = await import('./gymService');
-  const member = await addMember(gymId, { name: input.name, email: key, phone: input.phone, planId: input.planId });
-
-  await setDoc(doc(db, 'gymInvites', key), {
-    gymId,
-    memberUid: member.uid,
-    name: input.name,
-    invitedAt: new Date().toISOString(),
-  });
-  return { uid: member.uid, key };
-}
 
 /**
  * Called once after sign-in: if this account was invited to a gym before it
