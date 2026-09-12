@@ -172,7 +172,13 @@ export function GymProvider({ children }: { children: ReactNode }) {
     return () => { root.style.removeProperty('--accent'); };
   }, [gym?.accentColor]);
 
-  const role = membership?.role ?? null;
+  // The rules gate staff actions on gyms/{id}.staff and ownerUid, so that
+  // is what decides the role here too; the member doc's copy is the
+  // fallback (it is what a plain member has).
+  const uid = user?.uid;
+  const role: GymRole | null = !gym || !uid
+    ? (membership?.role ?? null)
+    : gym.ownerUid === uid ? 'owner' : (gym.staff?.[uid] ?? membership?.role ?? null);
 
   return (
     <GymCtx.Provider value={{ gym, membership, role, loading, hasGymHint: !!hint, refresh }}>

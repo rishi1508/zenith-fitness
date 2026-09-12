@@ -44,6 +44,15 @@ service cloud.firestore {
     // (the client treats that role as owner too) — accept either.
     function isGymOwner(gymId) { return signedIn() && (request.auth.uid == gymDoc(gymId).ownerUid || (isGymStaff(gymId) && gymStaffRole(gymId) == 'owner')); }
     function isGymMember(gymId) { return signedIn() && exists(/databases/$(database)/documents/gyms/$(gymId)/members/$(request.auth.uid)); }
+    // YYYY-MM-DD of a timestamp (UTC). A client's local date is always within
+    // a day of it, which is the window self-reported check-in dates must fit.
+    function pad2(n) { return n < 10 ? '0' + string(n) : string(n); }
+    function dayStr(t) { return string(t.year()) + '-' + pad2(t.month()) + '-' + pad2(t.day()); }
+    function nearToday(d) {
+      return d in [dayStr(request.time - duration.value(1, 'd')), dayStr(request.time), dayStr(request.time + duration.value(1, 'd'))];
+    }
+    // The invite created against the caller's own e-mail, if any.
+    function myInvite() { return get(/databases/$(database)/documents/gymInvites/$(request.auth.token.email.lower())).data; }
 
     // ---------- userProfiles ----------
     // Publicly readable by authenticated users (for search + comparison).
@@ -56,7 +65,10 @@ service cloud.firestore {
       // staff adds/links a member by email (addMember in gymService.ts).
       allow update: if signedIn() && (
         request.auth.uid == uid ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gym']) && isGymManager(request.resource.data.gym.gymId)) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['gym'])
+          && isGymManager(request.resource.data.gym.gymId)
+          // ...but never to pull somebody out of another gym.
+          && (resource.data.get('gym', null) == null || resource.data.gym.gymId == request.resource.data.gym.gymId)) ||
         // Somebody following or unfollowing this person may move that one
         // counter by one, and nothing else (src/followService.ts) — and only
         // in step with their own edge: +1 once the edge exists, -1 once it is
@@ -358,11 +370,26 @@ service cloud.firestore {
       allow create: if signedIn() && ((request.resource.data.ownerUid == request.auth.uid && request.resource.data.staff[request.auth.uid] == 'owner') || isAdmin());
       allow update: if isGymOwner(gymId) || isAdmin()
                     || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dailyCodeHash', 'dailyCodeDate']))
-                    || (isGymManager(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'plans']));
+                    || (isGymManager(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount', 'plans']))
+                    // Joining (joinGymByCode): the member doc and the +1 land in one batch.
+                    || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount'])
+                        && request.resource.data.memberCount == resource.data.get('memberCount', 0) + 1
+                        && existsAfter(/databases/$(database)/documents/gyms/$(gymId)/members/$(request.auth.uid)));
       allow delete: if false;
 
+      // Staff-only state that members must not be able to read: today's
+      // check-in code hash lives here (private/dailyCode), not on the gym
+      // doc every member can see — a 6-digit code behind a readable hash
+      // is a one-second brute force.
+      match /private/{docId} {
+        allow read: if isGymStaff(gymId) || isAdmin();
+        allow write: if (isGymStaff(gymId) || isAdmin()) && request.resource.data.keys().hasOnly(['hash', 'date', 'updatedAt']);
+      }
+
       match /members/{uid} {
-        allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == uid;
+        allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == uid
+                    // The placeholder membership created against my e-mail, which I am claiming.
+                    || (signedIn() && request.auth.token.email != null && myInvite().gymId == gymId && myInvite().memberUid == uid);
         // joining: a signed-in user creates their own member doc with role
         // 'member' — but only with a join code that really belongs to this
         // gym (the code is the invitation; without this check anyone who
@@ -380,9 +407,11 @@ service cloud.firestore {
           )
         );
         allow update: if isGymManager(gymId) || isAdmin()
-                      || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d']))
-                      || (request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d', 'lastWorkoutAt', 'photoURL', 'phone']));
-        allow delete: if isGymManager(gymId) || isAdmin();
+                      || (isGymStaff(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d', 'checkinDates']))
+                      || (request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCheckinAt', 'checkinCount30d', 'checkinDates', 'lastWorkoutAt', 'photoURL', 'phone']));
+        allow delete: if isGymManager(gymId) || isAdmin()
+                      // Claiming an invite replaces the placeholder with the real account (src/gymStaffHelpers.ts).
+                      || (signedIn() && request.auth.token.email != null && myInvite().gymId == gymId && myInvite().memberUid == uid);
       }
       match /payments/{id}   { allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == resource.data.uid; allow create, update: if isGymManager(gymId) || isAdmin(); allow delete: if isGymOwner(gymId) || isAdmin(); }
       match /checkins/{id}   { allow read: if isGymStaff(gymId) || isAdmin() || request.auth.uid == resource.data.uid;
@@ -392,15 +421,18 @@ service cloud.firestore {
                                allow create: if isGymStaff(gymId) || isAdmin() || (
                                  signedIn() && request.auth.uid == request.resource.data.uid
                                  && id == request.auth.uid + '_' + request.resource.data.date
+                                 // No back-dating: the date must be today give or take a time zone.
+                                 && nearToday(request.resource.data.date)
                                  && (
                                    // 'member-qr' is self-reported: the client checks the gym's
                                    // geofence (src/geo.ts) and writes the distance, but rules
                                    // cannot verify a location. The daily code below is the
-                                   // verified path — staff rotate it and rules check the hash.
+                                   // verified path — staff rotate it and rules check the hash
+                                   // against the staff-only private/dailyCode doc.
                                    request.resource.data.method == 'member-qr' ||
                                    (request.resource.data.method == 'code'
-                                     && request.resource.data.codeHash == gymDoc(gymId).dailyCodeHash
-                                     && request.resource.data.date == gymDoc(gymId).dailyCodeDate)
+                                     && request.resource.data.codeHash == get(/databases/$(database)/documents/gyms/$(gymId)/private/dailyCode).data.hash
+                                     && request.resource.data.date == get(/databases/$(database)/documents/gyms/$(gymId)/private/dailyCode).data.date)
                                  )
                                );
                                allow update, delete: if isGymManager(gymId) || isAdmin(); }
@@ -428,20 +460,23 @@ service cloud.firestore {
                                  allow create: if isGymStaff(gymId) || isAdmin()
                                    || (isGymMember(gymId) && request.resource.data.enrolled.hasOnly([request.auth.uid]) && request.resource.data.attended.size() == 0);
                                  allow update: if isGymStaff(gymId) || isAdmin()
-                                   || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolled']));
+                                   || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolled'])
+                                       // ...and the only name that may appear or disappear is their own.
+                                       && request.resource.data.enrolled.toSet().difference(resource.data.enrolled.toSet()).hasOnly([request.auth.uid])
+                                       && resource.data.enrolled.toSet().difference(request.resource.data.enrolled.toSet()).hasOnly([request.auth.uid]));
                                  allow delete: if false; } }
       match /announcements/{id} {
         allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
         allow create: if isGymStaff(gymId) || isAdmin();
-        allow update: if isGymManager(gymId) || isAdmin();
-        allow delete: if isGymStaff(gymId) || isAdmin();
+        // The author, a manager or an admin — a trainer cannot take down a colleague's notice.
+        allow update, delete: if isGymManager(gymId) || isAdmin() || (isGymStaff(gymId) && resource.data.byUid == request.auth.uid);
 
         // A poster or a photo of the notice board, kept out of the list query.
         match /media/{mediaId} {
           allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
           allow create: if (isGymStaff(gymId) || isAdmin()) && request.resource.data.uid == request.auth.uid;
           allow update: if false;
-          allow delete: if isGymStaff(gymId) || isAdmin();
+          allow delete: if isGymManager(gymId) || isAdmin() || (isGymStaff(gymId) && resource.data.uid == request.auth.uid);
         }
       }
 

@@ -27,6 +27,13 @@ function useIsStaff(): boolean {
   return role === 'trainer' || role === 'manager' || role === 'owner' || isAdmin(user?.uid);
 }
 
+/** Who may take a notice down: its author, a manager or an admin (mirrors firestore.rules). */
+function useCanRemove(): (a: GymAnnouncement) => boolean {
+  const { role } = useGym();
+  const { user } = useAuth();
+  return (a) => role === 'manager' || role === 'owner' || isAdmin(user?.uid) || (!!user && a.byUid === user.uid && role === 'trainer');
+}
+
 /** Classes, for naming an announcement's audience and for the picker. */
 function useClasses(gymId: string | undefined): GymClass[] {
   const [classes, setClasses] = useState<GymClass[]>([]);
@@ -50,6 +57,7 @@ export function AnnouncementsPanel({ onOpenProfile }: { onOpenProfile?: (uid: st
   const { showToast } = useToast();
   const { confirm } = useConfirm();
   const isStaff = useIsStaff();
+  const canRemove = useCanRemove();
   const classes = useClasses(gym?.id);
   const [announcements, setAnnouncements] = useState<GymAnnouncement[] | null>(null);
 
@@ -101,7 +109,7 @@ export function AnnouncementsPanel({ onOpenProfile }: { onOpenProfile?: (uid: st
           gymId={gym.id}
           announcement={a}
           audience={audienceLabel(a.audience)}
-          canDelete={isStaff}
+          canDelete={canRemove(a)}
           onOpenProfile={onOpenProfile}
           onDelete={() => { void remove(a); }}
         />

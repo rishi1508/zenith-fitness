@@ -4,7 +4,7 @@ import type { GymViewProps } from './types';
 import type { GymCheckin } from '../../types';
 import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
-import { checkinMember, dailyCodeHashIfValid, memberQrPayload, parseQrPayload, listCheckins } from '../../gymService';
+import { checkinMember, dailyCodeHashFor, memberQrPayload, parseQrPayload, listCheckins } from '../../gymService';
 import { localDateISO, addDaysISO } from '../../gymStats';
 import { startOfWeekISO } from '../../gymMemberHelpers';
 import { hapticNotification } from '../../haptics';
@@ -103,17 +103,16 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
     if (!gym || !user || busy) return;
     setBusy(true);
     try {
-      const codeHash = await dailyCodeHashIfValid(gym, value);
-      if (!codeHash) {
-        showToast('Wrong code, or it has expired.', 'error');
-        setDigits(Array(6).fill(''));
-        return;
-      }
+      // The code is checked by the security rules against today's staff-only
+      // hash — a wrong code comes back as permission-denied.
+      const codeHash = await dailyCodeHashFor(gym.id, value);
       await checkinMember(gym.id, user.uid, 'code', { codeHash });
       await afterSuccess();
       setDigits(Array(6).fill(''));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Check-in failed.', 'error');
+      const denied = (err as { code?: string }).code === 'permission-denied';
+      showToast(denied ? 'Wrong code, or it has expired. Ask the desk for today\'s code.' : (err instanceof Error ? err.message : 'Check-in failed.'), 'error');
+      if (denied) setDigits(Array(6).fill(''));
     } finally {
       setBusy(false);
     }

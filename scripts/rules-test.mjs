@@ -28,6 +28,12 @@ const mockExists = (path, ok) => ({ function: 'exists', args: [{ exactValue: `/d
 const mockExistsAfter = (path, ok) => ({ function: 'existsAfter', args: [{ exactValue: `/databases/(default)/documents/${path}` }], result: { value: ok } });
 
 const pendingAB = { fromUid: A, toUid: B, status: 'pending' };
+// One gym for the gym cases: owner `own`, a manager, a trainer; A is (sometimes) a member.
+const OWNER = 'own', MANAGER = 'mgr', TRAINER = 'trn';
+const GYM = { ownerUid: OWNER, staff: { [OWNER]: 'owner', [MANAGER]: 'manager', [TRAINER]: 'trainer' }, memberCount: 10, plans: [{ id: 'p1' }] };
+const gymMocks = ({ member = false } = {}) => [mockGet('gyms/g1', GYM), mockExists(`gyms/g1/members/${A}`, member)];
+const utcDay = (offsetDays) => new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+const TODAY = utcDay(0), TOMORROW = utcDay(1);
 const cases = [
   // buddyRequests
   ['ALLOW', 'A creates request A__B', req(A, 'create', `buddyRequests/${A}__${B}`, pendingAB)],
@@ -72,6 +78,60 @@ const cases = [
     [mockGet('gyms/g1', { ownerUid: 'own', staff: { own: 'owner' } }), mockExists(`gyms/g1/members/${A}`, true), mockExists(`gyms/g1/checkins/${A}_2026-09-12`, true)]],
   ['DENY',  'member bumps dailyStats without a check-in', upd(A, `gyms/g1/dailyStats/2026-09-12`, { date: '2026-09-12', count: 5, hours: {} }, { date: '2026-09-12', count: 6, hours: {} }),
     [mockGet('gyms/g1', { ownerUid: 'own', staff: { own: 'owner' } }), mockExists(`gyms/g1/members/${A}`, true), mockExists(`gyms/g1/checkins/${A}_2026-09-12`, false)]],
+
+  // joining: memberCount +1 only in the batch that creates the member doc
+  ['ALLOW', 'joining member bumps memberCount by one', upd(A, 'gyms/g1', GYM, { ...GYM, memberCount: 11 }), [...gymMocks(), mockExistsAfter(`gyms/g1/members/${A}`, true)]],
+  ['DENY',  'joining member bumps memberCount by two', upd(A, 'gyms/g1', GYM, { ...GYM, memberCount: 12 }), [...gymMocks(), mockExistsAfter(`gyms/g1/members/${A}`, true)]],
+  ['DENY',  'stranger bumps memberCount without a member doc', upd(A, 'gyms/g1', GYM, { ...GYM, memberCount: 11 }), [...gymMocks(), mockExistsAfter(`gyms/g1/members/${A}`, false)]],
+  ['DENY',  'member changes the plans alongside', upd(A, 'gyms/g1', GYM, { ...GYM, memberCount: 11, plans: [] }), [...gymMocks(), mockExistsAfter(`gyms/g1/members/${A}`, true)]],
+  ['ALLOW', 'member creates own member doc with a valid join code', req(A, 'create', `gyms/g1/members/${A}`, { uid: A, role: 'member', joinCode: 'ABC123' }), [...gymMocks(), mockGet('gymJoinCodes/ABC123', { gymId: 'g1' })]],
+  ['DENY',  'member creates own member doc with another gym\'s code', req(A, 'create', `gyms/g1/members/${A}`, { uid: A, role: 'member', joinCode: 'ABC123' }), [...gymMocks(), mockGet('gymJoinCodes/ABC123', { gymId: 'g2' })]],
+
+  // the daily code lives in a staff-only doc
+  ['DENY',  'member reads private/dailyCode', req(A, 'get', 'gyms/g1/private/dailyCode'), gymMocks({ member: true })],
+  ['ALLOW', 'trainer reads private/dailyCode', req(TRAINER, 'get', 'gyms/g1/private/dailyCode'), gymMocks()],
+  ['ALLOW', 'trainer rotates the code', req(TRAINER, 'create', 'gyms/g1/private/dailyCode', { hash: 'h', date: TODAY, updatedAt: 'x' }), gymMocks()],
+  ['DENY',  'member writes private/dailyCode', req(A, 'create', 'gyms/g1/private/dailyCode', { hash: 'h', date: TODAY, updatedAt: 'x' }), gymMocks({ member: true })],
+  ['ALLOW', 'member checks in with today\'s code hash', req(A, 'create', `gyms/g1/checkins/${A}_${TODAY}`, { uid: A, date: TODAY, method: 'code', codeHash: 'h', at: 'x', byUid: A }),
+    [...gymMocks({ member: true }), mockGet('gyms/g1/private/dailyCode', { hash: 'h', date: TODAY })]],
+  ['DENY',  'member checks in with a wrong code hash', req(A, 'create', `gyms/g1/checkins/${A}_${TODAY}`, { uid: A, date: TODAY, method: 'code', codeHash: 'nope', at: 'x', byUid: A }),
+    [...gymMocks({ member: true }), mockGet('gyms/g1/private/dailyCode', { hash: 'h', date: TODAY })]],
+  ['DENY',  'member back-dates a QR check-in', req(A, 'create', `gyms/g1/checkins/${A}_2020-01-01`, { uid: A, date: '2020-01-01', method: 'member-qr', at: 'x', byUid: A }), gymMocks({ member: true })],
+  ['ALLOW', 'member QR check-in for today', req(A, 'create', `gyms/g1/checkins/${A}_${TODAY}`, { uid: A, date: TODAY, method: 'member-qr', at: 'x', byUid: A }), gymMocks({ member: true })],
+  ['ALLOW', 'member QR check-in dated tomorrow (time zone ahead of UTC)', req(A, 'create', `gyms/g1/checkins/${A}_${TOMORROW}`, { uid: A, date: TOMORROW, method: 'member-qr', at: 'x', byUid: A }), gymMocks({ member: true })],
+  ['DENY',  'member checks in as someone else', req(A, 'create', `gyms/g1/checkins/${B}_${TODAY}`, { uid: B, date: TODAY, method: 'member-qr', at: 'x', byUid: A }), gymMocks({ member: true })],
+  ['ALLOW', 'member updates own check-in dates + count', upd(A, `gyms/g1/members/${A}`, { uid: A, role: 'member' }, { uid: A, role: 'member', lastCheckinAt: 'x', checkinDates: [TODAY], checkinCount30d: 1 }), gymMocks({ member: true })],
+  ['DENY',  'member changes own plan', upd(A, `gyms/g1/members/${A}`, { uid: A, role: 'member' }, { uid: A, role: 'member', planEnd: '2099-01-01' }), gymMocks({ member: true })],
+
+  // claiming an invite: read + replace the placeholder my invite points at
+  ['ALLOW', 'invitee reads the placeholder member doc', { ...req(A, 'get', 'gyms/g1/members/manual_1'), auth: { uid: A, token: { email: 'a@x.com' } } },
+    [...gymMocks(), mockGet('gymInvites/a@x.com', { gymId: 'g1', memberUid: 'manual_1' })]],
+  ['DENY',  'invitee reads somebody else\'s placeholder', { ...req(A, 'get', 'gyms/g1/members/manual_2'), auth: { uid: A, token: { email: 'a@x.com' } } },
+    [...gymMocks(), mockGet('gymInvites/a@x.com', { gymId: 'g1', memberUid: 'manual_1' })]],
+  ['ALLOW', 'invitee deletes the placeholder', { ...req(A, 'delete', 'gyms/g1/members/manual_1'), auth: { uid: A, token: { email: 'a@x.com' } } },
+    [...gymMocks(), mockGet('gymInvites/a@x.com', { gymId: 'g1', memberUid: 'manual_1' })]],
+  ['DENY',  'stranger deletes a member doc', req(A, 'delete', 'gyms/g1/members/manual_1'), gymMocks()],
+  ['ALLOW', 'invitee creates own member doc via the invite', { ...req(A, 'create', `gyms/g1/members/${A}`, { uid: A, role: 'member' }), auth: { uid: A, token: { email: 'a@x.com' } } },
+    [...gymMocks(), mockGet('gymInvites/a@x.com', { gymId: 'g1', memberUid: 'manual_1' })]],
+
+  // a manager may only point a gym-less profile at their gym
+  ['ALLOW', 'manager sets gym pointer on a gym-less profile', upd(MANAGER, `userProfiles/${A}`, { uid: A }, { uid: A, gym: { gymId: 'g1', gymRole: 'member' } }), gymMocks()],
+  ['ALLOW', 'manager re-points a profile already in their gym', upd(MANAGER, `userProfiles/${A}`, { uid: A, gym: { gymId: 'g1', gymRole: 'member' } }, { uid: A, gym: { gymId: 'g1', gymRole: 'trainer' } }), gymMocks()],
+  ['DENY',  'manager pulls a profile out of another gym', upd(MANAGER, `userProfiles/${A}`, { uid: A, gym: { gymId: 'g2', gymRole: 'member' } }, { uid: A, gym: { gymId: 'g1', gymRole: 'member' } }), gymMocks()],
+  ['DENY',  'trainer sets a gym pointer', upd(TRAINER, `userProfiles/${A}`, { uid: A }, { uid: A, gym: { gymId: 'g1', gymRole: 'member' } }), gymMocks()],
+
+  // class sessions: only your own name moves
+  ['ALLOW', 'member enrols themselves', upd(A, 'gyms/g1/classes/c1/sessions/2026-09-12', { enrolled: [B], attended: [] }, { enrolled: [B, A], attended: [] }), gymMocks({ member: true })],
+  ['ALLOW', 'member unenrols themselves', upd(A, 'gyms/g1/classes/c1/sessions/2026-09-12', { enrolled: [B, A], attended: [] }, { enrolled: [B], attended: [] }), gymMocks({ member: true })],
+  ['DENY',  'member removes somebody else', upd(A, 'gyms/g1/classes/c1/sessions/2026-09-12', { enrolled: [B, A], attended: [] }, { enrolled: [A], attended: [] }), gymMocks({ member: true })],
+  ['DENY',  'member enrols somebody else', upd(A, 'gyms/g1/classes/c1/sessions/2026-09-12', { enrolled: [A], attended: [] }, { enrolled: [A, C], attended: [] }), gymMocks({ member: true })],
+  ['DENY',  'member marks attendance', upd(A, 'gyms/g1/classes/c1/sessions/2026-09-12', { enrolled: [A], attended: [] }, { enrolled: [A], attended: [A] }), gymMocks({ member: true })],
+
+  // announcements: author or manager
+  ['ALLOW', 'trainer deletes own announcement', { ...req(TRAINER, 'delete', 'gyms/g1/announcements/a1'), __existing: { data: { byUid: TRAINER } } }, gymMocks()],
+  ['DENY',  'trainer deletes a colleague\'s announcement', { ...req(TRAINER, 'delete', 'gyms/g1/announcements/a1'), __existing: { data: { byUid: MANAGER } } }, gymMocks()],
+  ['ALLOW', 'manager deletes any announcement', { ...req(MANAGER, 'delete', 'gyms/g1/announcements/a1'), __existing: { data: { byUid: TRAINER } } }, gymMocks()],
+  ['DENY',  'member deletes an announcement', { ...req(A, 'delete', 'gyms/g1/announcements/a1'), __existing: { data: { byUid: TRAINER } } }, gymMocks({ member: true })],
 ];
 
 const body = { source: { files: [{ name: 'firestore.rules', content: source }] }, testSuite: { testCases: cases.map(([expectation, , request, functionMocks]) => { const { __existing, ...rest } = request; return { expectation, request: rest, ...(__existing ? { resource: __existing } : {}), functionMocks: functionMocks ?? [] }; }) } };

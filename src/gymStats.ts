@@ -46,7 +46,13 @@ export function addDaysISO(yyyymmdd: string, n: number): string {
  *  duration. */
 export function addMonthsISO(yyyymmdd: string, months: number): string {
   const d = new Date(dateOnly(yyyymmdd) + 'T00:00:00');
+  // Clamp to the last day of the target month: 31 Jan + 1 month is 28 Feb,
+  // not 3 Mar (which is what setMonth alone produces).
+  const day = d.getDate();
+  d.setDate(1);
   d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
   return localDateISO(d);
 }
 

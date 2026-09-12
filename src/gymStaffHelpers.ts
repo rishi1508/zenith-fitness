@@ -1,6 +1,6 @@
 import {
   doc, getDoc, setDoc, deleteDoc, deleteField, updateDoc, collection, getDocs, query, where,
-  orderBy, startAt, endAt, limit as fsLimit,
+  orderBy, startAt, endAt, limit as fsLimit, writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { setStaffRole } from './gymService';
@@ -213,19 +213,28 @@ export async function claimGymInvite(): Promise<string | null> {
     if (!snap.exists()) return null;
     const { gymId, memberUid, name } = snap.data() as { gymId: string; memberUid: string; name?: string };
 
-    const placeholder = await getDoc(doc(db, 'gyms', gymId, 'members', memberUid));
-    const base = placeholder.exists() ? (placeholder.data() as Record<string, unknown>) : {};
-    await setDoc(doc(db, 'gyms', gymId, 'members', user.uid), {
+    // The placeholder the desk created (plan, phone, notes) becomes this
+    // account's membership. Rules let the invitee read and remove the
+    // placeholder their own invite points at, and create their own doc.
+    const placeholderRef = doc(db, 'gyms', gymId, 'members', memberUid);
+    const placeholder = memberUid !== user.uid ? await getDoc(placeholderRef) : null;
+    const base = placeholder?.exists() ? (placeholder.data() as Record<string, unknown>) : {};
+    const joinedAt = (base.joinedAt as string) ?? new Date().toISOString();
+
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'gyms', gymId, 'members', user.uid), {
       ...base,
       uid: user.uid,
       name: user.displayName || name || 'Member',
       email,
       photoURL: user.photoURL ?? null,
       role: 'member',
-      joinedAt: (base.joinedAt as string) ?? new Date().toISOString(),
+      joinedAt,
     }, { merge: true });
-
-    await setDoc(doc(db, 'userProfiles', user.uid), { gym: { id: gymId, role: 'member' } }, { merge: true });
+    if (placeholder?.exists()) batch.delete(placeholderRef);
+    // Same pointer shape GymContext reads (gymService.joinGymByCode).
+    batch.set(doc(db, 'userProfiles', user.uid), { gym: { gymId, gymRole: 'member', joinedAt } }, { merge: true });
+    await batch.commit();
     // Best-effort tidy-up; the rules let the claimer delete their own invite.
     await deleteDoc(doc(db, 'gymInvites', email)).catch(() => {});
     return gymId;

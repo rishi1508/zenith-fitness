@@ -1,13 +1,13 @@
 import {
   doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot,
   query, where, orderBy, limit as fsLimit, documentId, writeBatch, arrayUnion, arrayRemove,
-  increment, deleteField,
+  increment, deleteField, runTransaction,
 } from 'firebase/firestore';
 import type { QueryConstraint, DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { deliverAnnouncementPush } from './pushService';
 import { effectiveProfilePhoto } from './profilePhoto';
-import { membershipStatus, localDateISO, addMonthsISO } from './gymStats';
+import { membershipStatus, localDateISO, addMonthsISO, addDaysISO } from './gymStats';
 import { applyEquipmentStatus } from './gym/gymOps';
 import type {
   Gym, GymPlan, GymMember, GymPayment, GymCheckin, GymDailyStat, GymClass, GymClassSession, GymAnnouncement,
@@ -340,6 +340,10 @@ export async function addMember(
     const normalizedEmail = input.email.trim().toLowerCase();
     const snap = await getDocs(query(collection(db, 'userProfiles'), where('email', '==', normalizedEmail), fsLimit(1)));
     if (!snap.empty) {
+      const theirGym = (snap.docs[0].data() as { gym?: { gymId?: string } | null }).gym;
+      if (theirGym?.gymId && theirGym.gymId !== gymId) {
+        throw new Error('This person already belongs to another gym. They need to leave it first.');
+      }
       linkedUid = snap.docs[0].id;
       uid = linkedUid;
     }
@@ -349,7 +353,7 @@ export async function addMember(
   const gymSnap = await getDoc(doc(db, 'gyms', gymId));
   const gym = gymSnap.exists() ? (gymSnap.data() as Gym) : null;
   const plan = gym?.plans.find((p) => p.id === input.planId);
-  const planStart = input.planId ? (input.planStart ?? now) : undefined;
+  const planStart = input.planId ? (input.planStart ?? localDateISO(new Date())) : undefined;
   const planEnd = plan && planStart ? addMonthsISO(planStart, plan.months) : undefined;
 
   const member: GymMember = stripUndefined({
@@ -403,8 +407,20 @@ export async function renewMembership(
   planId: string,
   startFrom: 'today' | 'planEnd' = 'today',
 ): Promise<void> {
-  const memberRef = doc(db, 'gyms', gymId, 'members', uid);
-  const [gymSnap, memberSnap] = await Promise.all([getDoc(doc(db, 'gyms', gymId)), getDoc(memberRef)]);
+  await runTransaction(db, async (tx) => {
+    const memberRef = doc(db, 'gyms', gymId, 'members', uid);
+    const [gymSnap, memberSnap] = await Promise.all([tx.get(doc(db, 'gyms', gymId)), tx.get(memberRef)]);
+    tx.update(memberRef, renewalPatch(gymSnap, memberSnap, planId, startFrom));
+  });
+}
+
+/** The member-doc patch a renewal writes; pure apart from "today". */
+function renewalPatch(
+  gymSnap: DocumentSnapshot,
+  memberSnap: DocumentSnapshot,
+  planId: string,
+  startFrom: 'today' | 'planEnd',
+): Partial<GymMember> {
   if (!gymSnap.exists()) throw new Error('Gym not found');
   if (!memberSnap.exists()) throw new Error('Member not found');
   const gym = gymSnap.data() as Gym;
@@ -420,8 +436,7 @@ export async function renewMembership(
   const base = extendFromExisting ? (member.planEnd as string) : today;
   const planStart = extendFromExisting ? (member.planStart ?? today) : today;
   const planEnd = addMonthsISO(base, plan.months);
-
-  await updateDoc(memberRef, stripUndefined({ planId, planStart, planEnd, frozen: false }));
+  return stripUndefined({ planId, planStart, planEnd, frozen: false });
 }
 
 // ============ PAYMENTS ============
@@ -451,10 +466,18 @@ export async function recordPayment(
     note: input.note,
     recordedBy: user.uid,
   });
-  await setDoc(doc(db, 'gyms', gymId, 'payments', paymentId), payment);
-  if (input.planId) {
-    await renewMembership(gymId, input.uid, input.planId, 'planEnd');
-  }
+  // Payment and renewal land together or not at all — a payment on the
+  // books with no time added (or the reverse) is the desk's worst bug.
+  await runTransaction(db, async (tx) => {
+    const memberRef = doc(db, 'gyms', gymId, 'members', input.uid);
+    let patch: Partial<GymMember> | null = null;
+    if (input.planId) {
+      const [gymSnap, memberSnap] = await Promise.all([tx.get(doc(db, 'gyms', gymId)), tx.get(memberRef)]);
+      patch = renewalPatch(gymSnap, memberSnap, input.planId, 'planEnd');
+    }
+    tx.set(doc(db, 'gyms', gymId, 'payments', paymentId), payment);
+    if (patch) tx.update(memberRef, patch);
+  });
   return payment;
 }
 
@@ -514,9 +537,17 @@ export async function checkinMember(gymId: string, uid: string, method: CheckinM
   await setDoc(ref, checkin, { merge: true });
 
   try {
-    await updateDoc(doc(db, 'gyms', gymId, 'members', uid), {
+    // The member doc keeps the last 30 days of check-in dates, so the
+    // count is exact rather than an increment that never comes back down.
+    const memberRef = doc(db, 'gyms', gymId, 'members', uid);
+    const memberSnap = await getDoc(memberRef);
+    const cutoff = addDaysISO(date, -29);
+    const previous = memberSnap.exists() ? ((memberSnap.data() as GymMember).checkinDates ?? []) : [];
+    const checkinDates = [...new Set([...previous.filter((d) => d >= cutoff), date])].sort();
+    await updateDoc(memberRef, {
       lastCheckinAt: checkin.at,
-      checkinCount30d: increment(1),
+      checkinDates,
+      checkinCount30d: checkinDates.length,
     });
   } catch (err) {
     console.warn('[Gym] checkinMember: member denorm update failed:', err);
@@ -537,30 +568,26 @@ export async function checkinMember(gymId: string, uid: string, method: CheckinM
 }
 
 /** Staff (trainer+): rotates the daily check-in code — a fresh random
- *  6-digit code, stored as a hash + date on the gym doc. Returns the
- *  plain code for display on the desk. */
+ *  6-digit code, stored as a hash + date in the staff-only
+ *  gyms/{id}/private/dailyCode doc (members cannot read it, so the code
+ *  cannot be brute-forced offline). Returns the plain code for the desk.
+ *  Clears the pre-3.27 copy on the gym doc, which every member could read. */
 export async function rotateDailyCode(gymId: string): Promise<string> {
   const code = String(Math.floor(100_000 + Math.random() * 900_000));
   const date = localDateISO(new Date());
   const hash = await sha256Hex(`${code}:${date}:${gymId}`);
-  await updateDoc(doc(db, 'gyms', gymId), { dailyCodeHash: hash, dailyCodeDate: date });
+  await setDoc(doc(db, 'gyms', gymId, 'private', 'dailyCode'), { hash, date, updatedAt: new Date().toISOString() });
+  await updateDoc(doc(db, 'gyms', gymId), { dailyCodeHash: deleteField(), dailyCodeDate: deleteField() })
+    .catch(() => { /* already clean */ });
   return code;
 }
 
-/** Pure-ish check (async because it hashes with crypto.subtle): does
- *  `code` match today's rotated code for this gym? */
-export async function verifyDailyCode(gym: Gym, code: string): Promise<boolean> {
-  return (await dailyCodeHashIfValid(gym, code)) !== null;
-}
-
-/** The hash of `code` for today, or null when it is not today's code. The
- *  member's check-in doc carries this hash so the rules can re-check it. */
-export async function dailyCodeHashIfValid(gym: Gym, code: string): Promise<string | null> {
-  if (!gym.dailyCodeHash || !gym.dailyCodeDate) return null;
-  const date = localDateISO(new Date());
-  if (gym.dailyCodeDate !== date) return null;
-  const hash = await sha256Hex(`${code}:${date}:${gym.id}`);
-  return hash === gym.dailyCodeHash ? hash : null;
+/** What a member submits for a code check-in: the hash of their input for
+ *  today. The rules compare it with the private doc — a wrong code comes
+ *  back as permission-denied, never as a readable hash the client could
+ *  test against. */
+export function dailyCodeHashFor(gymId: string, code: string): Promise<string> {
+  return sha256Hex(`${code}:${localDateISO(new Date())}:${gymId}`);
 }
 
 export async function listCheckins(gymId: string, opts: { sinceISO: string; uid?: string; limit?: number }): Promise<GymCheckin[]> {
@@ -576,6 +603,13 @@ export async function listCheckins(gymId: string, opts: { sinceISO: string; uid?
   }
   const snap = await getDocs(query(col, where('at', '>=', opts.sinceISO), orderBy('at', 'desc'), fsLimit(limit)));
   return snap.docs.map((d) => d.data() as GymCheckin);
+}
+
+/** Live check-ins since `sinceISO`, newest first — one read per new
+ *  check-in after the first snapshot, where polling re-read them all. */
+export function listenToCheckinsSince(gymId: string, sinceISO: string, cb: (list: GymCheckin[]) => void, limit = 500): () => void {
+  const q = query(collection(db, 'gyms', gymId, 'checkins'), where('at', '>=', sinceISO), orderBy('at', 'desc'), fsLimit(limit));
+  return onSnapshot(q, (snap) => cb(snap.docs.map((d) => d.data() as GymCheckin)), (err) => console.warn('[Gym] checkins listener error:', err));
 }
 
 /** Per-day check-in aggregates since `sinceDate` (YYYY-MM-DD) — the

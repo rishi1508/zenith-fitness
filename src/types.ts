@@ -469,7 +469,7 @@ export interface Gym {
   staff: Record<string, Exclude<GymRole, 'member'>>;
   joinCode: string;              // 6 chars A–Z0–9, members enter this to join
   plans: GymPlan[];
-  /** sha256(`${code}:${date}:${gymId}`) of today's 6-digit check-in code; members hash their input and compare. */
+  /** Pre-3.27 location of today's check-in code hash. Lives in gyms/{id}/private/dailyCode now (staff-only); these are cleared on the next rotate. */
   dailyCodeHash?: string;
   dailyCodeDate?: string;        // YYYY-MM-DD local
   memberCount: number;           // denormalised, updated on add/remove
@@ -501,7 +501,9 @@ export interface GymMember {
   notes?: string;
   lastCheckinAt?: string;
   lastWorkoutAt?: string;
-  checkinCount30d?: number;      // denormalised by client on check-in
+  checkinCount30d?: number;      // denormalised by client on check-in — the length of checkinDates
+  /** YYYY-MM-DD of each check-in in the last 30 days (client-maintained on check-in). */
+  checkinDates?: string[];
 }
 
 /** What a payment was for. Absent on everything recorded before the

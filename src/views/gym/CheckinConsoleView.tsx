@@ -4,7 +4,7 @@ import type { GymViewProps } from './types';
 import type { GymMember, GymCheckin } from '../../types';
 import { useGym } from '../../gym/GymContext';
 import {
-  listenToMembers, listCheckins, checkinMember, rotateDailyCode, gymQrPayload, parseQrPayload, membershipStatus,
+  listenToMembers, listenToCheckinsSince, checkinMember, rotateDailyCode, gymQrPayload, parseQrPayload, membershipStatus,
 } from '../../gymService';
 import { localDateISO } from '../../gymStats';
 import { QrCode, QrScanner } from '../../components';
@@ -32,25 +32,15 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
     return listenToMembers(gymId, setMembers);
   }, [gym?.id]);
 
-  // Poll (not a live listener) per the spec's cost-discipline note —
-  // "checked in today" only needs to be roughly current, not real-time.
+  // Live listener: one read per new check-in after the first snapshot.
+  // The 30 s poll it replaces re-read every check-in of the day each
+  // time — a 300-member gym burnt ~36K reads an hour with the desk open.
   useEffect(() => {
     const gymId = gym?.id;
     if (!gymId) return;
-    let cancelled = false;
-    const fetchToday = async () => {
-      try {
-        const startOfToday = new Date();
-        startOfToday.setHours(0, 0, 0, 0);
-        const list = await listCheckins(gymId, { sinceISO: startOfToday.toISOString(), limit: 500 });
-        if (!cancelled) setCheckinsToday(list);
-      } catch (err) {
-        console.warn('[CheckinConsole] poll failed:', err);
-      }
-    };
-    fetchToday();
-    const interval = setInterval(fetchToday, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    return listenToCheckinsSince(gymId, startOfToday.toISOString(), setCheckinsToday);
   }, [gym?.id]);
 
   useEffect(() => {

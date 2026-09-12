@@ -819,11 +819,12 @@ export async function markAllNotificationsRead(): Promise<void> {
     where('read', '==', false),
   );
   const snap = await getDocs(q);
-  const batch = writeBatch(db);
-  snap.docs.forEach((d) => {
-    batch.update(d.ref, { read: true });
-  });
-  await batch.commit();
+  // A batch takes at most 500 writes.
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const batch = writeBatch(db);
+    snap.docs.slice(i, i + 400).forEach((d) => batch.update(d.ref, { read: true }));
+    await batch.commit();
+  }
 }
 
 /** Notify all buddies that the current user started a workout. */

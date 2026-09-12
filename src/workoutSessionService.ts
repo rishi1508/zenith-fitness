@@ -366,34 +366,6 @@ export async function getAllProgress(
   return out;
 }
 
-/** Get all pending session invites for the current user. */
-export async function getPendingSessionInvites(): Promise<WorkoutSession[]> {
-  const user = auth.currentUser;
-  if (!user) return [];
-
-  // Query sessions where user is a participant
-  // We need to check participant status client-side since Firestore can't query nested maps
-  const q = query(
-    collection(db, 'workoutSessions'),
-    where('status', '==', 'waiting'),
-  );
-
-  try {
-    const snap = await getDocs(q);
-    const sessions: WorkoutSession[] = [];
-    snap.forEach((d) => {
-      const session = { id: d.id, ...d.data() } as WorkoutSession;
-      const myParticipant = session.participants[user.uid];
-      if (myParticipant && myParticipant.status === 'invited') {
-        sessions.push(session);
-      }
-    });
-    return sessions;
-  } catch {
-    return [];
-  }
-}
-
 /** Delete a session (host only, for cleanup). */
 export async function deleteSession(sessionId: string): Promise<void> {
   await deleteDoc(doc(db, 'workoutSessions', sessionId));
