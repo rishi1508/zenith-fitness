@@ -195,6 +195,7 @@ free side of the line.
 | Chat message reactions: a buddy can rewrite the other's reaction keys | Map keyed by emoji, so a per-uid rule is not expressible; 1:1 chat, low stakes | — |
 | Payments recorded against an invite placeholder keep the placeholder uid after the claim | Rules keep payments manager-only; needs a server step | With the first real invite |
 | "Update available" banner on the PWA links to the GitHub release (APK) | Fine until the Play listing exists | Point it at the Play URL once live |
+| Buddies search with an empty query lists the first 50 profiles on Zenith | Discoverability feature by design; profiles are readable by any signed-in user anyway. Revisit with the profile public/private split | With the split above |
 | Play "Health apps" review may ask for a demo video of the Health Connect flow | Only if requested | On request |
 | Node 20 runtime for Cloud Functions is decommissioned 2026-10-30 | Bump `functions/package.json` engines to 22 + `firebase-functions` | Before end of October |
 
