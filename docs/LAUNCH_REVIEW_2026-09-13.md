@@ -43,10 +43,9 @@ In order. Nothing else in this document is waiting on you.
 6. **After the gym-owner demo**, tell me to remove the QA admin account
    (`upLvcTSoE5SS7lOmhYBKHFWSV0r1`) from `firestore.rules`, `src/admin.ts` and
    `api/_http.ts`. It is kept on purpose so the demo still works.
-7. **Cloud Functions**: CI's functions step is `continue-on-error`; check the
-   `v3.27.0` run. If it failed, run
-   `npx firebase-tools deploy --only functions --project zenith-fitness-18e2a`
-   from this machine (the one-time owner deploy has worked before).
+7. ~~Cloud Functions~~ — the `v3.27.0` run deployed both functions
+   (`saveWorkoutOnSessionComplete`, `capBilling`, Node 22) successfully;
+   nothing to do.
 
 Optional, no rush: set `OPENAI_DAILY_USD_CAP` / `OPENAI_MONTHLY_USD_CAP` on
 Vercel only if you want different guards than the defaults ($0.25 / $4).
@@ -61,6 +60,8 @@ Vercel only if you want different guards than the defaults ($0.25 / $4).
 | `api/*.ts` type-check (not covered by `tsc -b`) | clean |
 | Cloud Functions type-check | clean |
 | Firestore rules matrix (Rules API, `scripts/rules-test.mjs`) | 62/62 (36 new cases) |
+| `v3.27.0` CI run | success — hosting + rules deployed (live ruleset identical to local), APK 11.7 MB + AAB 10.7 MB attached to the GitHub release, both Cloud Functions updated |
+| Production bundle | version 3.27.0, calls `zenith-fitness-gamma.vercel.app/api/*` (hardened API confirmed on that alias), guest smoke 0 console errors |
 | Live API after deploy (`scratchpad/free_api.mjs`) | 16/16 — free account 403 on Zen and scan, member passes, stranger push looks like "no tokens", non-staff announce 403, bad shapes 400, bad token 401, OTP/admin guards, CORS allowlist |
 | Free account UI sweep (`scratchpad/free_ui.mjs`, dev server, production data) | 9/9 locked: Zen card → Premium sheet; Energy, Phase, Insights, Analysis, plate scan → locked screen; "Free" pill on profile; 0 console errors |
 | Gym member UI sweep | 9/9 open, 0 console errors |
@@ -197,7 +198,6 @@ free side of the line.
 | "Update available" banner on the PWA links to the GitHub release (APK) | Fine until the Play listing exists | Point it at the Play URL once live |
 | Buddies search with an empty query lists the first 50 profiles on Zenith | Discoverability feature by design; profiles are readable by any signed-in user anyway. Revisit with the profile public/private split | With the split above |
 | Play "Health apps" review may ask for a demo video of the Health Connect flow | Only if requested | On request |
-| Node 20 runtime for Cloud Functions is decommissioned 2026-10-30 | Bump `functions/package.json` engines to 22 + `firebase-functions` | Before end of October |
 
 ---
 
