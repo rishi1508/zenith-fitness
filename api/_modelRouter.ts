@@ -33,7 +33,7 @@
 // Zen is untouched: it keeps its own Gemma peer-switching in
 // api/_zenProtocol.ts. Today only api/foodscan.ts uses this router.
 
-import type { Firestore } from 'firebase-admin/firestore';
+import type { DocumentSnapshot, Firestore } from 'firebase-admin/firestore';
 import { HttpError } from './_limits.js';
 
 export interface ModelBudget {
@@ -128,6 +128,11 @@ export function quotaDayISO(now: Date = new Date()): string {
 
 function quotaRef(db: Firestore, now?: Date) {
   return db.collection('aiQuota').doc(quotaDayISO(now));
+}
+
+/** aiQuota/month-YYYY-MM (Pacific, like the day doc) — the OpenAI month tally lives here. */
+function monthRef(db: Firestore, now?: Date) {
+  return db.collection('aiQuota').doc(`month-${quotaDayISO(now).slice(0, 7)}`);
 }
 
 /**
@@ -294,9 +299,29 @@ export interface OpenAiSpend {
 
 /** What the paid fallback has cost today, on the same day-doc as the Gemini counters. */
 export async function openAiSpentToday(db: Firestore, now?: Date): Promise<OpenAiSpend> {
-  const snap = await quotaRef(db, now).get();
+  return readSpend(await quotaRef(db, now).get());
+}
+
+export async function openAiSpentThisMonth(db: Firestore, now?: Date): Promise<OpenAiSpend> {
+  return readSpend(await monthRef(db, now).get());
+}
+
+function readSpend(snap: DocumentSnapshot): OpenAiSpend {
   const o = (snap.exists ? (snap.data() as { openai?: Partial<OpenAiSpend> }).openai : undefined) ?? {};
   return { calls: o.calls ?? 0, usd: o.usd ?? 0, inputTokens: o.inputTokens ?? 0, outputTokens: o.outputTokens ?? 0, byPurpose: o.byPurpose ?? {} };
+}
+
+/**
+ * Whether the paid fallback may run: under both the day's and the month's
+ * cap. One read each; the routes call this only after Gemini has failed.
+ */
+export async function openAiCapReached(
+  db: Firestore,
+  caps: { daily: number; monthly: number },
+  now?: Date,
+): Promise<{ reached: boolean; dayUsd: number; monthUsd: number }> {
+  const [day, month] = await Promise.all([openAiSpentToday(db, now), openAiSpentThisMonth(db, now)]);
+  return { reached: day.usd >= caps.daily || month.usd >= caps.monthly, dayUsd: day.usd, monthUsd: month.usd };
 }
 
 /** Adds one paid call to today's tally. Best-effort — a lost increment is a
@@ -306,22 +331,24 @@ export async function recordOpenAiSpend(
   call: { usd: number; inputTokens: number; outputTokens: number; purpose: string },
   now?: Date,
 ): Promise<void> {
-  const ref = quotaRef(db, now);
+  const refs = [quotaRef(db, now), monthRef(db, now)];
   try {
     await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      const cur = ((snap.exists ? (snap.data() as { openai?: Partial<OpenAiSpend> }).openai : undefined) ?? {}) as Partial<OpenAiSpend>;
-      const mine = cur.byPurpose?.[call.purpose] ?? { calls: 0, usd: 0 };
-      tx.set(ref, {
-        openai: {
-          calls: (cur.calls ?? 0) + 1,
-          usd: Math.round(((cur.usd ?? 0) + call.usd) * 1e6) / 1e6,
-          inputTokens: (cur.inputTokens ?? 0) + call.inputTokens,
-          outputTokens: (cur.outputTokens ?? 0) + call.outputTokens,
-          byPurpose: { [call.purpose]: { calls: mine.calls + 1, usd: Math.round((mine.usd + call.usd) * 1e6) / 1e6 } },
-        },
-        updatedAt: Date.now(),
-      }, { merge: true });
+      const snaps = await Promise.all(refs.map((ref) => tx.get(ref)));
+      snaps.forEach((snap, i) => {
+        const cur = ((snap.exists ? (snap.data() as { openai?: Partial<OpenAiSpend> }).openai : undefined) ?? {}) as Partial<OpenAiSpend>;
+        const mine = cur.byPurpose?.[call.purpose] ?? { calls: 0, usd: 0 };
+        tx.set(refs[i], {
+          openai: {
+            calls: (cur.calls ?? 0) + 1,
+            usd: Math.round(((cur.usd ?? 0) + call.usd) * 1e6) / 1e6,
+            inputTokens: (cur.inputTokens ?? 0) + call.inputTokens,
+            outputTokens: (cur.outputTokens ?? 0) + call.outputTokens,
+            byPurpose: { [call.purpose]: { calls: mine.calls + 1, usd: Math.round((mine.usd + call.usd) * 1e6) / 1e6 } },
+          },
+          updatedAt: Date.now(),
+        }, { merge: true });
+      });
     });
   } catch (err) {
     console.warn('[modelRouter] openai spend not recorded:', (err as Error).message);

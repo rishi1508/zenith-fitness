@@ -1,59 +1,30 @@
 // Vercel serverless function: Zenith admin console (docs/REVAMP_SPEC.md
 // §5). Verifies the caller's ID token with firebase-admin and requires
-// their uid be in ADMIN_UIDS (mirrors src/admin.ts; env ADMIN_UIDS is a
-// comma list that overrides the default below) before doing anything —
-// firebase-admin bypasses Firestore rules, so this check IS the access
-// control.
+// their uid be in ADMIN_UIDS (api/_http.ts; mirrors src/admin.ts; env
+// ADMIN_UIDS is a comma list that overrides the default) before doing
+// anything — firebase-admin bypasses Firestore rules, so this check IS
+// the access control.
 //
 // POST JSON { idToken, action, ... }:
 //   list-users        {}                    → { users: AdminUserRow[] }
 //   set-disabled      { uid, disabled }      → { ok: true }
-//   delete-user       { uid }                → { ok: true }
+//   delete-user       { uid }                → { ok: true }   (409 for a gym owner)
 //   set-premium-grant { uid, grant }         → { ok: true }
 //
-// delete-user wipes users/{uid} (recursively), userProfiles/{uid}, the
-// gym membership doc if they belong to one, and the auth account
-// itself — same wipe api/account.ts uses for self-service deletion
-// (shared in api/_accountWipe.ts).
+// delete-user runs the same wipe api/account.ts uses for self-service
+// deletion (api/_accountWipe.ts lists exactly what goes and what stays).
 //
 // Required Vercel env vars (shared with /api/push, /api/otp, /api/zen):
 //   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
 // Optional:
-//   ADMIN_UIDS   comma-separated uid list; overrides the default below.
+//   ADMIN_UIDS   comma-separated uid list; overrides the default.
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
-import { wipeUserData } from './_accountWipe.js';
+import { GymOwnerError, wipeUserData } from './_accountWipe.js';
+import { adminUids, getAdmin, replyNotConfigured, setCors } from './_http.js';
 
-const DEFAULT_ADMIN_UIDS = ['BXedteurc3bPydsehvPIdVWPTbM2', 'upLvcTSoE5SS7lOmhYBKHFWSV0r1'];
-
-function adminUids(): string[] {
-  const env = process.env.ADMIN_UIDS;
-  if (env && env.trim()) return env.split(',').map((s) => s.trim()).filter(Boolean);
-  return DEFAULT_ADMIN_UIDS;
-}
-
-function getAdmin() {
-  if (admin.apps.length) return admin;
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
-    throw new Error('Missing FIREBASE_* env vars');
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey,
-    }),
-  });
-  return admin;
-}
-
-function setCors(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+export const config = { maxDuration: 60 };
 
 class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -146,13 +117,13 @@ async function handleSetPremiumGrant(db: admin.firestore.Firestore, uid: unknown
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   let a: typeof admin;
   try { a = getAdmin(); }
-  catch (e) { res.status(500).json({ error: (e as Error).message }); return; }
+  catch (e) { replyNotConfigured(res, e); return; }
   const db = a.firestore();
 
   const body = (req.body || {}) as Record<string, unknown>;
@@ -175,6 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(err.status).json({ error: err.message });
       return;
     }
+    if (err instanceof GymOwnerError) { res.status(409).json({ error: err.message }); return; }
     console.error('[admin] unhandled', err);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }

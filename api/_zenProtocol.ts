@@ -132,7 +132,8 @@ export function normalizeZenRequest(raw: Record<string, unknown>): ZenRequest | 
     }
     case 'workouts_range':
     case 'nutrition_range':
-    case 'activity_range': {
+    case 'activity_range':
+    case 'energy_range': {
       const from = typeof raw.from === 'string' ? raw.from.slice(0, 10) : '';
       const to = typeof raw.to === 'string' ? raw.to.slice(0, 10) : '';
       if (!ISO_DATE.test(from) || !ISO_DATE.test(to)) return null;

@@ -8,7 +8,7 @@ _Decided 2026-09-12. Prices verified against the providers' own pages that day._
 |---|---|---|---|---|
 | Zen chat | Gemini API, free tier (unbilled project) | gemma-4-31b-it → gemma-4-26b-a4b-it | ₹0 (Gemma has no paid tier) | 6/min · 60/day per user, 24/min global |
 | Plate scan | Gemini API, free tier | 3.6-flash → 3.5-flash → 3.5-flash-lite → 3.1-flash-lite → 3.7-flash | ₹0 | 10/day per user, per-model RPD in `api/_modelRouter.ts` |
-| Plate scan **fallback** | OpenAI, prepaid $8 | gpt-5.6-luna | ≈ $0.001 per scan | runaway guard $2/day (`OPENAI_DAILY_USD_CAP`, shared) |
+| Plate scan **fallback** | OpenAI, prepaid $8 | gpt-5.6-luna | ≈ $0.001 per scan | runaway guards $0.25/day and $4/month (`OPENAI_DAILY_USD_CAP`, `OPENAI_MONTHLY_USD_CAP`, shared with Zen) |
 | Zen chat **fallback** | OpenAI, prepaid $8 | gpt-5.6-luna | ≈ $0.0015 per turn | same guard; only after BOTH Gemma models fail, or one times out, or the reply is empty |
 
 Measured volume before this change: **31 scans in 14 days (~5/day)** across 23 users.
@@ -111,8 +111,8 @@ fix is on the Gemma side (limits, model preference), not a bigger budget.
   scanner behaves exactly as before.
 - **Watch spend:** `aiQuota/{YYYY-MM-DD}.openai` = `{ calls, usd,
   inputTokens, outputTokens, byPurpose: { scan, zen } }`. The functions log a
-  warning past 25% of the daily cap and stop falling back at the cap
-  (`OPENAI_DAILY_USD_CAP`, default 2).
+  warning past 50% of the daily cap and stop falling back at either cap
+  (`OPENAI_DAILY_USD_CAP`, default 0.25; `OPENAI_MONTHLY_USD_CAP`, default 4 — half the prepaid credit stays in hand whatever happens; both tallies live on `aiQuota/{day}` and `aiQuota/month-{YYYY-MM}`).
 - **Exercise the paid path on purpose** (admin uid + `debug: true`): scan
   with `forceFallback: true` in the body; Zen with `tuning: { forceFallback:
   true }`. Skips Gemini/Gemma so the OpenAI wiring can be verified in

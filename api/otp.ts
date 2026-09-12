@@ -19,8 +19,11 @@
 //   complete { email, ticket, displayName }  → { token, isNewUser:true }
 //
 // Limits (fixed windows, Firestore-backed so they hold across instances):
-//   per email: 3 codes / hour, 6 / day      per IP: 15 codes / day
+//   per email: 3 codes / hour, 6 / day      per IP: 15 codes / day, 60 verify attempts / hour
 //   per code : 5 verify attempts, 10-minute expiry
+// A code whose e-mail could not be sent is refunded, so a mail outage does
+// not lock the address out for the hour. The code doc holds hashes only —
+// the address itself never sits in Firestore.
 //
 // Required Vercel env vars:
 //   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY   (shared with /api/push)
@@ -29,50 +32,27 @@
 // Firestore: otpCodes/{emailHash}, otpLimits/{key}. No client rules → admin-only.
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
+import type admin from 'firebase-admin';
 import crypto from 'node:crypto';
+import { clientIp, getAdmin, replyNotConfigured, setCors } from './_http.js';
+
+export const config = { maxDuration: 30 };
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 const MAX_VERIFY_ATTEMPTS = 5;
+const EMAILJS_TIMEOUT_MS = 12_000;
 const LIMITS = {
   emailPerHour: 3,
   emailPerDay: 6,
   ipPerDay: 15,
+  ipVerifyPerHour: 60,
 };
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-function getAdmin() {
-  if (admin.apps.length) return admin;
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
-    throw new Error('Missing FIREBASE_* env vars');
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey,
-    }),
-  });
-  return admin;
-}
-
-function setCors(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
 const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 const normalizeEmail = (e: unknown) => (typeof e === 'string' ? e.trim().toLowerCase() : '');
 const isEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
-
-function clientIp(req: VercelRequest): string {
-  const xff = req.headers['x-forwarded-for'];
-  const first = Array.isArray(xff) ? xff[0] : (xff || '').split(',')[0];
-  return (first || (req.headers['x-real-ip'] as string) || req.socket?.remoteAddress || 'unknown').trim();
-}
 
 class HttpError extends Error {
   constructor(public status: number, message: string, public extra: Record<string, unknown> = {}) {
@@ -102,7 +82,7 @@ async function consumeLimit(
       const count = cur && cur.win === win ? cur.count : 0;
       if (count >= w.max) {
         const retryAfterSec = Math.ceil(((win + 1) * w.windowMs - now) / 1000);
-        throw new HttpError(429, `Too many codes requested for this ${label}. Try again in ${Math.ceil(retryAfterSec / 60)} min.`, { retryAfterSec });
+        throw new HttpError(429, `Too many ${label}. Try again in ${Math.max(1, Math.ceil(retryAfterSec / 60))} min.`, { retryAfterSec });
       }
       next[w.field] = { win, count: count + 1 };
     }
@@ -110,26 +90,55 @@ async function consumeLimit(
   });
 }
 
+/** Hands one consumed request back in the current window only (see api/_limits.ts refundLimit). */
+async function refundLimit(db: admin.firestore.Firestore, key: string, windows: Array<{ field: string; windowMs: number }>): Promise<void> {
+  const ref = db.collection('otpLimits').doc(key);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return;
+      const data = snap.data() as Record<string, { win: number; count: number }>;
+      const patch: Record<string, unknown> = {};
+      for (const w of windows) {
+        const cur = data[w.field];
+        const win = Math.floor(Date.now() / w.windowMs);
+        if (cur && cur.win === win && cur.count > 0) patch[w.field] = { win, count: cur.count - 1 };
+      }
+      if (Object.keys(patch).length) tx.set(ref, { ...patch, updatedAt: Date.now() }, { merge: true });
+    });
+  } catch (err) {
+    console.warn('[otp] refund failed', key, (err as Error).message);
+  }
+}
+
 async function sendCodeEmail(to: string, code: string): Promise<void> {
   const { EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY } = process.env;
   if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY || !EMAILJS_PRIVATE_KEY) {
-    throw new HttpError(503, 'Email sign-in is not configured on the server yet. Please use Google sign-in.');
+    console.error('[otp] EMAILJS_* env vars missing');
+    throw new HttpError(503, 'Email sign-in is unavailable right now. Please use Google sign-in.');
   }
   // Genuine non-browser API call authenticated by the PRIVATE key. Requires
   // the EmailJS account settings "Allow EmailJS API for non-browser
   // applications" and "Use Private Key" (both enabled 2026-09-06). The
   // rate limits above are what protect the monthly quota.
-  const r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      service_id: EMAILJS_SERVICE_ID,
-      template_id: EMAILJS_TEMPLATE_ID,
-      user_id: EMAILJS_PUBLIC_KEY,
-      accessToken: EMAILJS_PRIVATE_KEY,
-      template_params: { to_email: to, otp_code: code },
-    }),
-  });
+  let r: Response;
+  try {
+    r = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id: EMAILJS_SERVICE_ID,
+        template_id: EMAILJS_TEMPLATE_ID,
+        user_id: EMAILJS_PUBLIC_KEY,
+        accessToken: EMAILJS_PRIVATE_KEY,
+        template_params: { to_email: to, otp_code: code },
+      }),
+      signal: AbortSignal.timeout(EMAILJS_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.error('[otp] EmailJS unreachable', (err as Error).name, (err as Error).message);
+    throw new HttpError(502, 'Could not send the code right now. Please try again in a minute.');
+  }
   if (!r.ok) {
     const text = await r.text().catch(() => '');
     console.error('[otp] EmailJS error', r.status, text.slice(0, 200));
@@ -137,8 +146,8 @@ async function sendCodeEmail(to: string, code: string): Promise<void> {
   }
 }
 
+/** otpCodes/{sha256(email)} — hashes only; the address is never stored. */
 type CodeDoc = {
-  email: string;
   codeHash: string;
   createdAt: number;
   expiresAt: number;
@@ -148,18 +157,27 @@ type CodeDoc = {
   ticketHash?: string;
 };
 
+const EMAIL_WINDOWS = [
+  { field: 'h', windowMs: HOUR_MS, max: LIMITS.emailPerHour },
+  { field: 'd', windowMs: DAY_MS, max: LIMITS.emailPerDay },
+];
+const IP_WINDOWS = [{ field: 'd', windowMs: DAY_MS, max: LIMITS.ipPerDay }];
+
 async function handleSend(db: admin.firestore.Firestore, req: VercelRequest, email: string) {
   const ip = clientIp(req);
-  await consumeLimit(db, `ip:${sha256(ip)}`, [{ field: 'd', windowMs: DAY_MS, max: LIMITS.ipPerDay }], 'device');
-  await consumeLimit(db, `email:${sha256(email)}`, [
-    { field: 'h', windowMs: HOUR_MS, max: LIMITS.emailPerHour },
-    { field: 'd', windowMs: DAY_MS, max: LIMITS.emailPerDay },
-  ], 'email');
+  const ipKey = `ip:${sha256(ip)}`;
+  const emailKey = `email:${sha256(email)}`;
+  await consumeLimit(db, ipKey, IP_WINDOWS, 'codes requested from this device');
+  try {
+    await consumeLimit(db, emailKey, EMAIL_WINDOWS, 'codes requested for this email');
+  } catch (err) {
+    await refundLimit(db, ipKey, IP_WINDOWS);
+    throw err;
+  }
 
   const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
   const now = Date.now();
   const doc: CodeDoc = {
-    email,
     codeHash: sha256(`${code}:${email}`),
     createdAt: now,
     expiresAt: now + CODE_TTL_MS,
@@ -167,7 +185,15 @@ async function handleSend(db: admin.firestore.Firestore, req: VercelRequest, ema
     ip: sha256(ip),
   };
   await db.collection('otpCodes').doc(sha256(email)).set(doc);
-  await sendCodeEmail(email, code);
+  try {
+    await sendCodeEmail(email, code);
+  } catch (err) {
+    // The mail never left: the user's hour and the device's day get the
+    // request back, and the unsent code cannot be guessed at.
+    await Promise.all([refundLimit(db, emailKey, EMAIL_WINDOWS), refundLimit(db, ipKey, IP_WINDOWS)]);
+    await db.collection('otpCodes').doc(sha256(email)).delete().catch(() => { /* best-effort */ });
+    throw err;
+  }
   return { ok: true, expiresInSec: CODE_TTL_MS / 1000 };
 }
 
@@ -187,37 +213,56 @@ async function mintToken(a: typeof admin, uid: string): Promise<string> {
   return a.auth().createCustomToken(uid);
 }
 
-async function handleVerify(a: typeof admin, db: admin.firestore.Firestore, email: string, codeRaw: unknown) {
+async function handleVerify(a: typeof admin, db: admin.firestore.Firestore, req: VercelRequest, email: string, codeRaw: unknown) {
   const code = typeof codeRaw === 'string' ? codeRaw.trim() : '';
   if (!/^\d{6}$/.test(code)) throw new HttpError(400, 'Please enter the 6-digit code.');
-  const { ref, data } = await loadCode(db, email);
-  // Already verified (ticket issued, waiting for the name step). A retry or
-  // double-tap must NOT burn the ticket — tell the client to move on.
-  if (data.verifiedAt) {
-    throw new HttpError(409, 'Code already verified. Please enter your name to finish signing up.');
-  }
-  if (data.attempts >= MAX_VERIFY_ATTEMPTS) {
-    await ref.delete();
-    throw new HttpError(429, 'Too many attempts. Please request a new code.');
-  }
-  if (sha256(`${code}:${email}`) !== data.codeHash) {
-    await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
-    const remaining = MAX_VERIFY_ATTEMPTS - (data.attempts + 1);
-    throw new HttpError(401, `Invalid code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`);
-  }
+  // Per-device ceiling on guesses across all addresses; the per-code cap
+  // below is what actually stops brute force on one address.
+  await consumeLimit(db, `verify-ip:${sha256(clientIp(req))}`, [{ field: 'h', windowMs: HOUR_MS, max: LIMITS.ipVerifyPerHour }], 'attempts from this device');
 
-  // Code is right. Existing account (any provider — the email is proven)
-  // → sign them straight in. New email → hand back a ticket so the app
-  // can collect a display name before the account is created.
+  // Who this is, before the code is consumed: existing account (any
+  // provider — the email is proven) or a brand-new email.
+  let existingUid: string | null = null;
   try {
-    const user = await a.auth().getUserByEmail(email);
-    await ref.delete();
-    return { token: await mintToken(a, user.uid), isNewUser: false };
+    existingUid = (await a.auth().getUserByEmail(email)).uid;
   } catch (err) {
     if ((err as { code?: string }).code !== 'auth/user-not-found') throw err;
   }
   const ticket = crypto.randomBytes(24).toString('hex');
-  await ref.update({ verifiedAt: Date.now(), ticketHash: sha256(ticket), attempts: MAX_VERIFY_ATTEMPTS });
+
+  // Check and consume in one transaction, so two guesses in flight cannot
+  // both read attempts=4 and both get a try.
+  const ref = db.collection('otpCodes').doc(sha256(email));
+  const outcome = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpError(404, 'No verification code found. Please request a new one.');
+    const data = snap.data() as CodeDoc;
+    if (Date.now() > data.expiresAt) {
+      tx.delete(ref);
+      throw new HttpError(410, 'Code has expired. Please request a new one.');
+    }
+    // Already verified (ticket issued, waiting for the name step). A retry
+    // or double-tap must NOT burn the ticket — tell the client to move on.
+    if (data.verifiedAt) throw new HttpError(409, 'Code already verified. Please enter your name to finish signing up.');
+    if (data.attempts >= MAX_VERIFY_ATTEMPTS) {
+      tx.delete(ref);
+      throw new HttpError(429, 'Too many attempts. Please request a new code.');
+    }
+    if (sha256(`${code}:${email}`) !== data.codeHash) {
+      tx.update(ref, { attempts: data.attempts + 1 });
+      const remaining = MAX_VERIFY_ATTEMPTS - (data.attempts + 1);
+      throw new HttpError(401, `Invalid code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`);
+    }
+    if (existingUid) {
+      tx.delete(ref);
+      return 'sign-in' as const;
+    }
+    tx.update(ref, { verifiedAt: Date.now(), ticketHash: sha256(ticket), attempts: MAX_VERIFY_ATTEMPTS });
+    return 'new' as const;
+  });
+
+  if (outcome === 'sign-in' && existingUid) return { token: await mintToken(a, existingUid), isNewUser: false };
+  // New email → the app collects a display name before the account is created.
   return { isNewUser: true, ticket };
 }
 
@@ -240,13 +285,13 @@ async function handleComplete(a: typeof admin, db: admin.firestore.Firestore, em
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   let a: typeof admin;
   try { a = getAdmin(); }
-  catch (e) { res.status(500).json({ error: (e as Error).message }); return; }
+  catch (e) { replyNotConfigured(res, e); return; }
   const db = a.firestore();
 
   const body = (req.body || {}) as Record<string, unknown>;
@@ -257,7 +302,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'send':
         res.status(200).json(await handleSend(db, req, email)); return;
       case 'verify':
-        res.status(200).json(await handleVerify(a, db, email, body.code)); return;
+        res.status(200).json(await handleVerify(a, db, req, email, body.code)); return;
       case 'complete':
         res.status(200).json(await handleComplete(a, db, email, body.ticket, body.displayName)); return;
       default:

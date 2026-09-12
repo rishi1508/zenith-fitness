@@ -248,6 +248,34 @@ export async function deliverPush(params: {
 }
 
 /**
+ * One call for a whole gym: the server (api/push.ts `announce`) checks the
+ * caller is staff and fans out to every member's devices itself, instead
+ * of the client posting once per member into its own per-sender limit.
+ */
+export async function deliverAnnouncementPush(params: {
+  gymId: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}): Promise<void> {
+  const endpoint = import.meta.env.VITE_PUSH_ENDPOINT as string | undefined;
+  const user = auth.currentUser;
+  if (!endpoint || !user) return;
+  try {
+    const idToken = await user.getIdToken();
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'announce', ...params, idToken }),
+    });
+    const text = await resp.text().catch(() => '');
+    console.info('[Push] announce responded', resp.status, text.slice(0, 200));
+  } catch (err) {
+    console.warn('[Push] announce failed:', err);
+  }
+}
+
+/**
  * Auto-register a push token on app launch when:
  *   - user is signed in
  *   - permission is already 'granted'

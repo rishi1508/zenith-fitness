@@ -31,8 +31,8 @@ controls that bound spend, in the order they act.
 | Auth | Free (no SMS) | Only e-mail/password and Google providers are enabled. Phone auth (billed SMS) stays off. |
 | Hosting | 10 GB storage, 360 MB/day egress | Nothing beyond the kill switch. |
 | Gemini API (Zen) | Free tier: 30 RPM / 14.4K RPD | Key lives in a **separate project with no billing account**. Gemma 4 has no paid tier, so linking that project to billing breaks Zen rather than billing it. Server quotas: 6/min, 60/day per user; 24/min global. |
-| Vercel (`api/*`) | Hobby plan | Hobby never bills; it pauses at its limits. |
-| EmailJS (OTP) | 200 e-mails / month | Free plan blocks rather than bills. OTP route: 3/h, 6/day per e-mail, 15/day per IP. |
+| Vercel (`api/*`) | Hobby plan | Hobby never bills; it pauses at its limits. Every route has a `maxDuration` (zen 120 s, foodscan/push/account/admin 60 s, otp 30 s) and works from one time budget so a slow model cannot hold an invocation open. Push: 30/min, 600/day per sender, and only to buddies / pending requests / own gym members; announcements fan out server-side (5/min, 40/day per staff). Food scan: 4/min + 10/day per user, 600/day across everyone. |
+| EmailJS (OTP) | 200 e-mails / month | Free plan blocks rather than bills. OTP route: 3/h, 6/day per e-mail, 15/day per IP, 60 verify attempts/h per IP; a code whose mail failed to send is refunded. |
 | BigQuery, Cloud Build, Logging, Pub/Sub | Free tiers | No datasets; builds only on deploy; a few log lines per day. |
 
 ## 3. Known soft spots (not billing-critical, tracked)

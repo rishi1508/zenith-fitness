@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import type { QueryConstraint, DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { deliverPush } from './pushService';
+import { deliverAnnouncementPush } from './pushService';
 import { effectiveProfilePhoto } from './profilePhoto';
 import { membershipStatus, localDateISO, addMonthsISO } from './gymStats';
 import { applyEquipmentStatus } from './gym/gymOps';
@@ -668,7 +668,7 @@ export async function markAttendance(gymId: string, classId: string, date: strin
 // ============ ANNOUNCEMENTS ============
 
 /** Staff: posts an announcement and best-effort pushes it to members
- *  (cap 300, failures ignored — the announcement itself is never lost
+ *  (server-side fan-out, failures ignored — the announcement itself is never lost
  *  even if push fan-out fails). Tier A has no persistent per-class
  *  roster (only per-session enrolled lists), so a class-scoped audience
  *  still notifies every gym member — a documented limitation. */
@@ -702,19 +702,10 @@ export async function postAnnouncement(
     });
   }
 
-  try {
-    const members = await listMembers(gymId, { limit: 300 });
-    await Promise.all(members.map((m) =>
-      deliverPush({
-        recipientUid: m.uid,
-        title: 'Gym announcement',
-        body: text,
-        data: { gymId, type: 'gym_announcement' },
-      }).catch(() => { /* best-effort — logged inside deliverPush */ })
-    ));
-  } catch (err) {
-    console.warn('[Gym] announcement push fan-out failed:', err);
-  }
+  // One server call fans out to every member (api/push.ts `announce`);
+  // best-effort — the announcement itself is already saved.
+  await deliverAnnouncementPush({ gymId, title: 'Gym announcement', body: text, data: { type: 'gym_announcement' } })
+    .catch((err) => console.warn('[Gym] announcement push fan-out failed:', err));
 }
 
 export function listenToAnnouncements(gymId: string, cb: (items: GymAnnouncement[]) => void, limit = 30): () => void {

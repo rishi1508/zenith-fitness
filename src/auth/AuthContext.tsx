@@ -8,11 +8,9 @@ import {
   getRedirectResult,
   signInWithCredential,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signInWithCustomToken,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
-  fetchSignInMethodsForEmail,
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
@@ -57,7 +55,6 @@ interface AuthContextType {
   loading: boolean;
   isGuest: boolean;
   signInWithGoogle: () => Promise<void>;
-  signInOrRegisterWithEmail: (email: string, password: string) => Promise<{ isNewUser: boolean }>;
   sendEmailOTP: (email: string) => Promise<void>;
   verifyEmailOTP: (email: string, code: string) => Promise<{ isNewUser: boolean }>;
   completeOTPRegistration: (email: string, displayName: string) => Promise<void>;
@@ -219,51 +216,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Email + password: auto-detects whether to register or sign in.
-  // If user already has a Google account with same email, links the password credential.
-  const signInOrRegisterWithEmail = useCallback(async (email: string, password: string): Promise<{ isNewUser: boolean }> => {
-    try {
-      // Try signing in first
-      await signInWithEmailAndPassword(auth, email, password);
-      return { isNewUser: false };
-    } catch (err: unknown) {
-      const firebaseErr = err as { code?: string };
-
-      if (firebaseErr.code === 'auth/user-not-found' || firebaseErr.code === 'auth/invalid-credential') {
-        // Check if the email exists with a different provider (e.g., Google)
-        const methods = await fetchSignInMethodsForEmail(auth, email);
-
-        if (methods.length > 0 && !methods.includes('password')) {
-          // User exists with Google but not password — they need to sign in with Google first,
-          // then we can link the password. For now, throw a helpful error.
-          throw new Error('This email is registered with Google. Please sign in with Google first, then add a password in Settings.');
-        }
-
-        // No account exists — create one
-        await createUserWithEmailAndPassword(auth, email, password);
-        return { isNewUser: true };
-      }
-
-      if (firebaseErr.code === 'auth/wrong-password') {
-        throw new Error('Incorrect password. Please try again.');
-      }
-
-      if (firebaseErr.code === 'auth/too-many-requests') {
-        throw new Error('Too many failed attempts. Please try again later.');
-      }
-
-      if (firebaseErr.code === 'auth/weak-password') {
-        throw new Error('Password must be at least 6 characters.');
-      }
-
-      if (firebaseErr.code === 'auth/email-already-in-use') {
-        throw new Error('This email is already registered. Please sign in instead.');
-      }
-
-      throw err;
-    }
-  }, []);
-
   // Email OTP: send a verification code via EmailJS
   const sendEmailOTP = useCallback(async (email: string) => {
     await otpService.sendOTP(email);
@@ -323,7 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, signInOrRegisterWithEmail, sendEmailOTP, verifyEmailOTP, completeOTPRegistration, signOut, enterGuestMode, exitGuestMode }}>
+    <AuthContext.Provider value={{ user, loading, isGuest, signInWithGoogle, sendEmailOTP, verifyEmailOTP, completeOTPRegistration, signOut, enterGuestMode, exitGuestMode }}>
       {children}
     </AuthContext.Provider>
   );

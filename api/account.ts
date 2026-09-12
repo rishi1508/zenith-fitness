@@ -4,55 +4,31 @@
 // never from a client-supplied uid.
 //
 // POST JSON { idToken, action: 'delete' } → { ok: true }
-//
-// Wipes users/{uid} (recursively), userProfiles/{uid}, the gym
-// membership doc if they belong to one, and the auth account itself —
-// same wipe api/admin.ts's delete-user action uses (shared in
-// api/_accountWipe.ts).
+//   409 when the account owns a gym (transfer ownership first)
+//   500 when the auth account is gone but some data is still there — the
+//       message tells the user to tap Delete again (see api/_accountWipe.ts)
 //
 // Required Vercel env vars (shared with /api/push, /api/otp, /api/admin):
 //   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
-import { wipeUserData } from './_accountWipe.js';
+import type admin from 'firebase-admin';
+import { GymOwnerError, wipeUserData } from './_accountWipe.js';
+import { getAdmin, replyNotConfigured, setCors } from './_http.js';
+import { HttpError } from './_limits.js';
 
-function getAdmin() {
-  if (admin.apps.length) return admin;
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
-    throw new Error('Missing FIREBASE_* env vars');
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey,
-    }),
-  });
-  return admin;
-}
-
-function setCors(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
-class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
+// A full wipe walks a dozen collections; a member with a long history
+// takes a few seconds, well inside this.
+export const config = { maxDuration: 60 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   let a: typeof admin;
   try { a = getAdmin(); }
-  catch (e) { res.status(500).json({ error: (e as Error).message }); return; }
+  catch (e) { replyNotConfigured(res, e); return; }
 
   const body = (req.body || {}) as Record<string, unknown>;
   try {
@@ -68,11 +44,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await wipeUserData(a.auth(), a.firestore(), decoded.uid);
     res.status(200).json({ ok: true });
   } catch (err) {
-    if (err instanceof HttpError) {
-      res.status(err.status).json({ error: err.message });
-      return;
-    }
+    if (err instanceof HttpError) { res.status(err.status).json({ error: err.message }); return; }
+    if (err instanceof GymOwnerError) { res.status(409).json({ error: err.message }); return; }
     console.error('[account] unhandled', err);
-    res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    const msg = err instanceof Error && /Tap Delete again/.test(err.message) ? err.message : 'Something went wrong. Please try again.';
+    res.status(500).json({ error: msg });
   }
 }

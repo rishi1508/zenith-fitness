@@ -31,8 +31,10 @@
 // api/_zenProtocol.ts for the pure decision logic.
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
-import { assertPremium, consumeLimit, DAY_MS, HttpError, MINUTE_MS } from './_limits.js';
+import type admin from 'firebase-admin';
+import { assertPremium, consumeLimit, DAY_MS, HttpError, MINUTE_MS, refundLimit } from './_limits.js';
+import { adminUids, getAdmin, replyNotConfigured, setCors } from './_http.js';
+import { issueDataTicket, verifyDataTicket } from './_ticket.js';
 import {
   type ZenMessage,
   buildContents,
@@ -46,46 +48,26 @@ import {
   trimMessages,
   type GeminiContent,
 } from './_zenProtocol.js';
-import { openAiSpentToday, recordOpenAiSpend } from './_modelRouter.js';
-import { OPENAI_DAILY_USD_CAP } from './_openai.js';
+import { openAiCapReached, recordOpenAiSpend } from './_modelRouter.js';
+import { OPENAI_DAILY_USD_CAP, OPENAI_MONTHLY_USD_CAP } from './_openai.js';
 import { callOpenAiChat } from './_openaiChat.js';
 
-// Gemma at 700 output tokens can take 15–25 s. A model switch means up to
-// two sequential calls, so this is kept well under half of maxDuration.
+// Time budget (all sequential, worst case): auth 10 s + quota 12 s +
+// preference 8 s + one Gemma call that fails fast and a second that runs to
+// its 55 s timeout + OpenAI 20 s + spend reads 8 s ≈ 115 s. A Gemma timeout
+// is final (no second Gemma attempt), so the two long legs never stack.
 export const config = { maxDuration: 120 };
 
 const DEFAULT_MODEL = 'gemma-4-31b-it';
 const DEFAULT_FALLBACK_MODEL = 'gemma-4-26b-a4b-it'; // the only other Gemma 4 model on the key (verified via the models listing)
-const GEMINI_TIMEOUT_MS = 100_000; // Gemma 4 thinks for 20–60 s; a timeout is final (no second model attempt)
-/** What is left of maxDuration after a full Gemma timeout, less a margin. */
-const OPENAI_TIMEOUT_MS = 15_000;
+/** Gemma at thinkingLevel minimal answers in 5–25 s; past this the paid fallback is the faster route to an answer. */
+const GEMINI_TIMEOUT_MS = 55_000;
+const OPENAI_TIMEOUT_MS = 20_000;
 const LIMITS = {
   userPerMinute: 6,
   userPerDay: 60,
   globalPerMinute: 24, // AI Studio free tier is 30 RPM for the whole key
 };
-
-function getAdmin() {
-  if (admin.apps.length) return admin;
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
-    throw new Error('Missing FIREBASE_* env vars');
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey,
-    }),
-  });
-  return admin;
-}
-
-function setCors(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
 
 /** Bound an awaited stage so a stalled dependency surfaces as a named 504
  *  instead of the platform killing the function silently at maxDuration. */
@@ -101,8 +83,23 @@ async function consumeQuotas(db: admin.firestore.Firestore, uid: string): Promis
     { field: 'm', windowMs: MINUTE_MS, max: LIMITS.userPerMinute, message: 'Zen needs a breather — try again in a minute.' },
     { field: 'd', windowMs: DAY_MS, max: LIMITS.userPerDay, message: `You've used today's ${LIMITS.userPerDay} Zen messages. More tomorrow.` },
   ]);
-  await consumeLimit(db, 'global', [
-    { field: 'm', windowMs: MINUTE_MS, max: LIMITS.globalPerMinute, message: 'Zen is busy right now. Try again in a minute.' },
+  try {
+    await consumeLimit(db, 'global', [
+      { field: 'm', windowMs: MINUTE_MS, max: LIMITS.globalPerMinute, message: 'Zen is busy right now. Try again in a minute.' },
+    ]);
+  } catch (err) {
+    // The shared window was full — the user's own turn was never served.
+    await refundQuotas(db, uid);
+    throw err;
+  }
+}
+
+/** A turn that produced no answer hands the user's two counters back (the shared one too). */
+async function refundQuotas(db: admin.firestore.Firestore, uid: string): Promise<void> {
+  await Promise.all([
+    refundLimit(db, uid, 'm', MINUTE_MS),
+    refundLimit(db, uid, 'd', DAY_MS),
+    refundLimit(db, 'global', 'm', MINUTE_MS),
   ]);
 }
 
@@ -124,7 +121,8 @@ const DEFAULT_MAX_OUTPUT_TOKENS = Number(process.env.ZEN_MAX_OUTPUT_TOKENS) || 1
 const DEFAULT_THINKING_BUDGET = process.env.ZEN_THINKING_BUDGET ? Number(process.env.ZEN_THINKING_BUDGET) : undefined;
 
 async function callGemini(model: string, contents: GeminiContent[], apiKey: string, tuning: Tuning = {}): Promise<{ status: number; body: GeminiResponse }> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // Key in a header, not the URL, so it never lands in a request log.
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), GEMINI_TIMEOUT_MS);
   // Gemma 4 is a thinking model and we let it think (Rishi's call): the
@@ -140,7 +138,7 @@ async function callGemini(model: string, contents: GeminiContent[], apiKey: stri
   try {
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({ contents, generationConfig }),
       signal: ctrl.signal,
     });
@@ -212,9 +210,9 @@ async function generate(
   }
   if (!openAiKey) throw gemmaFailure;
 
-  const spent = await withTimeout(openAiSpentToday(db), 8_000, 'openai-spend');
-  if (spent.usd >= OPENAI_DAILY_USD_CAP) {
-    console.error(`[zen] OpenAI daily cap reached ($${spent.usd.toFixed(2)}) — not falling back`);
+  const cap = await withTimeout(openAiCapReached(db, { daily: OPENAI_DAILY_USD_CAP, monthly: OPENAI_MONTHLY_USD_CAP }), 8_000, 'openai-spend');
+  if (cap.reached) {
+    console.error(`[zen] OpenAI cap reached (day $${cap.dayUsd.toFixed(3)}, month $${cap.monthUsd.toFixed(3)}) — not falling back`);
     throw gemmaFailure;
   }
   console.warn(`[zen] Gemma gave up (${gemmaFailure.status} ${gemmaFailure.message.slice(0, 80)}) — falling back to OpenAI`);
@@ -244,7 +242,7 @@ async function generateWithGemma(
   tuning: Tuning = {},
 ): Promise<Generated> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new HttpError(503, 'Zen is not configured on the server yet.');
+  if (!apiKey) throw new HttpError(503, 'Zen is not available right now. Please try again later.');
   const primary = process.env.GEMINI_MODEL || DEFAULT_MODEL;
   const fallback = process.env.GEMINI_FALLBACK_MODEL || DEFAULT_FALLBACK_MODEL;
 
@@ -292,14 +290,15 @@ async function generateWithGemma(
 // ----- Handler -------------------------------------------------------------
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   let a: typeof admin;
   try { a = getAdmin(); }
-  catch (e) { res.status(500).json({ error: (e as Error).message }); return; }
+  catch (e) { replyNotConfigured(res, e); return; }
   const db = a.firestore();
+  const ticketSecret = process.env.FIREBASE_PRIVATE_KEY || '';
 
   const body = (req.body || {}) as Record<string, unknown>;
   try {
@@ -323,16 +322,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const dataAnswer = typeof body.dataAnswer === 'string' ? body.dataAnswer : undefined;
     const tz = typeof body.tz === 'string' && body.tz.length <= 64 ? body.tz : undefined;
 
-    await withTimeout(consumeQuotas(db, uid), 12_000, 'quota');
+    // The second round of the data protocol carries the first round's
+    // ticket and is the same turn — charged once. Anything else is charged.
+    const secondRound = dataAnswer !== undefined && verifyDataTicket(ticketSecret, uid, body.dataTicket);
+    let charged = false;
+    if (!secondRound) {
+      await withTimeout(consumeQuotas(db, uid), 12_000, 'quota');
+      charged = true;
+    }
 
     // Admins may ask for raw-shape diagnostics (never user data) with debug: true.
-    const adminUids = (process.env.ADMIN_UIDS || 'BXedteurc3bPydsehvPIdVWPTbM2,upLvcTSoE5SS7lOmhYBKHFWSV0r1').split(',');
-    const debug: ZenDebug[] | null = body.debug === true && adminUids.includes(uid) ? [] : null;
+    const debug: ZenDebug[] | null = body.debug === true && adminUids().includes(uid) ? [] : null;
 
     // Admin-only: list the models this key can use (to pick fallbacks).
     if (debug && body.action === 'models') {
       const key = process.env.GEMINI_API_KEY || '';
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=200`);
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key } });
       const j = (await r.json().catch(() => ({}))) as { models?: Array<{ name: string; supportedGenerationMethods?: string[] }> };
       const models = (j.models ?? []).filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent')).map((m) => m.name.replace('models/', ''));
       res.status(200).json({ models });
@@ -351,13 +356,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const systemTurn = buildSystemTurn({ context, dataAnswer, tz });
     const contents = buildContents(systemTurn, messages);
-    const { text, model, usage } = await generate(contents, systemTurn, messages, db, debug, tuning);
+    let generated: Generated;
+    try {
+      generated = await generate(contents, systemTurn, messages, db, debug, tuning);
+    } catch (err) {
+      // No answer, no charge: the user retrying our flakiness must not
+      // burn their day's messages.
+      if (charged && err instanceof HttpError && err.status >= 500) await refundQuotas(db, uid);
+      throw err;
+    }
+    const { text, model, usage } = generated;
 
     // One-round data protocol. With dataAnswer already supplied we never
     // ask again — any stray request block is stripped and the text returned.
     if (dataAnswer === undefined) {
       const request = parseZenRequest(text);
-      if (request) { res.status(200).json({ needData: request, model }); return; }
+      if (request) { res.status(200).json({ needData: request, model, dataTicket: issueDataTicket(ticketSecret, uid) }); return; }
     }
     const clean = stripZenRequests(text) || "I don't have enough data to answer that yet. Tell me a bit more, or log a few more sessions.";
     res.status(200).json({ text: clean, model, usage, ...(debug ? { debug } : {}) });

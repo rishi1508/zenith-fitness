@@ -51,6 +51,8 @@ interface ZenApiResponse {
   text?: string;
   model?: string;
   needData?: ZenRequest;
+  /** Comes with `needData`; sent back with `dataAnswer` so the second round is not charged again. */
+  dataTicket?: string;
   error?: string;
   retryAfterSec?: number;
 }
@@ -99,7 +101,7 @@ export async function askZen(opts: AskZenOptions): Promise<AskZenResult> {
   const first = await post(url, base);
   if (first.needData) {
     const dataAnswer = await opts.resolveData(first.needData);
-    const second = await post(url, { ...base, dataAnswer });
+    const second = await post(url, { ...base, dataAnswer, dataTicket: first.dataTicket });
     if (!second.text) throw new ZenError('unknown', 'Zen did not answer. Please try again.');
     return { text: second.text, model: second.model };
   }

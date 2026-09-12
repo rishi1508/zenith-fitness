@@ -12,26 +12,29 @@
 //     `remainingToday` is the user's own scans left today, for the UI.
 //   → 4xx/5xx { error, reason }  reason ∈ auth | premium | quota | image | busy
 //
-// Limits: FOODSCAN_PER_USER_PER_DAY (default 10) per user in
-// zenLimits/{uid}.scan, plus the shared daily model budgets in
-// aiQuota/{YYYY-MM-DD}.
+// Limits: FOODSCAN_PER_USER_PER_DAY (default 10) and 4/minute per user in
+// zenLimits/{uid}, FOODSCAN_GLOBAL_PER_DAY (default 600) across everyone in
+// zenLimits/global, plus the shared daily model budgets in aiQuota/{day}.
+// A scan that produced nothing is refunded on every counter.
 //
 // Required Vercel env vars:
 //   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY  (shared with /api/push)
 //   GEMINI_API_KEY                                                    (shared with /api/zen)
 // Optional:
 //   FOODSCAN_PER_USER_PER_DAY   default 10
-//   FOODSCAN_REQUIRE_PREMIUM    default false  ('true' → userProfiles/{uid} must be premium/gym)
+//   FOODSCAN_GLOBAL_PER_DAY     default 600
+//   FOODSCAN_REQUIRE_PREMIUM    default true  ('false' → open to every signed-in user; premium = paid, admin grant or gym member)
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
-import { assertPremium, consumeLimit, DAY_MS, HttpError, refundLimit } from './_limits.js';
+import type admin from 'firebase-admin';
+import { assertPremium, consumeLimit, DAY_MS, HttpError, MINUTE_MS, refundLimit } from './_limits.js';
+import { adminUids, getAdmin, replyNotConfigured, setCors } from './_http.js';
 import {
-  classifyFailure, markCooldown, markExhausted, MAX_MODEL_ATTEMPTS, openAiSpentToday, pickModel, recordOpenAiSpend,
+  classifyFailure, markCooldown, markExhausted, MAX_MODEL_ATTEMPTS, openAiCapReached, pickModel, recordOpenAiSpend,
   releaseReservation,
 } from './_modelRouter.js';
 import { callOpenAiScan } from './_openaiScan.js';
-import { OPENAI_DAILY_USD_CAP } from './_openai.js';
+import { OPENAI_DAILY_USD_CAP, OPENAI_MONTHLY_USD_CAP } from './_openai.js';
 import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js';
 
 // A vision call on a flash model answers in 2–8 s; the ceiling is here for
@@ -39,6 +42,8 @@ import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js
 export const config = { maxDuration: 60 };
 
 const DEFAULT_PER_USER_PER_DAY = 10;
+const PER_USER_PER_MINUTE = 4;
+const DEFAULT_GLOBAL_PER_DAY = 600;
 const MAX_IMAGE_B64_BYTES = 700 * 1024;
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png']);
 /**
@@ -46,36 +51,19 @@ const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png']);
  * good answers off mid-flight (measured 2026-09-09: a clean scan took 17 s and
  * the next model timed out at 20 s).
  */
-const GEMINI_TIMEOUT_MS = 26_000;
+const GEMINI_TIMEOUT_MS = 25_000;
 /**
- * Stop starting new GEMINI attempts past this point, so that even after one
- * full timeout there is room for the OpenAI fallback (20 s) inside the 60 s
- * maxDuration: 26 s + 20 s = 46 s worst case.
+ * The whole request must answer inside maxDuration, so every stage works
+ * from one clock started at the top of the handler: no new Gemini attempt
+ * starts after RETRY_DEADLINE_MS (the last one can run to ~40 s), and the
+ * OpenAI fallback gets whatever is left up to OPENAI_TIMEOUT_MS, never less
+ * than OPENAI_MIN_MS — so the scan completes rather than the platform
+ * cutting it off at 60 s with no answer at all.
  */
-const RETRY_DEADLINE_MS = 22_000;
+const TOTAL_BUDGET_MS = 56_000;
+const RETRY_DEADLINE_MS = 15_000;
 const OPENAI_TIMEOUT_MS = 20_000;
-
-function getAdmin() {
-  if (admin.apps.length) return admin;
-  const privateKey = (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
-    throw new Error('Missing FIREBASE_* env vars');
-  }
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey,
-    }),
-  });
-  return admin;
-}
-
-function setCors(res: VercelResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+const OPENAI_MIN_MS = 8_000;
 
 // ----- image ---------------------------------------------------------------
 
@@ -124,7 +112,8 @@ async function callGemini(
   jsonMime: boolean,
   thinking = true,
 ): Promise<{ status: number; body: GeminiResponse }> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  // Key in a header, not the URL, so it never lands in a request log.
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   // Room for the JSON *and* whatever the model thinks first. Gemini 3.x flash
   // models reason before answering and those tokens come out of the same
   // budget: at 1200 a long deliberation left a truncated object, which is
@@ -138,7 +127,7 @@ async function callGemini(
   try {
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType: image.mimeType, data: image.data } }] }],
         generationConfig,
@@ -215,6 +204,7 @@ async function scan(
   prompt: string,
   image: ScanImage,
   hint: string,
+  startedAt: number,
   debug: ScanDebug[] | null = null,
   forceFallback = false,
 ): Promise<{ payload: ScanPayload; model: string }> {
@@ -226,7 +216,7 @@ async function scan(
     geminiFailure = new HttpError(503, 'Gemini skipped (forceFallback).', { reason: 'busy' });
   } else {
     try {
-      return await scanWithGemini(db, prompt, image, debug);
+      return await scanWithGemini(db, prompt, image, startedAt, debug);
     } catch (err) {
       if (!(err instanceof HttpError)) throw err;
       geminiFailure = err;
@@ -235,15 +225,16 @@ async function scan(
 
   // Every Gemini path that did not produce a plate ends here: 503 spikes,
   // timeouts, the day's quota gone, a garbled reply. The scan still has to
-  // complete, so one paid call takes it — unless the day's runaway guard
-  // has tripped, in which case the user hears what Gemini said.
+  // complete, so one paid call takes it — unless the runaway guard has
+  // tripped, in which case the user hears what Gemini said.
   if (!openAiKey) throw geminiFailure;
-  const spent = await openAiSpentToday(db);
-  if (spent.usd >= OPENAI_DAILY_USD_CAP) {
-    console.error(`[foodscan] OpenAI daily cap reached ($${spent.usd.toFixed(2)} of $${OPENAI_DAILY_USD_CAP}) — not falling back`);
+  const cap = await openAiCapReached(db, { daily: OPENAI_DAILY_USD_CAP, monthly: OPENAI_MONTHLY_USD_CAP });
+  if (cap.reached) {
+    console.error(`[foodscan] OpenAI cap reached (day $${cap.dayUsd.toFixed(3)} of $${OPENAI_DAILY_USD_CAP}, month $${cap.monthUsd.toFixed(3)} of $${OPENAI_MONTHLY_USD_CAP}) — not falling back`);
     throw geminiFailure;
   }
-  const r = await callOpenAiScan(image, hint, openAiKey, OPENAI_TIMEOUT_MS);
+  const openAiBudget = Math.max(OPENAI_MIN_MS, Math.min(OPENAI_TIMEOUT_MS, TOTAL_BUDGET_MS - (Date.now() - startedAt)));
+  const r = await callOpenAiScan(image, hint, openAiKey, openAiBudget);
   if (r.usage) {
     await recordOpenAiSpend(db, {
       usd: r.costUsd,
@@ -262,8 +253,8 @@ async function scan(
     console.warn('[foodscan] OpenAI reply unparseable', r.text.slice(0, 200));
     throw geminiFailure;
   }
-  const spentNow = spent.usd + r.costUsd;
-  if (spentNow >= OPENAI_DAILY_USD_CAP * 0.25) console.warn(`[foodscan] OpenAI spend today $${spentNow.toFixed(3)}`);
+  const spentNow = cap.dayUsd + r.costUsd;
+  if (spentNow >= OPENAI_DAILY_USD_CAP * 0.5) console.warn(`[foodscan] OpenAI spend today $${spentNow.toFixed(3)}`);
   console.log(`[foodscan] model=${r.model} (fallback) items=${payload.items.length} in=${r.usage?.input_tokens ?? '?'} cached=${r.usage?.input_tokens_details?.cached_tokens ?? 0} out=${r.usage?.output_tokens ?? '?'} usd=${r.costUsd.toFixed(5)}`);
   return { payload, model: r.model };
 }
@@ -272,11 +263,11 @@ async function scanWithGemini(
   db: admin.firestore.Firestore,
   prompt: string,
   image: ScanImage,
+  startedAt: number,
   debug: ScanDebug[] | null = null,
 ): Promise<{ payload: ScanPayload; model: string }> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new HttpError(503, 'Scanning is not configured on the server yet.');
-  const startedAt = Date.now();
+  if (!apiKey) throw new HttpError(503, 'Scanning is unavailable right now. Please try again later.');
 
   // What went wrong last, so the user gets the real reason if every attempt
   // fails rather than a generic "busy".
@@ -349,13 +340,14 @@ async function scanWithGemini(
 // ----- Handler -------------------------------------------------------------
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  setCors(req, res);
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
+  const startedAt = Date.now();
 
   let a: typeof admin;
   try { a = getAdmin(); }
-  catch (e) { res.status(500).json({ error: (e as Error).message }); return; }
+  catch (e) { replyNotConfigured(res, e); return; }
   const db = a.firestore();
 
   const body = (req.body || {}) as Record<string, unknown>;
@@ -366,15 +358,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try { uid = (await a.auth().verifyIdToken(idToken)).uid; }
     catch { throw new HttpError(401, 'Your session has expired. Please sign in again.', { reason: 'auth' }); }
 
-    if (process.env.FOODSCAN_REQUIRE_PREMIUM === 'true') {
+    // Premium is enforced on the server since 3.27.0 — the client gate is the polite copy of this rule.
+    if (process.env.FOODSCAN_REQUIRE_PREMIUM !== 'false') {
       await assertPremium(db, uid, 'Food scan is part of Zenith Premium.');
     }
 
     const image = readImage(body);
     const hint = typeof body.hint === 'string' ? body.hint.trim().slice(0, 200) : '';
     const perDay = Number(process.env.FOODSCAN_PER_USER_PER_DAY) || DEFAULT_PER_USER_PER_DAY;
+    const globalPerDay = Number(process.env.FOODSCAN_GLOBAL_PER_DAY) || DEFAULT_GLOBAL_PER_DAY;
 
     const remaining = await consumeLimit(db, uid, [
+      { field: 'scanm', windowMs: MINUTE_MS, max: PER_USER_PER_MINUTE, message: 'One plate at a time — try again in a minute.' },
       {
         field: 'scan',
         windowMs: DAY_MS,
@@ -382,20 +377,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: `You've used today's ${perDay} food scans. More tomorrow — you can still add food by hand.`,
       },
     ]);
+    const refundUser = () => Promise.all([refundLimit(db, uid, 'scan', DAY_MS), refundLimit(db, uid, 'scanm', MINUTE_MS)]);
+    try {
+      // Everyone's scans share the free-tier cascade; this is the ceiling
+      // that stops one bad day (or one script) from emptying it for all.
+      await consumeLimit(db, 'global', [
+        { field: 'scand', windowMs: DAY_MS, max: globalPerDay, message: 'Scanning is busy today. You can still add food by hand.' },
+      ]);
+    } catch (err) {
+      await refundUser();
+      throw err;
+    }
 
     // Admins may ask for raw-shape diagnostics (never user data) with debug: true.
-    const adminUids = (process.env.ADMIN_UIDS || 'BXedteurc3bPydsehvPIdVWPTbM2,upLvcTSoE5SS7lOmhYBKHFWSV0r1').split(',');
-    const debug: ScanDebug[] | null = body.debug === true && adminUids.includes(uid) ? [] : null;
+    const debug: ScanDebug[] | null = body.debug === true && adminUids().includes(uid) ? [] : null;
 
     const prompt = hint ? `${SCAN_PROMPT}\n\nThe user says: ${hint}` : SCAN_PROMPT;
     let payload: ScanPayload;
     let model: string;
     try {
-      ({ payload, model } = await scan(db, prompt, image, hint, debug, !!debug && body.forceFallback === true));
+      ({ payload, model } = await scan(db, prompt, image, hint, startedAt, debug, !!debug && body.forceFallback === true));
     } catch (err) {
       // A scan that never produced anything shouldn't cost one of the day's
       // ten. The user retrying our own flakiness was burning their budget.
-      await refundLimit(db, uid, 'scan', DAY_MS);
+      await Promise.all([refundUser(), refundLimit(db, 'global', 'scand', DAY_MS)]);
       throw err;
     }
 

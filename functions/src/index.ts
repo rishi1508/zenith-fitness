@@ -7,6 +7,14 @@ import {GoogleAuth} from "google-auth-library";
 admin.initializeApp();
 const db = admin.firestore();
 
+// Bounds for what a session doc may turn into on a participant's history.
+const MAX_EXERCISES = 40;
+const MAX_SETS = 30;
+const MAX_NAME = 60;
+const MAX_DURATION_MIN = 24 * 60;
+const isoOrNow = (v: unknown): string =>
+  typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : new Date().toISOString();
+
 /**
  * When the host ends a buddy session (status flips to 'completed'),
  * save EVERY participant's workout to their cloud history server-side.
@@ -62,14 +70,17 @@ export const saveWorkoutOnSessionComplete = onDocumentUpdated(
 
         // Drop exercises with no logged sets — saving a fully-empty
         // workout would clutter history without conveying anything.
+        // The progress doc is client-written, so sizes are clamped too:
+        // a workout has at most MAX_EXERCISES exercises of MAX_SETS sets.
         const exercises = allExercises
+          .slice(0, MAX_EXERCISES)
           .map((ex) => {
             const sets = ((ex.sets as Array<Record<string, unknown>>) || []).filter((s) => {
               const completed = !!s.completed;
               const weight = Number(s.weight) || 0;
               const reps = Number(s.reps) || 0;
               return completed && weight > 0 && reps > 0;
-            });
+            }).slice(0, MAX_SETS);
             return { ...ex, sets };
           })
           .filter((ex) => Array.isArray(ex.sets) && (ex.sets as unknown[]).length > 0);
@@ -88,16 +99,18 @@ export const saveWorkoutOnSessionComplete = onDocumentUpdated(
             return;
           }
 
-          const completedAt = session.completedAt || new Date().toISOString();
-          const startedAt = session.startedAt;
-          const duration = participant.duration ?? (
-            startedAt ? Math.max(0, Math.floor((Date.parse(completedAt) - Date.parse(startedAt)) / 60000)) : undefined
+          const completedAt = isoOrNow(session.completedAt);
+          const startedAt = typeof session.startedAt === "string" && Number.isFinite(Date.parse(session.startedAt)) ? session.startedAt : undefined;
+          const rawDuration = participant.duration ?? (
+            startedAt ? Math.floor((Date.parse(completedAt) - Date.parse(startedAt)) / 60000) : undefined
           );
+          const duration = typeof rawDuration === "number" && Number.isFinite(rawDuration)
+            ? Math.min(MAX_DURATION_MIN, Math.max(0, Math.floor(rawDuration))) : undefined;
 
           const workout: Record<string, unknown> = {
             id: `session_${sessionId}_${uid}`,
             date: completedAt,
-            name: session.workoutName || "Buddy Session",
+            name: (typeof session.workoutName === "string" && session.workoutName.trim() ? session.workoutName.trim() : "Buddy Session").slice(0, MAX_NAME),
             type: session.workoutType || "custom",
             exercises,
             completed: true,
@@ -131,6 +144,8 @@ export const saveWorkoutOnSessionComplete = onDocumentUpdated(
  * in the Cloud console. A message with attribute dryRun="true" only checks
  * that the function holds the permissions it needs and logs the result.
  */
+const BUDGET_NAME = "Zenith Fitness monthly cap";
+
 interface BudgetNotification {
   budgetDisplayName?: string;
   costAmount?: number;
@@ -151,6 +166,12 @@ export const capBilling = onMessagePublished(
     const msg = (event.data.message.json ?? {}) as BudgetNotification;
     const dryRun = event.data.message.attributes?.dryRun === "true";
     const projectId = process.env.GCLOUD_PROJECT ?? "zenith-fitness-18e2a";
+    // Only the project's own budget may pull the switch. Anything else on
+    // the topic (another budget, a stray publish) is logged and ignored.
+    if (msg.budgetDisplayName && msg.budgetDisplayName !== BUDGET_NAME) {
+      logger.warn("ignoring notification from another budget", {budget: msg.budgetDisplayName});
+      return;
+    }
     const cost = Number(msg.costAmount ?? 0);
     const budget = Number(msg.budgetAmount ?? 0);
     logger.info("budget notification", {cost, budget, currency: msg.currencyCode, dryRun});

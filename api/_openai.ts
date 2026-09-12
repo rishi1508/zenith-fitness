@@ -14,11 +14,14 @@ export const OPENAI_MODEL = process.env.OPENAI_SCAN_MODEL || 'gpt-5.6-luna';
 /** Per-1M-token prices for the fallback model, for the spend counter. */
 export const OPENAI_PRICES_USD = { input: 0.2, cachedInput: 0.02, output: 1.2 };
 /**
- * A runaway guard, not a budget: at ~$0.001 a scan and ~$0.0015 a Zen turn
- * this is well over a thousand paid calls in a day, which nothing but abuse
- * produces. Below it the fallback always runs.
+ * Runaway guards, not budgets. At ~$0.001 a scan and ~$0.0015 a Zen turn the
+ * daily cap is ~200 paid calls — twice what 100 members scanning once a day
+ * would need even with Gemini down all day — and the monthly cap keeps half
+ * of the prepaid $8 in hand whatever happens. Below both, the fallback
+ * always runs. Env overrides: OPENAI_DAILY_USD_CAP, OPENAI_MONTHLY_USD_CAP.
  */
-export const OPENAI_DAILY_USD_CAP = Number(process.env.OPENAI_DAILY_USD_CAP) || 2;
+export const OPENAI_DAILY_USD_CAP = Number(process.env.OPENAI_DAILY_USD_CAP) || 0.25;
+export const OPENAI_MONTHLY_USD_CAP = Number(process.env.OPENAI_MONTHLY_USD_CAP) || 4;
 
 export type OpenAiPurpose = 'scan' | 'zen';
 

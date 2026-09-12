@@ -5,6 +5,7 @@
 // (docs/HEALTH_SPEC.md §6).
 
 import type { Firestore } from 'firebase-admin/firestore';
+import { adminUids } from './_http.js';
 
 export const MINUTE_MS = 60 * 1000;
 export const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -82,6 +83,7 @@ export async function refundLimit(db: Firestore, key: string, field: string, win
 
 /** Paid tier, an admin grant, or a gym membership (REVAMP_SPEC.md §5 precedence). */
 export async function assertPremium(db: Firestore, uid: string, message: string): Promise<void> {
+  if (adminUids().includes(uid)) return; // same precedence as src/premium (admin > paid > gym > free)
   const snap = await db.collection('userProfiles').doc(uid).get();
   const p = (snap.exists ? snap.data() : {}) as { premiumGrant?: boolean; subscriptionTier?: string; gym?: unknown };
   const ok = p.premiumGrant === true || p.subscriptionTier === 'premium' || !!p.gym;
