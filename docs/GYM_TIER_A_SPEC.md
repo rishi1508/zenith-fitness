@@ -292,3 +292,41 @@ Two ways, both in the Add member sheet:
 Rules: `gymInvites` is keyed by the lower-cased email so the rule can check
 `request.auth.token.email.lower() == email`; staff write them, the invitee reads and deletes their
 own. The member self-create rule now accepts either a valid join code **or** a matching invite.
+
+## 14. The gym's own content and anonymous ratings (3.28.0, 2026-09-13)
+
+Asked for by the first gym at the demo; built generically.
+
+**Exercises** — `gyms/{gymId}/exercises/{id}` (`GymExercise`, `src/gymLibrary.ts`).
+Staff write, members read. `GymContext` starts one listener per gym that fills
+a module cache; `withGymExercises()` appends the rows to every picker and
+`findExercise()` resolves an exercise by id then name across the member's
+library and the gym's. Nothing is copied into the member's own data. The
+video (`videoUrl`) plays in `VideoModal` from the workout card
+(`ActiveWorkoutView`) and from My Gym → Exercise videos (`GymLibraryView`,
+staff add/edit/remove with `ExerciseForm`; the "creator notes" slot carries
+the trainer's cues).
+
+**Plans** — `gyms/{gymId}/plans/{id}` (`GymWorkoutPlan`). Staff publish from
+Train → Weekly plans → Share with gym (`publishGymPlan`; the gym plan keeps
+the local plan's id, so re-sharing updates it). Members adopt from
+`GymPlansView` (Train → "Plans from <gym>", or My Gym → Workout plans):
+`adoptGymPlan` copies the days into a local plan tagged `sourceGymPlanId`,
+sets it active, and bumps `useCount` once. Rules let a member change only
+`useCount`, by exactly one.
+
+**Ratings** — `gyms/{gymId}/ratings/{voterHash}` (`GymSessionRating`),
+written only by `api/rate.ts`. The route verifies the caller is a member (not
+staff) who was enrolled in or attended `classes/{classId}/sessions/{date}`,
+dated within 14 days, then writes `{classId, date, trainerUid, stars, comment,
+at}` under an HMAC of `(gym, class, date, uid)` derived from the Firebase key —
+one vote per person, re-rate overwrites, no uid stored. Members rate from
+`ClassDetailView` once the session date has passed; a per-device marker hides
+the card afterwards. Managers/owners read them in Analytics (`RatingsCard` +
+explainer sheet; `summarizeRatings` in `src/gymRatings.ts`); trainers cannot
+read the collection.
+
+**Co-branding** — `GymHint` carries `gymName`; the splash shows "by <gym>",
+the home app bar's eyebrow leads with the gym's name, the home gym row shows
+`logoUrl`. Play listing name stays Zenith Fitness; white-label is a paid
+add-on (`docs/PILOT_TSZ.md` §3).
