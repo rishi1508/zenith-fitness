@@ -1,4 +1,4 @@
-import type { ProfileDraft } from './profileDraft';
+import { COUNTRY_CODES, type ProfileDraft } from './profileDraft';
 
 const SEXES: Array<{ id: 'male' | 'female' | 'other'; label: string }> = [
   { id: 'male', label: 'Male' }, { id: 'female', label: 'Female' }, { id: 'other', label: 'Other' },
@@ -35,11 +35,21 @@ export function ProfileFields({ draft, onChange, isDark, showName, autoFocus }: 
       <div>
         <span className={label}>Mobile number</span>
         <div className="flex gap-2 mt-1">
-          <span className={`${inputClass} w-16 shrink-0 text-center`} aria-hidden>+91</span>
+          <select
+            value={draft.countryCode}
+            onChange={(e) => set({ countryCode: e.target.value })}
+            aria-label="Country code"
+            className={`shrink-0 w-[92px] rounded-xl px-2 py-3.5 text-sm border focus:outline-none focus:border-orange-500 ${
+              isDark ? 'bg-[#1a1a1a] border-[#2e2e2e] text-white' : 'bg-white border-gray-200 text-gray-900'
+            }`}
+          >
+            {COUNTRY_CODES.map((c) => <option key={c.code} value={c.code}>+{c.code} {c.label}</option>)}
+          </select>
           <input
             type="tel" inputMode="numeric" autoComplete="tel-national"
-            value={draft.phone} onChange={(e) => set({ phone: e.target.value })}
-            placeholder="10-digit number" className={inputClass} aria-label="Mobile number"
+            value={draft.phone} onChange={(e) => set({ phone: e.target.value.replace(/[^\d]/g, '').slice(0, 14) })}
+            placeholder={draft.countryCode === '91' ? '10-digit number' : 'Number'}
+            className={`${inputClass} flex-1 min-w-0`} aria-label="Mobile number"
             autoFocus={autoFocus && !showName}
           />
         </div>

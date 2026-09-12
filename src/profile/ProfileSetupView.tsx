@@ -37,7 +37,11 @@ export function ProfileSetupView({ isDark, currentName, onDone }: { isDark: bool
   };
 
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center px-6 py-10 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div
+      className={`fixed inset-0 overflow-y-auto ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}
+      style={{ overscrollBehavior: 'none', paddingTop: 'max(env(safe-area-inset-top, 0px), var(--status-bar-h, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+      <div className="min-h-full flex flex-col justify-center items-center px-6 py-8">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-1">
           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mx-auto mb-3">
@@ -62,6 +66,7 @@ export function ProfileSetupView({ isDark, currentName, onDone }: { isDark: bool
           Continue
         </button>
         <button onClick={() => { void signOut(); }} className={`w-full text-sm ${subtle}`}>Sign out</button>
+      </div>
       </div>
     </div>
   );

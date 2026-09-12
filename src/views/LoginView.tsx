@@ -170,7 +170,11 @@ export function LoginView({ isDark }: { isDark: boolean }) {
   // ---- Render ----
 
   return (
-    <div className={`min-h-screen flex flex-col items-center justify-center px-6 ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div
+      className={`fixed inset-0 overflow-y-auto ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}
+      style={{ overscrollBehavior: 'none', paddingTop: 'max(env(safe-area-inset-top, 0px), var(--status-bar-h, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+    <div className="min-h-full flex flex-col items-center justify-center px-6 py-8">
       {/* Logo */}
       <div className="text-center mb-10">
         <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-500/20">
@@ -378,6 +382,7 @@ export function LoginView({ isDark }: { isDark: boolean }) {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }
