@@ -52,6 +52,8 @@ which are quoted separately.
 | Co-branding | Gym name and logo on splash, home and gym tab | Built 2026-09-13 |
 | Play Store closed test | The pilot members double as the 12 testers Google requires; APK on day one, Play install the day the developer account clears | Rishi: create the account |
 | Onboarding service | Plans and exercises entered for them; member list imported | Rishi + gym: collect the plans and videos |
+| Desk-created accounts (3.29.0) | Adding a member by name + mobile creates their Zenith account; they sign in by e-mail code or Google and land in it with the profile filled | Built 2026-09-13 |
+| Anonymous ratings, session sharing fixes, announcement badge (3.29.0) | See docs/RELEASE_3.29.0.md | Built 2026-09-13 |
 
 Testing starts Monday 2026-09-14 with real members. Full rollout in a month.
 
