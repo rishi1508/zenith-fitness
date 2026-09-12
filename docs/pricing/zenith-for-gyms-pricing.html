@@ -1,0 +1,316 @@
+<title>Zenith for Gyms Pricing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --paper: #faf7f3;
+    --paper-2: #f1ece5;
+    --ink: #1f1a16;
+    --ink-2: #4b423b;
+    --ink-3: #82766c;
+    --rule: #e2d9cf;
+    --accent: #ea6a1c;
+    --accent-ink: #b84f0e;
+    --accent-soft: #fbe9dc;
+    --good: #2f7d4f;
+    --tier-ground: #ffffff;
+    --shadow: 0 1px 0 rgba(31, 26, 22, .06), 0 12px 32px -20px rgba(31, 26, 22, .35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #17130f;
+      --paper-2: #211b16;
+      --ink: #f3ede6;
+      --ink-2: #cfc4b8;
+      --ink-3: #93867a;
+      --rule: #342b24;
+      --accent: #f5813a;
+      --accent-ink: #f8a26e;
+      --accent-soft: #3a2314;
+      --good: #6ecf93;
+      --tier-ground: #1e1813;
+      --shadow: 0 1px 0 rgba(0, 0, 0, .4), 0 12px 32px -20px rgba(0, 0, 0, .8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #17130f;
+    --paper-2: #211b16;
+    --ink: #f3ede6;
+    --ink-2: #cfc4b8;
+    --ink-3: #93867a;
+    --rule: #342b24;
+    --accent: #f5813a;
+    --accent-ink: #f8a26e;
+    --accent-soft: #3a2314;
+    --good: #6ecf93;
+    --tier-ground: #1e1813;
+    --shadow: 0 1px 0 rgba(0, 0, 0, .4), 0 12px 32px -20px rgba(0, 0, 0, .8);
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Manrope, "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.55;
+    padding-block: 40px 72px;
+    padding-inline: 20px;
+  }
+  .page { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+
+  h1, h2, h3 { font-family: Sora, Manrope, system-ui, sans-serif; text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(30px, 5vw, 40px); font-weight: 700; line-height: 1.1; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; font-weight: 700; line-height: 1.25; }
+  h3 { font-size: 16px; font-weight: 600; }
+  p { margin: 0; max-width: 62ch; }
+  .muted { color: var(--ink-2); }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-ink); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header { display: flex; flex-direction: column; gap: 14px; padding-bottom: 28px; border-bottom: 2px solid var(--ink); }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .flame { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, #f97316, #dc2626); display: grid; place-items: center; }
+  .flame svg { width: 16px; height: 16px; }
+  .brand span { font-family: Sora, sans-serif; font-weight: 700; font-size: 15px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 14px; color: var(--ink-2); }
+
+  section { display: flex; flex-direction: column; gap: 18px; }
+  .section-head { display: flex; flex-direction: column; gap: 6px; }
+
+  .tiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .tier { background: var(--tier-ground); border: 1px solid var(--rule); border-radius: 12px; padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow); }
+  .tier.pilot { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tier .name { font-family: Sora, sans-serif; font-weight: 700; font-size: 14px; }
+  .tier .cap { font-size: 13px; color: var(--ink-2); }
+  .tier .price { font-family: Sora, sans-serif; font-size: 26px; font-weight: 700; line-height: 1; margin-top: 4px; }
+  .tier .price small { font-family: Manrope, sans-serif; font-size: 13px; font-weight: 500; color: var(--ink-3); }
+  .tier .annual { font-size: 13px; color: var(--ink-2); }
+  .tier .tag { align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent-soft); border-radius: 999px; padding: 3px 8px; }
+  .fineprint { font-size: 14px; color: var(--ink-2); }
+
+  .included { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; }
+  .included div { display: flex; flex-direction: column; gap: 6px; }
+  .included h3 { color: var(--ink); }
+  .included ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 15px; display: flex; flex-direction: column; gap: 3px; }
+
+  .rules { display: grid; grid-template-columns: max-content 1fr; gap: 10px 20px; font-size: 15px; }
+  .rules dt { font-weight: 700; color: var(--ink); }
+  .rules dd { margin: 0; color: var(--ink-2); }
+
+  .terms { background: var(--paper-2); border-radius: 12px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .terms ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; color: var(--ink-2); font-size: 15px; }
+  .terms ol strong { color: var(--ink); }
+  .timeline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .step { border-top: 3px solid var(--rule); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+  .step.on { border-top-color: var(--accent); }
+  .step .when { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .step .what { font-weight: 600; font-size: 15px; }
+  .step .how { font-size: 13px; color: var(--ink-2); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .table-wrap { overflow-x: auto; }
+  th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  td.price { white-space: nowrap; font-weight: 600; }
+  td .sub { display: block; font-size: 13px; color: var(--ink-3); }
+
+  .sign { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; padding-top: 12px; }
+  .sign div { border-top: 1px solid var(--ink); padding-top: 8px; font-size: 14px; color: var(--ink-2); min-height: 72px; }
+  .sign strong { color: var(--ink); display: block; }
+  footer { font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 16px; }
+
+  @media (max-width: 720px) {
+    .tiers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .included { grid-template-columns: 1fr; }
+    .timeline { grid-template-columns: 1fr; }
+    .rules { grid-template-columns: 1fr; gap: 4px 0; }
+    .rules dd { margin-bottom: 8px; }
+  }
+  @media (max-width: 440px) {
+    .tiers { grid-template-columns: 1fr; }
+    .sign { grid-template-columns: 1fr; }
+  }
+  @media print {
+    body { background: #fff; color: #000; padding: 0; }
+    .tier, .terms { box-shadow: none; }
+  }
+</style>
+
+<div class="page">
+  <header>
+    <div class="brand">
+      <div class="flame" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div>
+      <span>Zenith Fitness</span>
+    </div>
+    <div>
+      <p class="eyebrow">Zenith for Gyms</p>
+      <h1>One flat price for the whole gym. Every member gets the app.</h1>
+    </div>
+    <p class="muted">Price list effective 1 October 2026. All prices in INR, per gym, plus GST as applicable. Members never pay for anything the gym has bought.</p>
+    <div class="meta">
+      <span>Prepared for <strong>TSZ Gym</strong></span>
+      <span>Prepared by Rishi Mishra · Zenith Fitness</span>
+      <span>13 September 2026</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <h2>Tiers by roster size</h2>
+      <p class="muted">Pick the tier your roster fits. Add members freely inside the cap; nothing changes on the bill until you outgrow it.</p>
+    </div>
+    <div class="tiers">
+      <div class="tier">
+        <span class="name">Tier 1</span>
+        <span class="cap">Up to 100 members</span>
+        <span class="price num">₹1,499 <small>/ month</small></span>
+        <span class="annual num">₹14,999 / year</span>
+      </div>
+      <div class="tier pilot">
+        <span class="tag">TSZ from 1 Oct</span>
+        <span class="name">Tier 2</span>
+        <span class="cap">Up to 300 members</span>
+        <span class="price num">₹2,499 <small>/ month</small></span>
+        <span class="annual num">₹24,999 / year</span>
+      </div>
+      <div class="tier">
+        <span class="name">Tier 3</span>
+        <span class="cap">Up to 600 members</span>
+        <span class="price num">₹3,999 <small>/ month</small></span>
+        <span class="annual num">₹39,999 / year</span>
+      </div>
+      <div class="tier">
+        <span class="name">Tier 4</span>
+        <span class="cap">Above 600, or more than one branch</span>
+        <span class="price num">₹5,999 <small>/ month</small></span>
+        <span class="annual num">₹59,999 / year · multi-branch quoted</span>
+      </div>
+    </div>
+    <p class="fineprint">Annual is two months free. Every tier includes everything below; tiers differ only in roster size.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What every tier includes</h2>
+    </div>
+    <div class="included">
+      <div>
+        <h3>For the front desk and the owner</h3>
+        <ul>
+          <li>Members, plans, payments and renewal reminders with a UPI link</li>
+          <li>Check-in console: daily code, poster QR, member QR, manual</li>
+          <li>Classes, enrolment and attendance</li>
+          <li>Analytics: MRR, churn, members slipping away, peak hours, revenue split, trainer utilisation, equipment health</li>
+          <li>Anonymous session ratings by trainer and class</li>
+          <li>Announcements to every member's phone</li>
+          <li>Staff accounts for trainers and managers, no seat limit</li>
+        </ul>
+      </div>
+      <div>
+        <h3>For every member, at no charge to them</h3>
+        <ul>
+          <li>Zenith Premium: Zen coach, plate scan, insights, weight and energy tracking</li>
+          <li>Your gym's exercises with your trainers' videos, playable mid-workout</li>
+          <li>Your gym's workout plans, adopted with one tap</li>
+          <li>Gym feed, buddies, streaks, badges</li>
+          <li>Health Connect sync on Android</li>
+          <li>The app carries your gym's name and logo</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>How we count, bill and change tiers</h2>
+    </div>
+    <dl class="rules">
+      <dt>Member</dt>
+      <dd>A person on your roster whose membership is active, or lapsed less than 7 days, on the 1st of the month. Staff and test entries are not counted.</dd>
+      <dt>Outgrowing a tier</dt>
+      <dd>If the count on the 1st is above your cap, the next tier applies from the following month. No mid-month changes and no back-charges.</dd>
+      <dt>Shrinking</dt>
+      <dd>If the count falls under a lower cap for two consecutive months, you may move down at the next monthly renewal.</dd>
+      <dt>Billing</dt>
+      <dd>Monthly in advance by UPI or bank transfer, invoice sent on the 1st, due in 7 days. Annual plans are invoiced once.</dd>
+      <dt>Price changes</dt>
+      <dd>At most once a year, capped at 10%, with 60 days' written notice. Annual plans are locked for their term.</dd>
+      <dt>Leaving</dt>
+      <dd>Cancel any time with 7 days' notice; the current month is not refunded. Your member list and payment history are exported to you on request. Members keep their own training data in Zenith.</dd>
+    </dl>
+  </section>
+
+  <section class="terms">
+    <div class="section-head">
+      <p class="eyebrow">Pilot terms</p>
+      <h2>TSZ Gym</h2>
+    </div>
+    <div class="timeline">
+      <div class="step on">
+        <span class="when">14 – 30 September</span>
+        <span class="what">Free pilot</span>
+        <span class="how">Real members, everything on, staff accounts, the desk onboards people.</span>
+      </div>
+      <div class="step">
+        <span class="when">From 1 October</span>
+        <span class="what num">Tier 2 · ₹2,499 / month</span>
+        <span class="how">Or ₹24,999 for the year. Standard list price, no strings.</span>
+      </div>
+      <div class="step">
+        <span class="when">Ongoing</span>
+        <span class="what">Founding-gym referral</span>
+        <span class="how">20% of any referred gym's first-year fee, paid quarterly.</span>
+      </div>
+    </div>
+    <ol>
+      <li><strong>Onboarding, one-time ₹4,999</strong>, waived if the first year is paid up front: member import, your notice-board plans entered as in-app plans, your exercises added with your videos, staff accounts, a poster QR for the desk, one session for staff.</li>
+      <li><strong>Co-branding</strong> is included: the gym's name and logo appear on the app's splash screen, home screen and gym tab. The app remains Zenith Fitness on the Play Store; a listing under the gym's own name is an add-on below.</li>
+      <li><strong>Your content stays yours.</strong> Plans and videos you add are licensed to Zenith only to show them to your members; remove them any time.</li>
+      <li><strong>Gym features follow membership.</strong> A member who leaves the gym keeps their own workout history and moves to the free app; Zenith may offer them an individual subscription.</li>
+      <li><strong>Support</strong> on WhatsApp during gym hours, a reply within one business day, and the app updates itself through the Play Store.</li>
+    </ol>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Add-ons, quoted on request</h2>
+      <p class="muted">Nothing here is needed to run the gym on Zenith. Each is priced on its own so the base stays flat.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Add-on</th><th>What it is</th><th>Price</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Personal AI trainer</td>
+            <td>Zen tuned to your head trainer's philosophy and your plans, a daily nudge, replies read aloud. For the membership tier you choose to include it in.<span class="sub">Available after the pilot.</span></td>
+            <td class="price num">₹99 per member on that tier / month</td>
+          </tr>
+          <tr>
+            <td>Your own Play Store listing</td>
+            <td>The app under your gym's name and icon, same features, same accounts.</td>
+            <td class="price num">₹9,999 setup + ₹1,000 / month</td>
+          </tr>
+          <tr>
+            <td>Smart entry</td>
+            <td>Tablet at the door with face check-in for members who opt in, wired to your door controller.<span class="sub">Hardware at cost; consent and retention terms apply.</span></td>
+            <td class="price num">₹25,000 setup + ₹999 / month</td>
+          </tr>
+          <tr>
+            <td>Data migration</td>
+            <td>Members, plans and payment history from your current app.</td>
+            <td class="price num">Included with a CSV export · ₹2,999 by hand</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sign">
+      <div><strong>For TSZ Gym</strong>Name, signature, date</div>
+      <div><strong>For Zenith Fitness</strong>Rishi Mishra, signature, date</div>
+    </div>
+  </section>
+
+  <footer>Zenith Fitness · rishimishra1508@gmail.com · Prices exclude GST, which is added when applicable. This sheet, once signed by both parties, is the pilot agreement.</footer>
+</div>
