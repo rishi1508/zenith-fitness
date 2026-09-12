@@ -41,6 +41,11 @@ export function useElasticScroll(
     let pulling: 'top' | 'bottom' | null = null;
     let decided = false;
     let offset = 0;
+    // Set when the gesture began on something that opted out. Without it the
+    // move handler ran against the PREVIOUS gesture's start point: a scroll
+    // that began on a chart read as a pull from the top and yanked the page
+    // there before the browser's own scroll took over (reported 2026-09-13).
+    let ignoring = false;
 
     const atTop = () => scroller.scrollTop <= 0;
     const atBottom = () => scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
@@ -51,6 +56,7 @@ export function useElasticScroll(
     };
 
     const release = () => {
+      ignoring = false;
       if (offset !== 0) {
         content.style.transition = 'transform 340ms cubic-bezier(0.22, 1, 0.36, 1)';
         setOffset(0);
@@ -69,7 +75,8 @@ export function useElasticScroll(
       // against that ancestor instead of the viewport — the photo viewer
       // collapsed into a square mid-page on every scroll for exactly this
       // reason. Chat scrollers opt out because they scroll themselves.
-      if ((e.target as HTMLElement | null)?.closest('[data-elastic-skip], .fixed, [role="dialog"], [aria-modal="true"]')) return;
+      ignoring = !!(e.target as HTMLElement | null)?.closest('[data-elastic-skip], .fixed, [role="dialog"], [aria-modal="true"]');
+      if (ignoring) return;
       startY = e.touches[0].clientY;
       startX = e.touches[0].clientX;
       pulling = null;
@@ -78,7 +85,7 @@ export function useElasticScroll(
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
+      if (ignoring || e.touches.length !== 1) return;
       const dy = e.touches[0].clientY - startY;
       const dx = e.touches[0].clientX - startX;
 

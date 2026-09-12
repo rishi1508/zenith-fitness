@@ -17,14 +17,18 @@ interface HealthTabViewProps {
   onOpenBodyWeight: () => void;
   onOpenBodyMeasurements: () => void;
   onOpenInsights: () => void;
+  /** Nutrition diary (the ring and the macro numbers). */
   onOpenNutrition: () => void;
+  /** Straight to the add-food screen for today's meal — the button says
+   *  "Log food", so it must not land on a screen where you press it again. */
+  onLogFood: () => void;
   onOpenPhase: () => void;
   onOpenActivity: () => void;
   onOpenEnergy: () => void;
 }
 
 /** Health tab root (docs/REVAMP_SPEC.md §3, §6). */
-export function HealthTabView({ onOpenZen, onJoinGym, onOpenBodyWeight, onOpenBodyMeasurements, onOpenInsights, onOpenNutrition, onOpenPhase, onOpenActivity, onOpenEnergy }: HealthTabViewProps) {
+export function HealthTabView({ onOpenZen, onJoinGym, onOpenBodyWeight, onOpenBodyMeasurements, onOpenInsights, onOpenNutrition, onLogFood, onOpenPhase, onOpenActivity, onOpenEnergy }: HealthTabViewProps) {
   // The whole tab reads one day, so yesterday's food, energy and steps are a
   // tap away instead of only reachable inside the diary.
   const today = localDateISO();
@@ -60,7 +64,7 @@ export function HealthTabView({ onOpenZen, onJoinGym, onOpenBodyWeight, onOpenBo
       <Card>
         <SectionHeader caption={isToday ? 'Today' : dayLabel(date, today)} />
         <div className="mt-2 flex justify-center"><NutritionRing size={132} date={date} onClick={onOpenNutrition} /></div>
-        <Button variant="primary" size="md" icon={Plus} full className="mt-3" onClick={onOpenNutrition}>
+        <Button variant="primary" size="md" icon={Plus} full className="mt-3" onClick={onLogFood}>
           Log food
         </Button>
       </Card>

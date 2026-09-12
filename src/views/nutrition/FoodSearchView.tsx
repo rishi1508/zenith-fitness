@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Camera, Plus, ScanBarcode, Search, Star, UtensilsCrossed, Zap } from 'lucide-react';
+import { ArrowLeft, Camera, Pencil, Plus, ScanBarcode, Search, Star, Trash2, UtensilsCrossed, Zap } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import type { FoodEntry, FoodItem, FoodSource, Macros, MealSlot, SavedMeal } from '../../types';
 import {
-  getCustomFoods, getFavouriteFoodIds, getMeals, getNutritionDay, getRecentFoods, replaceCachedFood,
-  saveCustomFood, saveNutritionDay, subscribeHealth, toggleFavouriteFood,
+  deleteCustomFood, getCustomFoods, getFavouriteFoodIds, getMeals, getNutritionDay, getRecentFoods,
+  replaceCachedFood, saveCustomFood, saveNutritionDay, subscribeHealth, toggleFavouriteFood,
 } from '../../health/store';
+import { hapticImpact } from '../../haptics';
 import {
   getFood, getSharedFoods, loadFoodIndex, loadSharedFoods, lookupBarcode, OFF_ATTRIBUTION, searchAllFoods,
 } from '../../nutrition';
 import {
-  Button, Card, EmptyState, IconButton, SegmentedControl, Sheet, Skeleton, useToast,
+  Button, Card, EmptyState, IconButton, SegmentedControl, Sheet, Skeleton, useConfirm, useToast,
   CAPTION, H2, SUB,
 } from '../../ui';
 import { BarcodeScanView } from './BarcodeScanView';
 import { FoodEntrySheet } from './FoodEntrySheet';
-import { MEAL_LABEL, basisLabel, canEditFood, publishSharedFood, sourceLabel, upsertEntry } from './nutritionHelpers';
+import { MEAL_LABEL, basisLabel, canEditFood, deleteSharedFood, publishSharedFood, upsertEntry } from './nutritionHelpers';
 import { MealsSheet } from './MealsSheet';
 import { FoodSheet } from './foodEditing';
 
@@ -96,18 +97,24 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
   const [selected, setSelected] = useState<FoodItem | null>(null);
   const [sheetNote, setSheetNote] = useState<string | undefined>(undefined);
   const [createOpen, setCreateOpen] = useState(false);
-  const [editing, setEditing] = useState<FoodItem | null>(null);
+  /** `thenLog` opens the entry sheet after the save — true when the edit was
+   *  started on the way to logging the food, false for a long-press edit. */
+  const [editing, setEditing] = useState<{ food: FoodItem; thenLog: boolean } | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [mealsOpen, setMealsOpen] = useState(false);
-
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [rowActions, setRowActions] = useState<FoodItem | null>(null);
+  /** Foods deleted in this session. The community library is cached for hours,
+   *  so without this a food you just deleted would still be listed. */
+  const [deleted, setDeleted] = useState<string[]>([]);
 
   useEffect(() => subscribeHealth(() => setTick((t) => t + 1)), []);
-  useEffect(() => { searchRef.current?.focus(); }, []);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 150);
     return () => clearTimeout(t);
   }, [query]);
+  // Typing is a search of everything; the segment the user picked is left
+  // alone as soon as the box is empty again.
+  useEffect(() => { if (query.trim()) setSegment('all'); }, [query]);
 
   // `tick` is the health-store change signal — re-read everything on it.
   const stored = useMemo(() => ({
@@ -168,10 +175,11 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
   }, [segment, debounced, favouriteKey, tick, user?.uid]);
 
   const listed: SearchRow[] = useMemo(() => {
-    if (segment === 'recents') return recents.filter((f) => matches(f, debounced));
-    if (segment === 'favourites') return favourites.filter((f) => matches(f, debounced));
-    return rows;
-  }, [segment, recents, favourites, rows, debounced]);
+    const all = segment === 'recents' ? recents.filter((f) => matches(f, debounced))
+      : segment === 'favourites' ? favourites.filter((f) => matches(f, debounced))
+        : rows;
+    return deleted.length ? all.filter((f) => !deleted.includes(f.id)) : all;
+  }, [segment, recents, favourites, rows, debounced, deleted]);
 
   const pick = useCallback(async (id: string) => {
     const food = await resolveFood(id);
@@ -179,6 +187,31 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
     setSheetNote(undefined);
     setSelected(food);
   }, [showToast]);
+
+  /** Press and hold a row: the edit/delete sheet, but only for a food this
+   *  member is allowed to correct. Anything else stays a plain tap-to-log. */
+  const { confirm: confirmDialog } = useConfirm();
+  const openRowActions = useCallback(async (id: string) => {
+    const food = await resolveFood(id);
+    if (!food || !canEditFood(food, user?.uid)) return;
+    void hapticImpact('light');
+    setRowActions(food);
+  }, [user?.uid]);
+
+  const deleteFood = useCallback(async (food: FoodItem) => {
+    const ok = await confirmDialog({
+      title: 'Delete food?',
+      message: `${food.name} is removed from your foods and from the shared library. Entries already logged keep their figures.`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    deleteCustomFood(food.id);
+    setDeleted((ids) => [...ids, food.id]);
+    setRowActions(null);
+    const shared = await deleteSharedFood(food.id);
+    showToast(shared ? `Deleted ${food.name}.` : `Deleted ${food.name} on this device only.`);
+  }, [confirmDialog, showToast]);
 
   const onBarcode = useCallback(async (code: string) => {
     const food = await lookupBarcode(code);
@@ -207,7 +240,7 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
         <FoodEntrySheet
           open={!!selected} onClose={() => setSelected(null)}
           food={selected} date={date} meal={meal} note={sheetNote} onSaved={afterAdd}
-          onEditFood={canEditFood(selected, user?.uid) ? (f) => { setSelected(null); setEditing(f); } : undefined}
+          onEditFood={canEditFood(selected, user?.uid) ? (f) => { setSelected(null); setEditing({ food: f, thenLog: true }); } : undefined}
         />
       </>
     );
@@ -221,17 +254,29 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
           <h1 className={`${H2} truncate`}>Add food</h1>
           <p className={SUB}>{MEAL_LABEL[meal]}</p>
         </div>
-        <IconButton icon={ScanBarcode} label="Scan barcode" onClick={() => setScanning(true)} />
-        {onOpenScan && <IconButton icon={Camera} label="Scan plate" onClick={onOpenScan} />}
       </div>
+
+      {/* Photographing the plate is the fast path, so it sits above the search
+          box; typing a food out by hand is the fallback. */}
+      <Card>
+        <span className={CAPTION}>Capture</span>
+        <div className="mt-2 space-y-2">
+          {onOpenScan && (
+            <Button variant="primary" size="md" icon={Camera} full onClick={onOpenScan}>
+              Scan your plate
+            </Button>
+          )}
+          <Button variant="secondary" size="md" icon={ScanBarcode} full onClick={() => setScanning(true)}>
+            Scan barcode
+          </Button>
+        </div>
+      </Card>
 
       <div className="relative">
         <Search className="w-4 h-4 text-subtle absolute left-3 top-1/2 -translate-y-1/2" strokeWidth={1.75} />
         <input
-          ref={searchRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => setSegment('all')}
           placeholder="Search dal, roti, paneer…"
           className="w-full h-11 pl-9 pr-3 rounded-control border border-border bg-surface-2 text-text placeholder:text-subtle text-sm outline-none focus:border-accent/50"
         />
@@ -296,6 +341,7 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
               row={row}
               favourite={favouriteIds.includes(row.id)}
               onPick={() => { void pick(row.id); }}
+              onLongPress={() => { void openRowActions(row.id); }}
               onToggleFavourite={() => toggleFavouriteFood(row.id)}
             />
           ))}
@@ -354,15 +400,29 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
         }}
       />}
 
+      {rowActions && (
+        <Sheet open onClose={() => setRowActions(null)} title={rowActions.name}>
+          <Button
+            variant="secondary" size="lg" icon={Pencil} full
+            onClick={() => { const food = rowActions; setRowActions(null); setEditing({ food, thenLog: false }); }}
+          >
+            Edit
+          </Button>
+          <Button variant="danger" size="lg" icon={Trash2} full onClick={() => { void deleteFood(rowActions); }}>
+            Delete
+          </Button>
+        </Sheet>
+      )}
+
       {editing && <FoodSheet
         title="Edit food"
         submitLabel="Save changes"
-        initial={editing}
+        initial={editing.food}
         createdBy={user?.uid}
         onClose={() => setEditing(null)}
         onSubmit={(values) => {
           const updated: FoodItem = {
-            ...editing,
+            ...editing.food,
             name: values.name,
             brand: values.brand,
             basis: values.basis,
@@ -371,9 +431,9 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
           };
           replaceCachedFood(updated);
           publishSharedFood(updated);
-          setEditing(null);
           showToast(`Updated ${updated.name}.`);
-          setSelected(updated);
+          if (editing.thenLog) setSelected(updated);
+          setEditing(null);
         }}
       />}
 
@@ -390,18 +450,52 @@ export function FoodSearchView({ date, meal, onBack, onAdded, onOpenScan }: Food
   );
 }
 
-function ResultRow({ row, favourite, onPick, onToggleFavourite }: {
-  row: SearchRow; favourite: boolean; onPick: () => void; onToggleFavourite: () => void;
+/** Long enough not to fire while scrolling, short enough to feel deliberate. */
+const LONG_PRESS_MS = 400;
+/** A press that travels further than this is a scroll, not a hold. */
+const LONG_PRESS_SLOP_PX = 8;
+
+function ResultRow({ row, favourite, onPick, onLongPress, onToggleFavourite }: {
+  row: SearchRow; favourite: boolean; onPick: () => void; onLongPress: () => void; onToggleFavourite: () => void;
 }) {
   const kcal = rowKcal(row);
+  const timer = useRef<number | null>(null);
+  const fired = useRef(false);
+  const origin = useRef<{ x: number; y: number } | null>(null);
+
+  const clear = () => {
+    if (timer.current !== null) { clearTimeout(timer.current); timer.current = null; }
+  };
+  const start = (e: React.PointerEvent) => {
+    fired.current = false;
+    origin.current = { x: e.clientX, y: e.clientY };
+    clear();
+    timer.current = window.setTimeout(() => { fired.current = true; onLongPress(); }, LONG_PRESS_MS);
+  };
+  const move = (e: React.PointerEvent) => {
+    if (timer.current === null || !origin.current) return;
+    if (Math.hypot(e.clientX - origin.current.x, e.clientY - origin.current.y) > LONG_PRESS_SLOP_PX) clear();
+  };
+
+  // Brand and the per-100 figure are all a row needs; where the numbers came
+  // from is noise in a list you are scanning.
+  const subtitle = [row.brand, kcal != null ? `${Math.round(kcal)} kcal/100 ${basisLabel(row)}` : null]
+    .filter(Boolean).join(' · ');
+
   return (
     <div className="flex items-center gap-2 min-h-14 px-1 border-b border-border last:border-b-0">
-      <button onClick={onPick} className="flex-1 min-w-0 flex flex-col items-start text-left py-2">
+      <button
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={clear}
+        onPointerLeave={clear}
+        onPointerCancel={clear}
+        onContextMenu={(e) => e.preventDefault()}
+        onClick={() => { if (!fired.current) onPick(); }}
+        className="flex-1 min-w-0 flex flex-col items-start text-left py-2"
+      >
         <span className="text-[15px] leading-[22px] font-semibold text-text truncate w-full">{row.name}</span>
-        <span className="text-[13px] leading-[18px] text-muted truncate w-full">
-          {sourceLabel(row.source, { brand: row.brand, approx: row.approx })}
-          {kcal != null && ` · ${Math.round(kcal)} kcal/100 ${basisLabel(row)}`}
-        </span>
+        <span className="text-[13px] leading-[18px] text-muted truncate w-full">{subtitle}</span>
       </button>
       <button
         onClick={onToggleFavourite}

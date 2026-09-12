@@ -196,7 +196,7 @@ export function NotificationToast({ onOpenSession, onOpenChat, onOpenBuddies }: 
   return (
     <div
       className="fixed left-3 right-3 z-[70] flex flex-col gap-2 pointer-events-none"
-      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 10px)' }}
+      style={{ top: 'calc(var(--top-inset) + 10px)' }}
     >
       {/* Newest on top — it is the one being announced. */}
       {[...toasts].reverse().map(({ notif, leaving }) => (

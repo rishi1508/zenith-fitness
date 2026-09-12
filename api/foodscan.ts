@@ -12,7 +12,7 @@
 //     `remainingToday` is the user's own scans left today, for the UI.
 //   → 4xx/5xx { error, reason }  reason ∈ auth | premium | quota | image | busy
 //
-// Limits: FOODSCAN_PER_USER_PER_DAY (default 10) and 4/minute per user in
+// Limits: FOODSCAN_PER_USER_PER_DAY (default 20) and 4/minute per user in
 // zenLimits/{uid}, FOODSCAN_GLOBAL_PER_DAY (default 600) across everyone in
 // zenLimits/global, plus the shared daily model budgets in aiQuota/{day}.
 // A scan that produced nothing is refunded on every counter.
@@ -21,7 +21,7 @@
 //   FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY  (shared with /api/push)
 //   GEMINI_API_KEY                                                    (shared with /api/zen)
 // Optional:
-//   FOODSCAN_PER_USER_PER_DAY   default 10
+//   FOODSCAN_PER_USER_PER_DAY   default 20
 //   FOODSCAN_GLOBAL_PER_DAY     default 600
 //   FOODSCAN_REQUIRE_PREMIUM    default true  ('false' → open to every signed-in user; premium = paid, admin grant or gym member)
 
@@ -41,7 +41,7 @@ import { parseScanPayload, SCAN_PROMPT, type ScanPayload } from './_scanParse.js
 // the retry path (up to MAX_MODEL_ATTEMPTS models on a bad day).
 export const config = { maxDuration: 60 };
 
-const DEFAULT_PER_USER_PER_DAY = 10;
+const DEFAULT_PER_USER_PER_DAY = 20;
 const PER_USER_PER_MINUTE = 4;
 const DEFAULT_GLOBAL_PER_DAY = 600;
 const MAX_IMAGE_B64_BYTES = 700 * 1024;

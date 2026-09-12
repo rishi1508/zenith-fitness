@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { FoodEntry, NutritionDay } from '../src/types';
 import {
-  GLASS_ML, addDays, canGoForward, copyDayEntries, dayLabel, entriesForMeal, explainTargets,
-  foodFromEntry, formatQty, glassesFor, mealKcal, mlForGlasses, parseUnits, removeEntry, shiftDate,
-  sourceLabel, stepQty, upsertEntry,
+  GLASS_ML, accountStartDate, addDays, canGoForward, copyDayEntries, dayLabel, entriesForMeal,
+  explainTargets, foodFromEntry, formatQty, glassesFor, isDatePickable, mealForNow, mealKcal,
+  mlForGlasses, monthDaysWithEntries, monthEnd, monthGrid, monthStart, monthTitle,
+  parseUnits, removeEntry, shiftDate, shiftMonth, sourceLabel, stepQty, upsertEntry,
 } from '../src/views/nutrition/nutritionHelpers';
 
 function entry(over: Partial<FoodEntry> = {}): FoodEntry {
@@ -192,5 +193,77 @@ describe('explainTargets', () => {
       bmr: null, maintenance: null, activityLevel: 'moderate', goal: 'cut',
       ratePctPerWeek: -0.5, weightKg: 78, kcal: 0,
     })).toMatch(/sex, height and birth year/);
+  });
+});
+
+describe('mealForNow', () => {
+  it('guesses the meal from the clock', () => {
+    expect(mealForNow(new Date(2026, 8, 13, 8))).toBe('breakfast');
+    expect(mealForNow(new Date(2026, 8, 13, 13))).toBe('lunch');
+    expect(mealForNow(new Date(2026, 8, 13, 20))).toBe('dinner');
+    expect(mealForNow(new Date(2026, 8, 13, 22))).toBe('snacks');
+  });
+});
+
+describe('month calendar', () => {
+  it('bounds the month a date sits in', () => {
+    expect(monthStart('2026-09-13')).toBe('2026-09-01');
+    expect(monthEnd('2026-09-13')).toBe('2026-09-30');
+    expect(monthEnd('2026-02-10')).toBe('2026-02-28');
+    expect(monthEnd('2024-02-10')).toBe('2024-02-29');
+    expect(monthEnd('2026-12-01')).toBe('2026-12-31');
+  });
+
+  it('steps months from the first, across year ends', () => {
+    expect(shiftMonth('2026-09-30', 1)).toBe('2026-10-01');
+    expect(shiftMonth('2026-01-31', -1)).toBe('2025-12-01');
+    expect(shiftMonth('2026-12-15', 1)).toBe('2027-01-01');
+  });
+
+  it('titles the month', () => {
+    expect(monthTitle('2026-09-13')).toContain('2026');
+  });
+
+  it('lays out whole Sun-first weeks with padding', () => {
+    const cells = monthGrid('2026-09-13');
+    expect(cells.length % 7).toBe(0);
+    // 1 September 2026 is a Tuesday, so two leading blanks.
+    expect(cells.slice(0, 2)).toEqual([null, null]);
+    expect(cells[2]).toBe('2026-09-01');
+    expect(cells.filter((c) => c !== null)).toHaveLength(30);
+    expect(cells[cells.length - 1]).toBeNull();
+  });
+
+  it('starts a month that begins on a Sunday with no padding', () => {
+    const cells = monthGrid('2026-11-09');
+    expect(cells[0]).toBe('2026-11-01');
+  });
+
+  it('marks only days of that month with at least one entry', () => {
+    const days: NutritionDay[] = [
+      { date: '2026-08-31', entries: [entry()], waterMl: 0, updatedAt: '' },
+      { date: '2026-09-02', entries: [entry()], waterMl: 0, updatedAt: '' },
+      { date: '2026-09-05', entries: [], waterMl: 1000, updatedAt: '' },
+      { date: '2026-09-30', entries: [entry()], waterMl: 0, updatedAt: '' },
+      { date: '2026-10-01', entries: [entry()], waterMl: 0, updatedAt: '' },
+    ];
+    expect(monthDaysWithEntries(days, '2026-09-13')).toEqual(new Set(['2026-09-02', '2026-09-30']));
+    expect(monthDaysWithEntries([], '2026-09-13').size).toBe(0);
+  });
+
+  it('greys out the future and anything before the account existed', () => {
+    expect(isDatePickable('2026-09-14', '2026-09-13', '2026-01-01')).toBe(false);
+    expect(isDatePickable('2026-09-13', '2026-09-13', '2026-01-01')).toBe(true);
+    expect(isDatePickable('2025-12-31', '2026-09-13', '2026-01-01')).toBe(false);
+    expect(isDatePickable('2026-01-01', '2026-09-13', '2026-01-01')).toBe(true);
+    // No creation time known — every past day stays open.
+    expect(isDatePickable('2019-01-01', '2026-09-13')).toBe(true);
+  });
+
+  it('reads the account creation day, and gives up quietly on junk', () => {
+    expect(accountStartDate('Sun, 13 Sep 2026 06:00:00 GMT')).toMatch(/^2026-09-1[23]$/);
+    expect(accountStartDate(undefined)).toBeUndefined();
+    expect(accountStartDate(null)).toBeUndefined();
+    expect(accountStartDate('not a date')).toBeUndefined();
   });
 });

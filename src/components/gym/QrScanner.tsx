@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import QrScannerLib from 'qr-scanner';
-import { Camera, CameraOff } from 'lucide-react';
+import { CameraOff } from 'lucide-react';
 
 interface Props {
   /** Called once per distinct decoded value (deduped while the same code stays in view). */
@@ -69,10 +69,10 @@ export function QrScanner({ onResult, active = true, isDark, hint, className }: 
   return (
     <div className={`space-y-2 ${className ?? ''}`}>
       <div className={`relative w-full aspect-square max-w-sm mx-auto rounded-2xl overflow-hidden ${isDark ? 'bg-black' : 'bg-gray-900'}`}>
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
+        <video ref={videoRef} className={`absolute inset-0 w-full h-full object-cover ${ready ? 'opacity-100' : 'opacity-0'}`} muted playsInline />
         {!ready && !error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-300 text-sm">
-            <Camera className="w-8 h-8 animate-pulse" /> Starting camera…
+            Starting camera…
           </div>
         )}
         {error && (

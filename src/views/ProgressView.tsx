@@ -19,7 +19,11 @@ export function ProgressView({ workouts, isDark, onBack, onNavigateToCompare }: 
   const [visibleSessions, setVisibleSessions] = useState(5);
 
   const selectExercise = (id: string | null) => { setSelectedExercise(id); setVisibleSessions(5); };
-  const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest');
+  // Everything on this screen is a trend, a PR or a chart, so deload weeks
+  // stay out: they are deliberately light and would read as a slump the
+  // lifter never had. They still count everywhere else (history, streaks,
+  // totals) — see src/deloadDetector.ts.
+  const completedWorkouts = workouts.filter(w => w.completed && w.type !== 'rest' && !w.deload);
   
   // Get ALL exercises from library, with session counts
   const exerciseList = useMemo(() => {

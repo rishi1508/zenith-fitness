@@ -8,7 +8,7 @@ import * as storage from '../storage';
 import { ShareWorkout } from '../components';
 import { ExercisePickerSheet } from './exercises/ExercisePickerSheet';
 
-import { useConfirm } from '../ui';
+import { useConfirm, Pill } from '../ui';
 interface HistoryWorkoutCardProps {
   workout: Workout;
   isDark: boolean;
@@ -29,6 +29,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
   const allExercises = swapIndex !== null ? storage.getExercises() : [];
   const isImported = workout.type === 'imported';
   const isRest = workout.type === 'rest';
+  const isDeload = workout.deload === true;
 
   const startEditing = () => {
     setEditWorkout(JSON.parse(JSON.stringify(workout)));
@@ -118,6 +119,7 @@ function HistoryWorkoutCard({ workout, isDark, onDelete, onSaveAsTemplate, onSha
                     Imported
                   </span>
                 )}
+                {isDeload && <Pill tone="info">Deload</Pill>}
               </div>
               {!isRest && (
                 <div className="text-sm text-zinc-500">

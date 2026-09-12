@@ -1,4 +1,4 @@
-import { doc, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { isAdmin } from '../../admin';
 /**
@@ -46,6 +46,87 @@ export function dayLabel(date: string, today: string): string {
   if (date === addDays(today, -1)) return 'Yesterday';
   const [y, m, d] = date.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/** breakfast before 11, lunch before 16, dinner before 21, else snacks —
+ *  the same guess the plate scanner makes. Used by every "log food now"
+ *  entry point so the meal is already right. */
+export function mealForNow(now: Date = new Date()): MealSlot {
+  const h = now.getHours();
+  if (h < 11) return 'breakfast';
+  if (h < 16) return 'lunch';
+  if (h < 21) return 'dinner';
+  return 'snacks';
+}
+
+// ---------- month calendar (the diary's date picker) ----------
+
+/** First day of the month containing `date`. */
+export function monthStart(date: string): string {
+  return `${date.slice(0, 7)}-01`;
+}
+
+/** Month steps work off the first of the month — "the 31st, a month back"
+ *  has no answer in February. */
+export function shiftMonth(date: string, delta: number): string {
+  const [y, m] = date.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/** Last day of the month containing `date`. */
+export function monthEnd(date: string): string {
+  return addDays(shiftMonth(date, 1), -1);
+}
+
+/** "September 2026". */
+export function monthTitle(date: string): string {
+  const [y, m] = date.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+}
+
+/**
+ * Sun-first grid for the month containing `date`. Leading and trailing cells
+ * are `null` so the grid is always a whole number of seven-day rows.
+ */
+export function monthGrid(date: string): (string | null)[] {
+  const first = monthStart(date);
+  const [y, m] = first.split('-').map(Number);
+  const cells: (string | null)[] = Array<string | null>(new Date(y, m - 1, 1).getDay()).fill(null);
+  const lastDay = Number(monthEnd(date).slice(8));
+  for (let d = 1; d <= lastDay; d++) cells.push(`${first.slice(0, 8)}${String(d).padStart(2, '0')}`);
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+/**
+ * The days of `date`'s month with at least one food entry, from whatever the
+ * local day cache holds — no Firestore read. Water-only days are not marked:
+ * the disc means "you ate and logged it".
+ */
+export function monthDaysWithEntries(days: NutritionDay[], date: string): Set<string> {
+  const from = monthStart(date);
+  const to = monthEnd(date);
+  return new Set(
+    days.filter((d) => d.date >= from && d.date <= to && d.entries.length > 0).map((d) => d.date),
+  );
+}
+
+/** A day is pickable when it is not in the future and not before the account
+ *  existed. No `minDate` (an account with no creation time) means no floor. */
+export function isDatePickable(date: string, today: string, minDate?: string): boolean {
+  if (date > today) return false;
+  return !minDate || date >= minDate;
+}
+
+/** Firebase's `user.metadata.creationTime` as a local YYYY-MM-DD. Undefined
+ *  when it is missing or unparseable, which lifts the floor entirely. */
+export function accountStartDate(creationTime: string | null | undefined): string | undefined {
+  if (!creationTime) return undefined;
+  const d = new Date(creationTime);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const pad = (v: number) => String(v).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function entriesForMeal(entries: FoodEntry[], meal: MealSlot): FoodEntry[] {
@@ -262,4 +343,17 @@ export function publishSharedFood(item: FoodItem): void {
   if (item.basis) payload.basis = item.basis;
   setDoc(doc(db, 'sharedFoods', item.id), payload, { merge: true })
     .catch((e) => console.warn('[Nutrition] sharedFoods publish failed', e));
+}
+
+/** Removes the community copy of a member-created food. `firestore.rules`
+ *  allows the creator or an admin; a refusal (or being offline) leaves the
+ *  shared doc alone and returns false, so the caller can say so. */
+export async function deleteSharedFood(id: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'sharedFoods', id));
+    return true;
+  } catch (e) {
+    console.warn('[Nutrition] sharedFoods delete failed', e);
+    return false;
+  }
 }

@@ -4,7 +4,7 @@ import { X, Flame, Snowflake, ChevronLeft, ChevronRight, Star, AlertTriangle } f
 import * as storage from '../storage';
 import {
   computeStreakSummary, localIso, weekStartISO, resolveCommitment,
-  MAX_FREEZES, WORKOUTS_TO_EARN_FREEZE, MIN_COMMITMENT, MAX_COMMITMENT,
+  MAX_FREEZES, TRAINING_DAYS_TO_EARN_FREEZE, MIN_COMMITMENT, MAX_COMMITMENT,
 } from '../streakService';
 import type { StreakResult } from '../streakService';
 import { registerBackHandler } from '../backHandlerRegistry';
@@ -49,7 +49,12 @@ export function StreakModal({ onClose, isDark }: Props) {
     [commitmentSetting],
   );
   const summary = useMemo(() => computeStreakSummary(workouts, commitment), [workouts, commitment]);
-  const { shown, committed, ladder } = summary;
+  // This screen is where the commitment is CHOSEN, so it reports the chosen
+  // level only. `summary.shown` — the "or a higher level you've kept up just
+  // as long" pick behind the header pill — would leave the hero, the calendar
+  // and the legend describing 5★ while the picker says 3, which reads as if
+  // the picker did nothing.
+  const { committed, ladder } = summary;
 
   const chooseCommitment = (value: number | null) => {
     storage.updateAppSettings('streak', { commitment: value });
@@ -255,8 +260,8 @@ export function StreakModal({ onClose, isDark }: Props) {
       const allInMonthFuture = inMonthIndices.every((idx) => cells[idx].kind === 'future');
       const isThisWeek = weekStart === thisWeekISO;
       let status: RowStatus;
-      if (shown.frozenWeeks.has(weekStart)) status = 'frozen';
-      else if (workoutDays >= shown.level) status = 'active';
+      if (committed.frozenWeeks.has(weekStart)) status = 'frozen';
+      else if (workoutDays >= committed.level) status = 'active';
       else if (inMonthIndices.length === 0 || allInMonthFuture) status = 'future';
       else if (isThisWeek) status = 'current';
       else if (workoutDays > 0) status = 'partial';
@@ -276,10 +281,11 @@ export function StreakModal({ onClose, isDark }: Props) {
       { key: `${viewedMonth.year}-${viewedMonth.month}`, year: viewedMonth.year, month: viewedMonth.month, rows: buildRows(viewedMonth.year, viewedMonth.month) },
       { key: `${next.year}-${next.month}`, year: next.year, month: next.month, rows: buildRows(next.year, next.month) },
     ];
-    // buildRows depends on workedOutDays/restDays/shown/today/thisWeek —
-    // those change on data refresh, so re-memoize when any of them do.
+    // buildRows depends on workedOutDays/restDays/committed/today/thisWeek —
+    // those change on data refresh (and `committed` changes the moment the
+    // picker does), so re-memoize when any of them do.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewedMonth, workedOutDays, restDays, shown, todayIso, thisWeekISO]);
+  }, [viewedMonth, workedOutDays, restDays, committed, todayIso, thisWeekISO]);
 
   const subtle = isDark ? 'text-zinc-400' : 'text-gray-500';
   const card = isDark ? 'bg-[#1a1a1a] border-[#2e2e2e]' : 'bg-gray-50 border-gray-200';
@@ -289,21 +295,21 @@ export function StreakModal({ onClose, isDark }: Props) {
   });
 
   const dayWord = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
-  const heroLabel = shown.current === 0
+  const heroLabel = committed.current === 0
     ? 'Start your streak'
-    : shown.level >= 2 ? `${shown.level}★ week streak!` : 'week streak!';
+    : committed.level >= 2 ? `${committed.level}★ week streak!` : 'week streak!';
   // Hint text — neutral / descriptive, NOT marketing copy.
   let heroHint: string;
-  if (shown.current === 0) {
-    heroHint = `Train on ${dayWord(shown.level)} this week (Sun–Sat) to start your streak.`;
-  } else if (shown.thisWeekQualified) {
-    heroHint = `This week is in — ${dayWord(shown.thisWeekDays)} logged. Nice work.`;
-  } else if (shown.thisWeekAtRisk) {
+  if (committed.current === 0) {
+    heroHint = `Train on ${dayWord(committed.level)} this week (Sun–Sat) to start your streak.`;
+  } else if (committed.thisWeekQualified) {
+    heroHint = `This week is in — ${dayWord(committed.thisWeekDays)} logged. Nice work.`;
+  } else if (committed.thisWeekAtRisk) {
     heroHint = committed.freezes > 0
-      ? `Not enough days left this week to hit ${shown.level}. A freeze will cover it automatically.`
-      : `Not enough days left this week to hit ${shown.level}, and no freeze left — the streak will reset on Sunday.`;
+      ? `Not enough days left this week to hit ${committed.level}. A freeze will cover it automatically.`
+      : `Not enough days left this week to hit ${committed.level}, and no freeze left — the streak will reset on Sunday.`;
   } else {
-    heroHint = `${dayWord(shown.daysNeededThisWeek)} more this week to lock it in (${shown.thisWeekDays}/${shown.level} so far).`;
+    heroHint = `${dayWord(committed.daysNeededThisWeek)} more this week to lock it in (${committed.thisWeekDays}/${committed.level} so far).`;
   }
 
   return createPortal(
@@ -320,7 +326,7 @@ export function StreakModal({ onClose, isDark }: Props) {
           <div
             className="flex items-center justify-between flex-none px-2"
             style={{
-              paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)',
+              paddingTop: 'calc(var(--top-inset) + 14px)',
               paddingBottom: '6px',
             }}
           >
@@ -346,18 +352,18 @@ export function StreakModal({ onClose, isDark }: Props) {
             <div className="px-6 pt-4 pb-6">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  {shown.current >= 4 && (
+                  {committed.current >= 4 && (
                     <div className="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-yellow-400/20 text-yellow-400 mb-1">
                       Streak Society
                     </div>
                   )}
                   <div className="text-[56px] leading-[1] font-black text-orange-500 tracking-tight">
-                    {shown.current}
+                    {committed.current}
                   </div>
                   <div className="text-xl font-extrabold text-orange-500 mt-1">{heroLabel}</div>
-                  {shown.level >= 2 && shown.current > 0 && (
+                  {committed.level >= 2 && committed.current > 0 && (
                     <div className={`text-xs mt-1 ${subtle}`}>
-                      {dayWord(shown.level)} a week, {shown.current} {shown.current === 1 ? 'week' : 'weeks'} running
+                      {dayWord(committed.level)} a week, {committed.current} {committed.current === 1 ? 'week' : 'weeks'} running
                     </div>
                   )}
                 </div>
@@ -367,9 +373,9 @@ export function StreakModal({ onClose, isDark }: Props) {
                     fill="currentColor"
                     strokeWidth={1.25}
                   />
-                  {shown.level >= 2 && (
+                  {committed.level >= 2 && (
                     <div className="absolute -bottom-1 -right-1 flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-yellow-400 text-black text-xs font-black shadow-md">
-                      {shown.level}
+                      {committed.level}
                       <Star className="w-3 h-3" fill="currentColor" />
                     </div>
                   )}
@@ -381,9 +387,9 @@ export function StreakModal({ onClose, isDark }: Props) {
             <div className="px-6 pb-4">
               <div className={`rounded-2xl border flex items-center gap-3 p-3.5 ${card}`}>
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                  shown.thisWeekAtRisk && !shown.thisWeekQualified ? 'bg-amber-500/15' : 'bg-orange-500/15'
+                  committed.thisWeekAtRisk && !committed.thisWeekQualified ? 'bg-amber-500/15' : 'bg-orange-500/15'
                 }`}>
-                  {shown.thisWeekAtRisk && !shown.thisWeekQualified
+                  {committed.thisWeekAtRisk && !committed.thisWeekQualified
                     ? <AlertTriangle className="w-5 h-5 text-amber-500" />
                     : <Flame className="w-5 h-5 text-orange-500" fill="currentColor" />}
                 </div>
@@ -499,8 +505,8 @@ export function StreakModal({ onClose, isDark }: Props) {
 
                 {/* Legend */}
                 <div className={`flex flex-wrap gap-x-3 gap-y-1 px-3 pb-3 text-[10px] ${subtle}`}>
-                  <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-full bg-gradient-to-b from-orange-400 to-red-500" /> hit {shown.level}+</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-full border border-dashed border-orange-400" /> trained, under {shown.level}</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-full bg-gradient-to-b from-orange-400 to-red-500" /> hit {committed.level}+</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-full border border-dashed border-orange-400" /> trained, under {committed.level}</span>
                   <span className="flex items-center gap-1"><span className="w-3 h-2 rounded-full bg-sky-500/85" /> frozen</span>
                   <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-purple-500" /> rest</span>
                 </div>
@@ -511,7 +517,7 @@ export function StreakModal({ onClose, isDark }: Props) {
             <div className="px-6 pb-4 grid grid-cols-2 gap-3">
               <div className={`rounded-2xl border p-3 ${card}`}>
                 <div className={`text-[10px] font-bold uppercase tracking-wider ${subtle}`}>Personal best</div>
-                <div className="text-xl font-extrabold text-orange-400 mt-0.5">{shown.longest}w</div>
+                <div className="text-xl font-extrabold text-orange-400 mt-0.5">{committed.longest}w</div>
               </div>
               <div className={`rounded-2xl border p-3 ${card}`}>
                 <div className={`text-[10px] font-bold uppercase tracking-wider ${subtle}`}>Freezes</div>
@@ -550,19 +556,19 @@ export function StreakModal({ onClose, isDark }: Props) {
                     </div>
                     <div className={`text-xs mt-0.5 ${subtle}`}>
                       {committed.freezes >= MAX_FREEZES
-                        ? `You're maxed out — the next one is banked once a freeze is used.`
-                        : `${committed.workoutsUntilNextFreeze} workout${committed.workoutsUntilNextFreeze === 1 ? '' : 's'} to your next freeze. Rescues one missed week.`}
+                        ? `You're stocked up — a milestone only banks a freeze once you've spent one.`
+                        : `${committed.daysUntilNextFreeze} more training day${committed.daysUntilNextFreeze === 1 ? '' : 's'} to your next freeze. Rescues one missed week.`}
                     </div>
                   </div>
                 </div>
                 <div className={`h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-[#0f0f0f]' : 'bg-white'}`}>
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-sky-400 to-sky-600 transition-all"
-                    style={{ width: `${Math.min(100, (committed.freezeProgress / WORKOUTS_TO_EARN_FREEZE) * 100)}%` }}
+                    style={{ width: `${Math.min(100, (committed.freezeProgress / TRAINING_DAYS_TO_EARN_FREEZE) * 100)}%` }}
                   />
                 </div>
                 <div className={`text-[10px] mt-1 text-right ${subtle}`}>
-                  {committed.freezeProgress} / {WORKOUTS_TO_EARN_FREEZE} workouts · {committed.totalWorkoutDays} total
+                  {committed.freezeProgress} / {TRAINING_DAYS_TO_EARN_FREEZE} training days · {committed.totalWorkoutDays} days trained in all
                 </div>
               </div>
             </div>
@@ -573,17 +579,16 @@ export function StreakModal({ onClose, isDark }: Props) {
                 <div className="text-sm font-bold mb-2">All levels</div>
                 <div className="space-y-1">
                   {ladder.map((r: StreakResult) => {
-                    const isShown = r.level === shown.level;
                     const isCommitted = r.level === committed.level;
                     return (
                       <div
                         key={r.level}
                         className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm ${
-                          isShown ? 'bg-orange-500/15' : ''
+                          isCommitted ? 'bg-orange-500/15' : ''
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className={`w-8 font-bold ${isShown ? 'text-orange-500' : ''}`}>
+                          <span className={`w-8 font-bold ${isCommitted ? 'text-orange-500' : ''}`}>
                             {r.level}{r.level >= 2 ? '★' : ''}
                           </span>
                           <span className={`text-xs ${subtle}`}>{dayWord(r.level)}/wk</span>
@@ -594,7 +599,7 @@ export function StreakModal({ onClose, isDark }: Props) {
                           )}
                         </div>
                         <div className="flex items-baseline gap-2">
-                          <span className={`font-extrabold ${isShown ? 'text-orange-500' : ''}`}>{r.current}w</span>
+                          <span className={`font-extrabold ${isCommitted ? 'text-orange-500' : ''}`}>{r.current}w</span>
                           <span className={`text-[10px] ${subtle}`}>best {r.longest}w</span>
                         </div>
                       </div>
@@ -612,9 +617,9 @@ export function StreakModal({ onClose, isDark }: Props) {
                   <li>Your streak counts <strong>weeks</strong> (Sun–Sat). A week counts when you train on at least your committed number of days — a 4★ streak means 4+ training days every week. Rest days don't count.</li>
                   <li>The current week never breaks the streak early: it joins as soon as it qualifies and only counts against you once it's over.</li>
                   <li>Miss the target in a week? A freeze automatically rescues it, so the streak keeps going.</li>
-                  <li>Everyone starts with one freeze. You earn another every {WORKOUTS_TO_EARN_FREEZE} workouts, up to {MAX_FREEZES} in the bank.</li>
+                  <li>Everyone starts with one freeze. You earn another every {TRAINING_DAYS_TO_EARN_FREEZE} training days, up to {MAX_FREEZES} in the bank. A day you train twice counts once, so this can sit still on a double-session day.</li>
                   <li>A missed week with no freeze resets the streak to 0.</li>
-                  <li>The header shows your committed level — or a higher level if you've been keeping that up just as long.</li>
+                  <li>This screen always shows the level you picked above. The header pill may show a higher one if you've been keeping that up just as long.</li>
                 </ul>
               </details>
             </div>

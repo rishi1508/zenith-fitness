@@ -23,6 +23,23 @@ export function estimateMaintenanceKcal(profile: HealthProfile, weightKg: number
 const KCAL_PER_KG_BODYWEIGHT = 7700;
 const PROTEIN_G_PER_KG: Record<PhaseGoal, number> = { cut: 2.2, maintain: 2.0, bulk: 1.8 };
 
+/** A glass is 250 ml and water is only ever drunk a glass at a time, so a
+ *  water target is a whole number of glasses — 2,600 ml could never be met. */
+const GLASS_ML = 250;
+
+/** Water target → whole glasses, never zero. */
+export function roundWaterMl(ml: number): number {
+  if (!Number.isFinite(ml) || ml <= 0) return GLASS_ML;
+  return Math.max(GLASS_ML, Math.round(ml / GLASS_ML) * GLASS_ML);
+}
+
+/** Applied on every read and write of the stored targets, so a set of targets
+ *  saved before the rounding existed stops showing 2,600 ml. */
+export function normalizeTargets<T extends NutritionTargets>(targets: T): T {
+  const waterMl = roundWaterMl(targets.waterMl);
+  return waterMl === targets.waterMl ? targets : { ...targets, waterMl };
+}
+
 /** Where the maintenance number came from: measured intake + trend, the
  *  Mifflin–St Jeor formula, or nothing yet. Display only — it never changes
  *  the maths (docs/HEALTH_SPEC.md §5). */
@@ -43,8 +60,7 @@ export function computeTargets(input: {
   const fat = Math.round((kcal * 0.25) / 9);
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   return {
-    // A glass is 250 ml, so the target is whole glasses — 2,600 could never be met one glass at a time.
-    kcal, protein, carbs, fat, waterMl: Math.max(250, Math.round(input.weightKg * 35 / 250) * 250), mode: 'auto',
+    kcal, protein, carbs, fat, waterMl: roundWaterMl(input.weightKg * 35), mode: 'auto',
     updatedAt: new Date().toISOString(),
     ...(input.maintenanceBasis ? { maintenanceBasis: input.maintenanceBasis } : {}),
   };

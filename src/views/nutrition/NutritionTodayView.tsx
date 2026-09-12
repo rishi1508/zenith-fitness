@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, CopyPlus, GlassWater, Minus, Pencil, Plus, Target } from 'lucide-react';
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, CopyPlus, GlassWater, Minus, Pencil, Plus, Target } from 'lucide-react';
 import type { FoodEntry, FoodItem, MealSlot } from '../../types';
 import {
   addDaysISO, fetchNutritionDay, getCustomFoods, getNutritionDay, getRecentFoods, getTargets,
@@ -8,16 +8,17 @@ import {
 import { getFood } from '../../nutrition';
 import { hapticImpact } from '../../haptics';
 import {
-  Button, Card, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, SUB, useConfirm, TAB_BAR_HEIGHT,
+  Button, Card, Chip, IconButton, Pill, SectionHeader, useToast, CAPTION, H2, SUB, useConfirm, TAB_BAR_HEIGHT,
 } from '../../ui';
 import { WeeklyBars } from '../../components';
 import { NutritionRing } from './NutritionRing';
 import { FoodEntrySheet } from './FoodEntrySheet';
 import {
-  GLASS_ML, MEALS, MEAL_LABEL, canEditFood, canGoForward, copyDayEntries, dayLabel, entriesForMeal,
-  foodFromEntry, basisLabel, formatQty, glassesFor, mealKcal, publishSharedFood, removeEntry, shiftDate,
-  toSavedItem, weeklySeries,
+  GLASS_ML, MEALS, MEAL_LABEL, accountStartDate, canEditFood, canGoForward, copyDayEntries, dayLabel,
+  entriesForMeal, foodFromEntry, basisLabel, formatQty, glassesFor, mealForNow, mealKcal,
+  publishSharedFood, removeEntry, shiftDate, toSavedItem, weeklySeries,
 } from './nutritionHelpers';
+import { DayPickerSheet } from './DayPickerSheet';
 import { SaveMealSheet } from './MealsSheet';
 import { publishMeal } from './sharedMeals';
 import { useAuth } from '../../auth/AuthContext';
@@ -41,16 +42,6 @@ export interface NutritionTodayViewProps {
  * every write goes back through `saveNutritionDay`, and `subscribeHealth`
  * re-renders when anything in the health store changes.
  */
-/** breakfast before 11, lunch before 16, dinner before 21, else snacks —
- *  the same guess the plate scanner makes. */
-function mealForNow(now: Date = new Date()): MealSlot {
-  const h = now.getHours();
-  if (h < 11) return 'breakfast';
-  if (h < 16) return 'lunch';
-  if (h < 21) return 'dinner';
-  return 'snacks';
-}
-
 export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDate }: NutritionTodayViewProps) {
   const { showToast } = useToast();
   const { user } = useAuth();
@@ -58,7 +49,10 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
   const [date, setDate] = useState(() => initialDate ?? today);
   const [tick, setTick] = useState(0);
   const [editing, setEditing] = useState<{ entry: FoodEntry; food: FoodItem } | null>(null);
+  const [pickingDay, setPickingDay] = useState(false);
   const fetched = useRef<Set<string>>(new Set());
+  // Nothing was logged before the account existed, so the calendar stops there.
+  const accountStart = accountStartDate(user?.metadata.creationTime);
 
   useEffect(() => subscribeHealth(() => setTick((t) => t + 1)), []);
 
@@ -131,15 +125,23 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
       <div className="flex items-center gap-3">
         <IconButton icon={ArrowLeft} label="Back" onClick={onBack} />
         <h1 className={`${H2} flex-1 truncate`}>Nutrition</h1>
-        <IconButton icon={Target} label="Targets" onClick={onOpenTargets} />
+        <Chip icon={Target} size="lg" onClick={onOpenTargets}>Targets</Chip>
       </div>
 
       <div className="flex items-center justify-between gap-2">
         <IconButton icon={ChevronLeft} label="Previous day" size="sm" onClick={() => setDate((d) => shiftDate(d, -1, today))} />
-        <div className="text-center min-w-0">
-          <div className="text-[15px] font-bold text-text truncate">{dayLabel(date, today)}</div>
-          <div className="text-xs text-subtle tabular-nums">{date}</div>
-        </div>
+        <button
+          onClick={() => setPickingDay(true)}
+          aria-label={`${dayLabel(date, today)} — pick a day`}
+          className="text-center min-w-0 px-3 py-1 rounded-control transition-colors hover:bg-surface-2"
+        >
+          <span className="flex items-center justify-center gap-1.5 text-[15px] font-bold text-text">
+            <span className="truncate">{dayLabel(date, today)}</span>
+            {/* Without a mark nothing says the date opens a calendar. */}
+            <CalendarDays className="w-4 h-4 text-subtle shrink-0" strokeWidth={1.75} />
+          </span>
+          <span className="block text-xs text-subtle tabular-nums">{date}</span>
+        </button>
         <IconButton
           icon={ChevronRight} label="Next day" size="sm"
           disabled={!canGoForward(date, today)}
@@ -310,6 +312,16 @@ export function NutritionTodayView({ onBack, onAddFood, onOpenTargets, initialDa
         Long-press an entry to remove it, or tap to change the quantity. Dishes marked
         “approx.” are recipe estimates, not lab values.
       </p>
+
+      {pickingDay && (
+        <DayPickerSheet
+          date={date}
+          today={today}
+          minDate={accountStart}
+          onClose={() => setPickingDay(false)}
+          onPick={(picked) => { setDate(picked); setPickingDay(false); }}
+        />
+      )}
 
       <FoodEntrySheet
         open={!!editing}

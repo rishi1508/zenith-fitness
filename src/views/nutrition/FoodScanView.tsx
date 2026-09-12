@@ -11,6 +11,7 @@ import { prepareScanImage, scaleScanItem, ScanError, scanItemToEntry, scanPrepar
 import type { ScanErrorKind, ScanItem } from '../../nutrition/scan';
 import { ScanItemSheet } from './ScanItemSheet';
 import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCamera';
+import { InAppCamera } from '../../components/InAppCamera';
 import { consumeRestoredPhoto } from '../../captureRestore';
 
 export interface FoodScanViewProps {
@@ -64,12 +65,14 @@ function mealForNow(now: Date = new Date()): MealSlot {
 /**
  * Camera food scan (docs/HEALTH_SPEC.md §6).
  *
- * ONE capture path: the OS camera via `<input capture="environment">`, with
- * the same handler reused for "choose from gallery" (no `capture`). It behaves
- * identically in the Capacitor WebView and the PWA, needs no permission
- * plumbing, and gives the user their phone's real camera UI. The old
- * getUserMedia preview was a second, worse code path — it could hang with no
- * feedback — and is gone.
+ * The photo is taken INSIDE the app (InAppCamera, a getUserMedia preview).
+ * Every earlier attempt handed the phone to the system camera — an intent
+ * that puts this app in the background, where Android reclaims it; the
+ * photo came back through a relaunch that read as a crash, on every scan on
+ * some phones. A preview in the WebView never leaves the foreground, so
+ * there is nothing to restore. The system picker remains for "choose an
+ * existing photo" (and as the fallback if the stream cannot start); the
+ * restore path stays wired for that case.
  *
  * Everything the model returns is an estimate, so nothing is written to
  * the diary until the user has seen the grams and pressed Add.
@@ -86,9 +89,9 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
   const [note, setNote] = useState('');
   const [hint, setHint] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [remaining, setRemaining] = useState<number | null>(null);
   const [target, setTarget] = useState<MealSlot>(() => meal ?? mealForNow());
   const [editing, setEditing] = useState<number | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const targetDate = date ?? localDateISO();
 
@@ -110,7 +113,6 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
       setStage('scanning');
       const idToken = await user.getIdToken();
       const result = await scanPreparedImage(base64, { idToken, hint: hint.trim() || undefined, meal: target });
-      if (typeof result.remainingToday === 'number') setRemaining(result.remainingToday);
       if (result.items.length === 0) {
         setError(result.note || "No food found in that photo. Try again, closer and better lit.");
         setStage('capture');
@@ -132,20 +134,18 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
     void runScan(file);
   };
 
-  /** Android goes through the camera plugin, which owns the permission and
-   *  survives the activity being recycled behind the camera app. The web
-   *  keeps the file input. */
+  /** The camera opens inside the app. Choosing an existing photo goes through
+   *  the system picker: the camera plugin on Android (it owns the permission
+   *  and survives the activity being recycled), the file input on the web. */
   const openCamera = async (source: 'camera' | 'gallery') => {
-    if (!nativePhotoCapture()) {
-      (source === 'camera' ? fileRef : galleryRef).current?.click();
-      return;
-    }
+    if (source === 'camera') { setCameraOpen(true); return; }
+    if (!nativePhotoCapture()) { galleryRef.current?.click(); return; }
     try {
-      const blob = await capturePhoto(source, 'food-scan', { date: targetDate, meal: target });
+      const blob = await capturePhoto('gallery', 'food-scan', { date: targetDate, meal: target });
       await runScan(blob);
     } catch (err) {
       if (err instanceof PhotoCancelled) return;
-      setError(err instanceof Error ? err.message : 'The camera could not be opened.');
+      setError(err instanceof Error ? err.message : 'The photo could not be opened.');
     }
   };
 
@@ -294,9 +294,6 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
                   </Button>
                 </div>
               </Card>
-              {remaining !== null && (
-                <p className={`${CAPTION} text-center`}>{remaining} scan{remaining === 1 ? '' : 's'} left today</p>
-              )}
             </>
           )}
 
@@ -327,13 +324,19 @@ export function FoodScanView({ onBack, meal, date, onAdded }: FoodScanViewProps)
               <Button variant="primary" size="lg" full onClick={addAll} disabled={rows.length === 0}>
                 Add {rows.length} item{rows.length === 1 ? '' : 's'} to {target}
               </Button>
-              {remaining !== null && (
-                <p className={`${CAPTION} text-center`}>{remaining} scan{remaining === 1 ? '' : 's'} left today</p>
-              )}
             </>
           )}
         </PremiumGate>
       </div>
+
+      {cameraOpen && (
+        <InAppCamera
+          title="Scan food"
+          onClose={() => setCameraOpen(false)}
+          onCapture={(blob) => { setCameraOpen(false); void runScan(blob); }}
+          onPickFile={() => { setCameraOpen(false); void openCamera('gallery'); }}
+        />
+      )}
 
       {editing !== null && rows[editing] && (
         <ScanItemSheet

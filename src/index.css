@@ -114,12 +114,22 @@ html {
      pinning it to <html> too covers both. */
 }
 
+:root {
+  /* One value for "how far down does content start". Three sources, take the
+     largest: the browser's env() (iOS, PWAs), the --safe-area-inset-* variables
+     Capacitor 8 injects on every inset change on Android (the WebView reports
+     env() as 0 there), and the status bar height read once at startup. Using
+     only one of them is what made the header sit against the clock now and
+     then — whichever source was late or zero that moment won. */
+  --top-inset: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px), var(--status-bar-h, 0px));
+  --bottom-inset: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+}
+
 body {
-  /* Add padding for status bar on native platforms */
-  /* The 24px is typical Android status bar height */
-  padding-top: max(env(safe-area-inset-top, 0px), var(--status-bar-h, 0px));
+  /* Room for the status bar on native platforms — see --top-inset above. */
+  padding-top: var(--top-inset);
   /* Bottom safe area for navigation bar */
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: var(--bottom-inset);
 }
 
 /* Animations */

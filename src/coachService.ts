@@ -1,5 +1,6 @@
 import type { Workout, Exercise, BodyWeightEntry, BodyMeasurementEntry, WeeklyPlan, MuscleGroup, PersonalRecord } from './types';
 import * as storage from './storage';
+import { excludeDeloadWorkouts } from './deloadDetector';
 
 
 /**
@@ -114,14 +115,21 @@ export function buildReportFromContext(ctx: CoachContext): CoachReport {
     return { insights: [], weekly, hasEnoughData: false };
   }
 
+  // Deload weeks are planned-light training, so anything that reads a
+  // trend, a plateau or a personal best runs on history without them —
+  // otherwise an easy week shows up as a regression the lifter chose.
+  // Frequency, muscle-coverage and plan suggestions still see every
+  // session, because a deload session is a session.
+  const trendCtx: CoachContext = { ...ctx, workouts: excludeDeloadWorkouts(ctx.workouts) };
+
   const insights: Insight[] = [
-    ...detectPlateausAndProgression(ctx),
-    ...analyzeVolumeBalance(ctx),
+    ...detectPlateausAndProgression(trendCtx),
+    ...analyzeVolumeBalance(trendCtx),
     ...analyzeMuscleFrequency(ctx),
     ...analyzeFrequency(ctx),
     ...paceGoals(ctx),
     ...suggestNextWorkout(ctx),
-    ...recentPRCelebration(ctx),
+    ...recentPRCelebration(trendCtx),
   ];
 
   insights.sort(rankInsights);
@@ -737,6 +745,10 @@ export function computeWeeklySummary(workouts: Workout[]): WeeklySummary {
 
   // 8-week sparkline, oldest → newest
   const weeklyVolumes: number[] = new Array(8).fill(0);
+  // The same buckets without deload weeks. The sparkline and the headline
+  // volume stay truthful about what was lifted; only the week-on-week
+  // arrow reads this copy, so a planned-light week never shows as a drop.
+  const normalWeekly: number[] = new Array(8).fill(0);
   const weekStartCache = new Map<string, number>(); // ISO → bucket index from current week (0 = this week)
 
   for (const w of workouts) {
@@ -750,7 +762,9 @@ export function computeWeeklySummary(workouts: Workout[]): WeeklySummary {
       weekStartCache.set(ws, idx);
     }
     if (idx < 0 || idx >= 8) continue;
-    weeklyVolumes[7 - idx] += workoutVolume(w);
+    const v = workoutVolume(w);
+    weeklyVolumes[7 - idx] += v;
+    if (!w.deload) normalWeekly[7 - idx] += v;
   }
 
   const sessions = workouts.filter((w) =>
@@ -758,14 +772,20 @@ export function computeWeeklySummary(workouts: Workout[]): WeeklySummary {
   ).length;
   const volume = weeklyVolumes[7];
   const lastWeek = weeklyVolumes[6];
-  const volumeDelta = volume - lastWeek;
+  // With a deload week on either side there is no honest week-on-week
+  // number, so we report no change instead of a drop the lifter chose.
+  const deloadTouched = normalWeekly[7] !== volume || normalWeekly[6] !== lastWeek;
+  const volumeDelta = deloadTouched ? 0 : volume - lastWeek;
 
   // PRs this week — count exercises where THIS week has a set that
   // strictly beats the user's previous best (all sets logged before
   // this week). Just comparing to "all-time max including this week"
   // would treat a same-as-old-PR set as a new PR.
+  // Deload sets are out of the running on both sides: they never set a
+  // record, and they never lower the bar a real one has to clear.
+  const normalWorkouts = excludeDeloadWorkouts(workouts);
   const prevBest = new Map<string, { weight: number; reps: number }>();
-  for (const w of workouts) {
+  for (const w of normalWorkouts) {
     if (!w.completed || w.type === 'rest') continue;
     if (weekStartLocal(new Date(w.date)) === thisWeekStart) continue;
     for (const ex of w.exercises) {
@@ -780,7 +800,7 @@ export function computeWeeklySummary(workouts: Workout[]): WeeklySummary {
   }
   let prsThisWeek = 0;
   const counted = new Set<string>();
-  for (const w of workouts) {
+  for (const w of normalWorkouts) {
     if (!w.completed || w.type === 'rest') continue;
     if (weekStartLocal(new Date(w.date)) !== thisWeekStart) continue;
     for (const ex of w.exercises) {
@@ -832,7 +852,8 @@ export interface ExtendedCoachContext {
     /** Days/week the streak is measured at (1–6). */
     level: number;
     freezesAvailable: number;
-    workoutsToNextFreeze: number;
+    /** Training days (not sessions) still to go before the next freeze. */
+    trainingDaysToNextFreeze: number;
   };
   /** Total exercises in the user's library, broken down by muscle group. */
   libraryByMuscleGroup: Partial<Record<MuscleGroup, number>>;
@@ -904,7 +925,7 @@ export function buildExtendedContext(): ExtendedCoachContext {
     longestWeeks: shown.longest,
     level: shown.level,
     freezesAvailable: committed.freezes,
-    workoutsToNextFreeze: committed.workoutsUntilNextFreeze,
+    trainingDaysToNextFreeze: committed.daysUntilNextFreeze,
   };
 
   // Library breakdown by muscle group.

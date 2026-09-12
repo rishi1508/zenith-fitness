@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, BarChart3, Building2, Camera, ChevronRight, ClipboardList, Dumbbell, Grid3x3, Image as ImageIcon,
   Library, Loader2, MessageCircle, Settings, Sparkles, TrendingUp, UserCog, UserPlus, Users,
-} from 'lucide-react';
+ Bug } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { GymFeedPost, UserProfile, Workout } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
@@ -70,6 +70,7 @@ export interface ProfileViewProps {
   onOpenAdminGyms: () => void;
   onOpenAdminUsers: () => void;
   onOpenAdminLibrary: () => void;
+  onOpenAdminErrors: () => void;
   onOpenChat?: (uid: string, name: string, photoURL?: string | null) => void;
   /** Opens another profile from the follower / following lists. */
   onOpenProfileUid?: (uid: string) => void;
@@ -89,7 +90,7 @@ export interface ProfileViewProps {
  */
 export function ProfileView({
   uid, isDark, onBack, onOpenProgress, onOpenAnalysis, onOpenHistory, onOpenBuddies, onOpenSettings,
-  onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary, onOpenChat, onOpenProfileUid, onCompare, onStartSession, onJoinGym }: ProfileViewProps) {
+  onOpenAdminGyms, onOpenAdminUsers, onOpenAdminLibrary, onOpenAdminErrors, onOpenChat, onOpenProfileUid, onCompare, onStartSession, onJoinGym }: ProfileViewProps) {
   const { user } = useAuth();
   const { gym, role: gymRole } = useGym();
   const { tier, can } = usePremium();
@@ -153,14 +154,18 @@ export function ProfileView({
 
   const name = self ? (user?.displayName || 'You') : (profile?.displayName || 'Zenith member');
 
+  /** True for your own profile, or somebody else's who shares your gym
+   *  (any role) — the one condition that unlocks anything gym-scoped
+   *  about another member's profile, photos included. */
+  const sameGym = self || profile?.gym?.gymId === gym?.id;
+
   /** "The Sweat Zone · owner" — the gym's own vocabulary, not the app's. */
   const gymRoleLabel = useMemo(() => {
-    const sameGym = self || profile?.gym?.gymId === gym?.id;
     if (!gym?.name || !sameGym) return null;
     const role = self ? gymRole : profile?.gym?.gymRole;
     const word = role === 'owner' ? 'owner' : role === 'manager' ? 'manager' : role === 'trainer' ? 'trainer' : 'member';
     return `${gym.name} · ${word}`;
-  }, [self, gym, gymRole, profile]);
+  }, [self, gym, gymRole, profile, sameGym]);
   const avatar = self ? photoURL : (profile?.photoURL ?? null);
 
   const toggleFollow = useCallback(async () => {
@@ -194,7 +199,16 @@ export function ProfileView({
     }
   };
 
-  const visibleTabs = self ? TABS : TABS.filter((t) => t.id !== 'more');
+  const visibleTabs = useMemo(
+    () => (self ? TABS : TABS.filter((t) => t.id !== 'more' && (t.id !== 'photos' || sameGym))),
+    [self, sameGym],
+  );
+  // Same person, once a different profile's Photos tab is no longer on
+  // offer (a follower list can jump straight from one profile to another
+  // without this component remounting).
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === tab)) setTab('workouts');
+  }, [visibleTabs, tab]);
   const followers = profile?.followerCount ?? 0;
   const followingCount = profile?.followingCount ?? 0;
 
@@ -426,7 +440,7 @@ export function ProfileView({
         </div>
       )}
 
-      {tab === 'photos' && !loading && (
+      {tab === 'photos' && !loading && sameGym && (
         theirPhotos.length === 0 ? (
           <EmptyState
             icon={ImageIcon}
@@ -473,6 +487,7 @@ export function ProfileView({
                 <ListRow icon={Building2} title="Gyms" subtitle="Create and manage gyms" onClick={onOpenAdminGyms} />
                 <ListRow icon={UserCog} title="Users" subtitle="Accounts, tiers, premium grants" onClick={onOpenAdminUsers} />
                 <ListRow icon={Library} title="Shared library" subtitle="Exercise definitions" onClick={onOpenAdminLibrary} />
+                <ListRow icon={Bug} title="Errors" subtitle="What phones reported" onClick={onOpenAdminErrors} />
               </Card>
             </>
           )}

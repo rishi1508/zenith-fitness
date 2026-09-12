@@ -10,9 +10,11 @@ import type { Workout, WeeklyPlan, StreakSettings, UserProfile } from './types';
  * once the week is over.
  *
  * Freezes rescue a failed week. Everyone starts with one; another is
- * earned on every 30th workout day (banked up to 2, extra milestones are
- * simply lost while at the cap). A freeze is spent automatically, at the
- * end of a failed week, and only when there is a streak to protect.
+ * earned on every 30th TRAINING DAY — not every 30th workout: two
+ * sessions logged on one day move the counter once (banked up to 2,
+ * extra milestones are simply lost while at the cap). A freeze is spent
+ * automatically, at the end of a failed week, and only when there is a
+ * streak to protect.
  *
  * Everything here is REPLAYED from the first workout each time it is
  * asked for. There is no incremental state to drift, nothing to migrate,
@@ -24,7 +26,7 @@ import type { Workout, WeeklyPlan, StreakSettings, UserProfile } from './types';
 
 export const MAX_FREEZES = 2;
 export const STARTING_FREEZES = 1;
-export const WORKOUTS_TO_EARN_FREEZE = 30;
+export const TRAINING_DAYS_TO_EARN_FREEZE = 30;
 export const MIN_COMMITMENT = 1;
 export const MAX_COMMITMENT = 6;
 export const DEFAULT_COMMITMENT = 3;
@@ -119,10 +121,14 @@ export interface StreakResult {
    *  the streak. */
   thisWeekAtRisk: boolean;
   daysNeededThisWeek: number;
+  /** Distinct days trained, ever. NOT the number of workouts — two
+   *  sessions on one day count once, so this is always ≤ the session
+   *  count shown in history and on the profile. */
   totalWorkoutDays: number;
-  /** Workout days logged toward the next freeze (0–29). */
+  /** Training days logged toward the next freeze (0–29). */
   freezeProgress: number;
-  workoutsUntilNextFreeze: number;
+  /** Training days still to go before the next freeze is banked. */
+  daysUntilNextFreeze: number;
 }
 
 export function computeStreak(workouts: Workout[], level: number, now: Date = new Date()): StreakResult {
@@ -141,7 +147,7 @@ export function computeStreak(workouts: Workout[], level: number, now: Date = ne
   const earn = (count: number) => {
     for (let i = 0; i < count; i++) {
       total += 1;
-      if (total % WORKOUTS_TO_EARN_FREEZE === 0 && freezes < MAX_FREEZES) freezes += 1;
+      if (total % TRAINING_DAYS_TO_EARN_FREEZE === 0 && freezes < MAX_FREEZES) freezes += 1;
     }
   };
 
@@ -180,7 +186,7 @@ export function computeStreak(workouts: Workout[], level: number, now: Date = ne
   const daysNeededThisWeek = Math.max(0, lvl - thisWeekDays);
   const thisWeekAtRisk = !thisWeekQualified && daysNeededThisWeek > remainingDays;
 
-  const freezeProgress = total % WORKOUTS_TO_EARN_FREEZE;
+  const freezeProgress = total % TRAINING_DAYS_TO_EARN_FREEZE;
   return {
     level: lvl,
     current,
@@ -195,7 +201,7 @@ export function computeStreak(workouts: Workout[], level: number, now: Date = ne
     daysNeededThisWeek,
     totalWorkoutDays: total,
     freezeProgress,
-    workoutsUntilNextFreeze: WORKOUTS_TO_EARN_FREEZE - freezeProgress,
+    daysUntilNextFreeze: TRAINING_DAYS_TO_EARN_FREEZE - freezeProgress,
   };
 }
 

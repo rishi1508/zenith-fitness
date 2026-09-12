@@ -75,7 +75,7 @@ export function PhotoViewer({ gymId, post, onClose }: { gymId: string; post: Gym
     <div className="fixed inset-0 z-[120] flex flex-col bg-bg" role="dialog" aria-modal="true" aria-label="Photo">
       <div
         className="flex-none flex items-center gap-2 px-4 pb-2"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
+        style={{ paddingTop: 'calc(var(--top-inset) + 14px)' }}
       >
         <button onClick={onClose} aria-label="Close" className="w-9 h-9 rounded-full flex items-center justify-center text-text">
           <X className="w-5 h-5" strokeWidth={2} />

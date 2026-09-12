@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Dumbbell, ChevronRight, ChevronLeft, Check, Clock, X, Edit3, Trash2, Plus,
-  TrendingUp, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play, Info
+  TrendingUp, TrendingDown, Trophy, ArrowUp, ArrowRight, ArrowDown, FileText, Play, Info,
+  MessageCircle
 } from 'lucide-react';
 import type { Workout, WorkoutSet, WorkoutExercise, Exercise } from '../types';
 import * as storage from '../storage';
@@ -10,22 +11,36 @@ import { feedback } from '../feedback';
 import { defaultRestSecondsFor } from '../restTimer';
 import { labelize } from '../exerciseUtils';
 import { ExercisePickerSheet } from './exercises/ExercisePickerSheet';
-import { buildProgression, collectExerciseSessions, formatSet } from '../progression';
+import { buildProgression, collectExerciseSessions, formatKg, formatSet } from '../progression';
+import {
+  computeDeloadSuggestion, deloadTargetFor, deloadWeekEndsAt, deloadZenPrompt,
+} from '../deloadDetector';
 import { findExercise, withGymExercises } from '../gymLibrary';
-import { VideoModal } from '../components';
+import { DeloadExplainerSheet, VideoModal } from '../components';
 
-import { useToast, useConfirm } from '../ui';
+import { Button, IconButton, Pill, useToast, useConfirm } from '../ui';
+
+/** What the lifter should aim for today, or null outside a deload week. */
+type DeloadTarget = { weight: number; reps: number } | null;
+
+/** "Target 45 kg × 6" / "Target bodyweight × 8". */
+function deloadTargetLabel(t: NonNullable<DeloadTarget>): string {
+  return t.weight > 0 ? `Target ${formatKg(t.weight)} kg × ${t.reps}` : `Target bodyweight × ${t.reps}`;
+}
 
 // Active Workout View
 export function ActiveWorkoutView({
   workout, onUpdate, onFinish, onPause, onDiscard,
-  sessionMode, buddyProgress,
+  sessionMode, buddyProgress, onAskZen,
 }: {
   workout: Workout;
   onUpdate: (workout: Workout) => void;
   onFinish: () => void;
   onPause: () => void;
   onDiscard: () => void;
+  /** Opens Zen with the question already typed. The deload banner's "Ask
+   *  Zen" button is hidden when this isn't wired. */
+  onAskZen?: (prompt: string) => void;
   /** 'host' = finish ends session for all; 'participant' = cannot finish; null = regular personal workout */
   sessionMode?: 'host' | 'participant' | null;
   /** Per-exercise full ordered set list from EACH OTHER participant in
@@ -66,7 +81,75 @@ export function ActiveWorkoutView({
   // INCREASES (and beats the historical snapshot). Editing values down
   // doesn't fire; editing UP to a new high does.
   const sessionBestRef = useRef<Map<string, { weight: number; reps: number }>>(new Map());
-  
+
+  /* ---------------- Deload week (src/deloadDetector.ts) ---------------- */
+
+  const deload = !!workout.deload;
+  const [deloadInfoOpen, setDeloadInfoOpen] = useState(false);
+  // The same numbers the home banner explained with, so the "i" here tells
+  // the same story rather than a second one.
+  const deloadData = useMemo(
+    () => computeDeloadSuggestion(storage.getWorkouts()),
+    // The report is about weeks of history; nothing logged in this session
+    // can change it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deload],
+  );
+  const deloadEndsAt = useMemo(() => (deload ? deloadWeekEndsAt() : null), [deload]);
+  const deloadDaysLeft = deloadEndsAt
+    ? Math.max(1, Math.ceil((deloadEndsAt.getTime() - Date.now()) / 86400000))
+    : null;
+
+  // One history scan for every exercise on screen, recomputed only when the
+  // exercise LIST changes — so adding or swapping an exercise mid-session
+  // gets its own target, but typing into a set does not rescan localStorage.
+  const exerciseKey = workout.exercises.map((ex) => `${ex.id}:${ex.exerciseId}`).join('|');
+  const deloadTargets = useMemo(() => {
+    const map = new Map<string, NonNullable<DeloadTarget>>();
+    if (!deload) return map;
+    const history = storage.getWorkouts();
+    for (const ex of workout.exercises) {
+      const target = deloadTargetFor(ex.exerciseId, ex.exerciseName, history);
+      if (target) map.set(ex.id, target);
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deload, exerciseKey]);
+
+  /** Write the target weight and reps into every set not already logged. */
+  const applyDeloadTargets = () => {
+    const exercises = workout.exercises.map((ex) => {
+      const target = deloadTargets.get(ex.id);
+      if (!target) return ex;
+      return {
+        ...ex,
+        sets: ex.sets.map((s) => (s.completed ? s : { ...s, weight: target.weight, reps: target.reps })),
+      };
+    });
+    onUpdate({ ...workout, exercises });
+    hapticImpact('light');
+  };
+
+  // Sets arrive pre-filled with last session's weight, which is the wrong
+  // number for a deliberately light week. Rewrite the weights once, while
+  // nothing has been logged yet — reps are still the lifter's to enter.
+  const deloadPrefilledRef = useRef(false);
+  useEffect(() => {
+    if (!deload || deloadPrefilledRef.current || deloadTargets.size === 0) return;
+    deloadPrefilledRef.current = true;
+    if (workout.exercises.some((ex) => ex.sets.some((s) => s.completed))) return;
+    onUpdate({
+      ...workout,
+      exercises: workout.exercises.map((ex) => {
+        const target = deloadTargets.get(ex.id);
+        if (!target) return ex;
+        return { ...ex, sets: ex.sets.map((s) => (s.completed ? s : { ...s, weight: target.weight })) };
+      }),
+    });
+    // Runs once per mount, as soon as targets exist.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deload, deloadTargets]);
+
   // Workout duration timer
   useEffect(() => {
     const startTime = workout.startedAt ? new Date(workout.startedAt).getTime() : Date.now();
@@ -120,6 +203,9 @@ export function ActiveWorkoutView({
 
   const addExercise = (exercise: Exercise) => {
     const lastSession = storage.getLastExerciseSession(exercise.id);
+    // Added mid-deload: start it at its own lighter target rather than at
+    // last session's working weight.
+    const target = deload ? deloadTargetFor(exercise.id, exercise.name, storage.getWorkouts()) : null;
     const defaultSets = 3;
     const newExercise: WorkoutExercise = {
       id: crypto.randomUUID(),
@@ -127,7 +213,7 @@ export function ActiveWorkoutView({
       exerciseName: exercise.name,
       sets: Array.from({ length: defaultSets }, (_, i) => ({
         id: crypto.randomUUID(),
-        weight: lastSession && lastSession[i] ? lastSession[i].weight : 0,
+        weight: target ? target.weight : (lastSession && lastSession[i] ? lastSession[i].weight : 0),
         reps: 0,
         completed: false,
       })),
@@ -169,12 +255,14 @@ export function ActiveWorkoutView({
     
     // Get last session data for the NEW exercise to pre-fill weights
     const lastSession = storage.getLastExerciseSession(newExercise.id);
-    
+    // On a deload week the swapped-in lift gets its own lighter target.
+    const target = deload ? deloadTargetFor(newExercise.id, newExercise.name, storage.getWorkouts()) : null;
+
     // Create new sets with pre-filled weights from last session of new exercise
     const newSets: WorkoutSet[] = Array.from({ length: numSets }, (_, i) => ({
       id: `${newExercise.id}_set${i}_${Date.now()}`,
-      weight: lastSession && lastSession[i] ? lastSession[i].weight : 0,
-      reps: lastSession && lastSession[i] ? lastSession[i].reps : oldExercise.sets[i]?.reps || 10,
+      weight: target ? target.weight : (lastSession && lastSession[i] ? lastSession[i].weight : 0),
+      reps: target ? target.reps : (lastSession && lastSession[i] ? lastSession[i].reps : oldExercise.sets[i]?.reps || 10),
       completed: false,
     }));
     
@@ -240,7 +328,9 @@ export function ActiveWorkoutView({
       (updates.weight !== undefined && updates.weight !== oldSet.weight) ||
       (updates.reps !== undefined && updates.reps !== oldSet.reps);
     const editedCompletedSet = oldSet.completed && isStillCompleted && valueChanged;
-    const shouldEvaluate = justCompleted || editedCompletedSet;
+    // Nothing to celebrate on a deload week — the weights are meant to be
+    // light, so a "new record" toast would be either wrong or tone-deaf.
+    const shouldEvaluate = (justCompleted || editedCompletedSet) && !deload;
 
     // Rest timer — only on first completion, not on edits.
     if (justCompleted) {
@@ -417,6 +507,48 @@ export function ActiveWorkoutView({
         </div>
       </div>
 
+      {/* Deload week — the same explanation the home banner gave, so the
+          lifter isn't re-reading a new word mid-session. */}
+      {deload && (
+        <div className="bg-surface border border-info/35 rounded-card p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-control bg-info/14 text-info flex items-center justify-center shrink-0">
+              <TrendingDown className="w-[18px] h-[18px]" strokeWidth={1.75} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-text">Deload week · lighter on purpose</p>
+              <p className="text-[13px] leading-[18px] text-muted mt-1">
+                Take the target on each exercise and stop a couple of reps short of hard.
+                {deloadDaysLeft !== null && ` ${deloadDaysLeft} day${deloadDaysLeft === 1 ? '' : 's'} left of the easy week.`}
+              </p>
+            </div>
+            <IconButton icon={Info} label="Why this?" size="sm" onClick={() => setDeloadInfoOpen(true)} />
+          </div>
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant="primary" size="md" onClick={applyDeloadTargets}
+              disabled={deloadTargets.size === 0}
+              className="flex-1 min-w-0"
+            >
+              Set deload targets
+            </Button>
+            {onAskZen && (
+              <Button
+                variant="secondary" size="md" icon={MessageCircle} className="shrink-0"
+                onClick={() => onAskZen(deloadZenPrompt(deloadData.risingStreak))}
+              >
+                Ask Zen
+              </Button>
+            )}
+          </div>
+          <DeloadExplainerSheet
+            open={deloadInfoOpen}
+            onClose={() => setDeloadInfoOpen(false)}
+            data={deloadData}
+          />
+        </div>
+      )}
+
       {/* Progress Bar */}
       <div className="space-y-1">
         <div className="flex justify-between text-sm">
@@ -520,6 +652,8 @@ export function ActiveWorkoutView({
                 onExerciseCreated={refreshExercises}
                 sessionId={workout.sessionId}
                 buddyBest={buddyProgress?.get(exercise.exerciseName.trim().toLowerCase())}
+                deloadTarget={deload ? deloadTargets.get(exercise.id) ?? null : null}
+                deload={deload}
               />
             </div>
           );
@@ -553,7 +687,7 @@ export function ActiveWorkoutView({
 }
 
 // Exercise Card
-function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, sessionId, buddyBest }: {
+function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExercise, onDelete, canDelete, onExerciseCreated, sessionId, buddyBest, deloadTarget, deload }: {
   exercise: WorkoutExercise;
   onUpdateSet: (setIndex: number, updates: Partial<WorkoutSet>) => void;
   onAddSet: () => void;
@@ -571,6 +705,11 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
    *  line per buddy below YOUR set N, when each buddy has logged set
    *  N. Empty / absent → no hint is shown. */
   buddyBest?: Array<{ buddyName: string; sets: Array<{ weight: number; reps: number }> }>;
+  /** What to lift on this exercise during a deload week, or null when the
+   *  exercise has no history to scale down from. */
+  deloadTarget?: DeloadTarget;
+  /** True while this whole session is a deload week workout. */
+  deload?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [showExerciseSelector, setShowExerciseSelector] = useState(false);
@@ -638,11 +777,25 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   
   // Helper to get comparison indicator for a set
   const getProgressIndicator = (setIndex: number, currentWeight: number, currentReps: number) => {
+    if (currentWeight === 0 || currentReps === 0) return null; // No data yet
+
+    // On a deload week the lift IS supposed to be lighter, so there is
+    // nothing to compare it to and nothing to grade. Neutral words only —
+    // "Lower" after a set you were told to take easy is just a punishment
+    // for following the plan.
+    if (deload) {
+      const onTarget = !!deloadTarget
+        && Math.abs(currentWeight - deloadTarget.weight) <= Math.max(deloadTarget.weight * 0.1, 1.25);
+      return {
+        icon: 'right' as const,
+        color: onTarget ? 'text-info' : 'text-zinc-400',
+        label: onTarget ? 'On target' : 'Deload set',
+      };
+    }
+
     if (!lastSession || setIndex >= lastSession.length) return null;
     const lastSet = lastSession[setIndex];
-    
-    if (currentWeight === 0 || currentReps === 0) return null; // No data yet
-    
+
     const weightDiff = currentWeight - lastSet.weight;
     const repsDiff = currentReps - lastSet.reps;
     
@@ -694,7 +847,12 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                 </span>
               )}
             </div>
-            <div className="text-sm text-zinc-500">{completedCount}/{exercise.sets.length} sets</div>
+            <div className="text-sm text-zinc-500 flex items-center gap-2 flex-wrap">
+              <span>{completedCount}/{exercise.sets.length} sets</span>
+              {/* Deload week: what to lift here, worked out from this
+                  exercise's own last three normal sessions. */}
+              {deloadTarget && <Pill tone="info">{deloadTargetLabel(deloadTarget)}</Pill>}
+            </div>
           </div>
         </button>
         <div className="flex items-center gap-1">
@@ -810,8 +968,22 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
 
       {expanded && (
         <div className="px-4 pb-4 space-y-2">
-          {/* What to aim for today */}
-          {progression.suggestion && (
+          {/* What to aim for today. A deload week overrides it: the whole
+              point is to go lighter, so "try 85 kg" would fight the plan. */}
+          {deload ? deloadTarget && (
+            <div className="rounded-lg border border-info/25 bg-info/10 p-3">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="w-4 h-4 text-info shrink-0" />
+                <span className="text-sm font-semibold">
+                  {deloadTargetLabel(deloadTarget)}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-1">
+                About 60 % of your recent best on this lift, for the same reps. It should
+                feel easy — leave the last couple of reps in the tank.
+              </p>
+            </div>
+          ) : progression.suggestion && (
             <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 p-3">
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-orange-400 shrink-0" />
@@ -928,11 +1100,13 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                   </div>
                 </div>
                 
-                {/* Last session comparison */}
-                {lastSet && (
+                {/* Last session comparison. During a deload the line can
+                    carry only the neutral label — there may be no previous
+                    session at all for an exercise added mid-week. */}
+                {(lastSet || indicator) && (
                   <div className="flex items-center justify-between px-2 text-xs">
                     <span className="text-zinc-500">
-                      Last: {lastSet.weight}kg × {lastSet.reps} reps
+                      {lastSet ? `Last: ${lastSet.weight}kg × ${lastSet.reps} reps` : ''}
                     </span>
                     {indicator && (
                       <span className={`flex items-center gap-1 ${indicator.color} font-medium`}>

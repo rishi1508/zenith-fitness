@@ -71,9 +71,9 @@ export function buildZenContext(opts: BuildZenContextOptions = {}): string {
     );
   }
 
-  const { level, currentWeeks, longestWeeks, freezesAvailable, workoutsToNextFreeze } = ctx.streak;
+  const { level, currentWeeks, longestWeeks, freezesAvailable, trainingDaysToNextFreeze } = ctx.streak;
   lines.push(
-    `Streak: ${currentWeeks} week${currentWeeks === 1 ? '' : 's'} at ${level}★ (longest ${longestWeeks}). Freezes: ${freezesAvailable}/2 (${workoutsToNextFreeze} workouts to next).`,
+    `Streak: ${currentWeeks} week${currentWeeks === 1 ? '' : 's'} at ${level}★ (longest ${longestWeeks}). Freezes: ${freezesAvailable}/2 (${trainingDaysToNextFreeze} training days to next).`,
   );
 
   lines.push(`This week: ${formatThisWeek(workouts, now)}.`);

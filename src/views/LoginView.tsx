@@ -172,7 +172,7 @@ export function LoginView({ isDark }: { isDark: boolean }) {
   return (
     <div
       className={`fixed inset-0 overflow-y-auto ${isDark ? 'bg-[#0f0f0f] text-white' : 'bg-gray-50 text-gray-900'}`}
-      style={{ overscrollBehavior: 'none', paddingTop: 'max(env(safe-area-inset-top, 0px), var(--status-bar-h, 0px))', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      style={{ overscrollBehavior: 'none', paddingTop: 'var(--top-inset)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
     <div className="min-h-full flex flex-col items-center justify-center px-6 py-8">
       {/* Logo */}

@@ -569,10 +569,13 @@ export function checkAndUpdatePR(exerciseId: string, exerciseName: string, weigh
  * Recompute all personal records from workout history under the current hierarchy.
  * Idempotent — running this on every app load keeps stored PRs in sync with history
  * even when workouts are imported, edited, or deleted.
+ *
+ * Deload weeks are skipped: a planned-light set is never a personal best, and
+ * counting one would let an easy week quietly redefine the lifter's ceiling.
  */
 export function recomputePersonalRecords(): void {
   const workouts = getWorkouts()
-    .filter(w => w.completed && w.type !== 'rest')
+    .filter(w => w.completed && w.type !== 'rest' && !w.deload)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // oldest first
 
   const byExercise = new Map<string, PersonalRecord>();
@@ -604,10 +607,12 @@ export function recomputePersonalRecords(): void {
   setItem(STORAGE_KEYS.RECORDS, Array.from(byExercise.values()));
 }
 
-// Get last session data for an exercise (for progressive overload tracking)
+// Get last session data for an exercise (for progressive overload tracking).
+// Deload weeks are skipped — this feeds "last time" comparisons and weight
+// pre-fill, and a deliberately light week is the wrong thing to compare to.
 export function getLastExerciseSession(exerciseId: string, beforeDate?: string): WorkoutSet[] | null {
   const workouts = getWorkouts()
-    .filter(w => w.completed && w.type !== 'rest')
+    .filter(w => w.completed && w.type !== 'rest' && !w.deload)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   
   const cutoffDate = beforeDate ? new Date(beforeDate).getTime() : Date.now();

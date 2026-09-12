@@ -13,6 +13,7 @@
 import { doc, getDoc, setDoc, collection, query, where, getDocs, documentId, orderBy, limit as fsLimit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { queueFirestoreSync } from '../firestoreSync';
+import { normalizeTargets } from './targets';
 import type {
   NutritionDay, NutritionTargets, ActivityDay, HealthProfile, PhaseSettings, FoodItem, SavedMeal,
 } from '../types';
@@ -69,8 +70,15 @@ export function setHealthProfile(p: HealthProfile): void { writeSynced(HEALTH_KE
 export function getPhaseSettings(): PhaseSettings | null { return read<PhaseSettings | null>(HEALTH_KEYS.PHASE, null); }
 export function setPhaseSettings(p: PhaseSettings | null): void { writeSynced(HEALTH_KEYS.PHASE, p); }
 
-export function getTargets(): NutritionTargets | null { return read<NutritionTargets | null>(HEALTH_KEYS.TARGETS, null); }
-export function setTargets(t: NutritionTargets | null): void { writeSynced(HEALTH_KEYS.TARGETS, t); }
+/** Normalised on the way out as well as in: targets saved before water was
+ *  rounded to whole glasses are still on the device (and in Firestore). */
+export function getTargets(): NutritionTargets | null {
+  const stored = read<NutritionTargets | null>(HEALTH_KEYS.TARGETS, null);
+  return stored ? normalizeTargets(stored) : null;
+}
+export function setTargets(t: NutritionTargets | null): void {
+  writeSynced(HEALTH_KEYS.TARGETS, t ? normalizeTargets(t) : null);
+}
 
 export function getFavouriteFoodIds(): string[] { return read<string[]>(HEALTH_KEYS.FAVOURITES, []); }
 export function toggleFavouriteFood(foodId: string): boolean {
@@ -108,8 +116,14 @@ export function replaceCachedFood(item: FoodItem): void {
   notify();
 }
 
+/** Drops the food everywhere it is cached — a deleted food that stayed in
+ *  Recents or Favourites would still be one tap from being logged. */
 export function deleteCustomFood(id: string): void {
   writeSynced(HEALTH_KEYS.CUSTOM_FOODS, getCustomFoods().filter((f) => f.id !== id));
+  const recents = getRecentFoods();
+  if (recents.some((f) => f.id === id)) writeSynced(HEALTH_KEYS.RECENTS, recents.filter((f) => f.id !== id));
+  const favourites = getFavouriteFoodIds();
+  if (favourites.includes(id)) writeSynced(HEALTH_KEYS.FAVOURITES, favourites.filter((f) => f !== id));
 }
 
 /** Meals the user saved from a day's section ("my usual breakfast"). */

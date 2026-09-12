@@ -235,7 +235,7 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
     // clears the fixed bottom nav (h-20 ≈ 80px).
     <div
       className="flex flex-col h-full px-4 pb-24"
-      style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
+      style={{ paddingTop: 'calc(var(--top-inset) + 14px)' }}
     >
       {/* Chat Header — swapped for the selection-mode action bar when
           one or more messages are selected (long-press → multi-select). */}

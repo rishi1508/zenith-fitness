@@ -17,6 +17,8 @@ import {
 } from './components';
 import { tourSeen } from './tourState';
 import { useMyProfile } from './profile/useMyProfile';
+import { mealForNow } from './views/nutrition/nutritionHelpers';
+import { startDeloadWeek, isDeloadWeekActive } from './deloadDetector';
 import { ProfileSetupView } from './profile/ProfileSetupView';
 import { effectiveProfilePhoto } from './profilePhoto';
 import { useElasticScroll } from './hooks/useElasticScroll';
@@ -61,6 +63,8 @@ const MemberDetailView = lazyNamed(() => import('./views/gym'), 'MemberDetailVie
 const CheckinConsoleView = lazyNamed(() => import('./views/gym'), 'CheckinConsoleView');
 const GymLibraryView = lazyNamed(() => import('./views/gym'), 'GymLibraryView');
 const GymPlansView = lazyNamed(() => import('./views/gym'), 'GymPlansView');
+const GymActivityView = lazyNamed(() => import('./views/gym'), 'GymActivityView');
+const AdminErrorsView = lazyNamed(() => import('./views/admin'), 'AdminErrorsView');
 const ClassesManageView = lazyNamed(() => import('./views/gym'), 'ClassesManageView');
 const GymSettingsView = lazyNamed(() => import('./views/gym'), 'GymSettingsView');
 const CreateGymView = lazyNamed(() => import('./views/gym'), 'CreateGymView');
@@ -122,7 +126,7 @@ import { useToast, useConfirm } from './ui';
  *  once the food is in the diary (see `showDiary`). */
 const ADD_FOOD_VIEWS = new Set<View>(['food-search', 'food-scan']);
 
-export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'energy' | 'phase' | 'profile';
+export type View = 'home' | 'workout' | 'train' | 'health' | 'you' | 'history' | 'templates' | 'active' | 'progress' | 'settings' | 'exercises' | 'weekly' | 'compare' | 'analysis' | 'buddies' | 'buddy-profile' | 'buddy-chat' | 'buddy-compare' | 'session-lobby' | 'body-weight' | 'body-measurements' | 'common-templates' | 'insights' | 'zen' | GymView | 'admin-gyms' | 'admin-users' | 'admin-library' | 'admin-errors' | 'nutrition' | 'food-search' | 'food-scan' | 'nutrition-targets' | 'activity' | 'energy' | 'phase' | 'profile';
 export type Theme = 'dark' | 'light';
 
 function App() {
@@ -1004,6 +1008,9 @@ function App() {
       startedAt: new Date().toISOString(),
       lastActivityAt: new Date().toISOString(),
       ...(sessionId ? { sessionId } : {}),
+      // A workout begun inside a planned easy week is lighter on purpose and
+      // stays out of trend/PR charts (src/deloadDetector.ts).
+      ...(isDeloadWeekActive() ? { deload: true } : {}),
     };
     setActiveWorkout(workout);
     navigateTo('active');
@@ -1120,7 +1127,8 @@ function App() {
       // data and identify which ones beat the snapshot. This is what
       // gets shown in the celebration screen.
       const sessionPRs: Array<{ exercise: string; weight: number; reps: number; isFirstEver: boolean }> = [];
-      for (const ex of exercisesClean) {
+      // A deload session is lighter by design — nothing in it is a record.
+      for (const ex of activeWorkout.deload ? [] : exercisesClean) {
         let best: { weight: number; reps: number } | null = null;
         for (const s of ex.sets) {
           if (!s.completed || s.weight <= 0 || s.reps <= 0) continue;
@@ -1509,7 +1517,7 @@ function App() {
 
       {/* Idle auto-finish notice */}
       {autoFinishNotice && (
-        <div className="fixed left-4 right-4 z-[60] animate-fadeIn" style={{ top: 'calc(env(safe-area-inset-top, 0px) + 64px)' }}>
+        <div className="fixed left-4 right-4 z-[60] animate-fadeIn" style={{ top: 'calc(var(--top-inset) + 64px)' }}>
           <div className={`rounded-xl p-3 shadow-lg flex items-start gap-3 border ${
             isDark ? 'bg-[#1a1a1a] border-orange-500/40 text-zinc-200' : 'bg-white border-orange-300 text-gray-800'
           }`}>
@@ -1678,7 +1686,7 @@ function App() {
               exercise"). */}
           <div
             className="flex-1 flex flex-col min-h-0"
-            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 18px)' }}
+            style={{ paddingTop: 'calc(var(--top-inset) + 18px)' }}
           >
             {activeSessionId && activeWorkout.sessionId === activeSessionId && (
               <GroupSessionBar sessionId={activeSessionId} isDark={isDark} />
@@ -1691,6 +1699,7 @@ function App() {
               <div ref={activeContentRef} className="mx-auto w-full lg:max-w-[760px] lg:py-6">
               <ActiveWorkoutView
                 workout={activeWorkout}
+                onAskZen={openZen}
                 onUpdate={saveActiveWorkout}
                 onFinish={() => finishWorkout({ endSession: sessionMode === 'host' })}
                 onPause={pauseWorkout}
@@ -1756,6 +1765,12 @@ function App() {
             onDiscardWorkout={discardWorkout}
             onOpenGymCheckin={() => navigateToGym('gym-checkin')}
             onOpenGymJoin={() => navigateToGym('gym-join')}
+            onOpenWeeklyPlans={() => navigateTo('templates')}
+            onStartDeload={() => {
+              startDeloadWeek();
+              storage.setCurrentWeekDeload(true);
+              showToast('Deload week on. Your next seven days of workouts will show lighter targets.');
+            }}
             onOpenBuddies={() => navigateTo('buddies')}
             onOpenZen={openZen}
             onSessionStart={(session) => startWorkout({
@@ -1792,6 +1807,7 @@ function App() {
             onOpenBodyMeasurements={() => navigateTo('body-measurements')}
             onOpenInsights={() => navigateTo('insights')}
             onOpenNutrition={() => { setFoodNav((n) => ({ ...n, date: healthToday() })); navigateTo('nutrition'); }}
+            onLogFood={() => { setFoodNav({ date: healthToday(), meal: mealForNow() }); navigateTo('food-search'); }}
             onOpenPhase={() => navigateTo('phase')}
             onOpenActivity={() => navigateTo('activity')}
             onOpenEnergy={() => navigateTo('energy')}
@@ -1809,6 +1825,7 @@ function App() {
             onOpenAdminGyms={() => navigateTo('admin-gyms')}
             onOpenAdminUsers={() => navigateTo('admin-users')}
             onOpenAdminLibrary={() => navigateTo('admin-library')}
+            onOpenAdminErrors={() => navigateTo('admin-errors')}
             onOpenProfileUid={openProfile}
             onJoinGym={() => navigateToGym('gym-join')}
           />
@@ -1883,6 +1900,7 @@ function App() {
               stats={stats}
               workouts={workoutHistory}
               isDark={isDark}
+              onAskZen={openZen}
               onBack={() => goBack()}
               onStartDay={(dayIndex) => {
                 const activePlan = storage.getActivePlan();
@@ -1944,6 +1962,9 @@ function App() {
         {view === 'gym-member' && (
           <MemberDetailView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} memberUid={gymNav.memberUid} />
         )}
+        {view === 'gym-activity' && (
+          <GymActivityView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
+        )}
         {view === 'gym-console' && (
           <CheckinConsoleView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
@@ -2001,6 +2022,7 @@ function App() {
             onOpenAdminGyms={() => navigateTo('admin-gyms')}
             onOpenAdminUsers={() => navigateTo('admin-users')}
             onOpenAdminLibrary={() => navigateTo('admin-library')}
+            onOpenAdminErrors={() => navigateTo('admin-errors')}
             onOpenProfileUid={openProfile}
             onOpenChat={(uid, name, photoURL) => {
               setBuddyContext((prev) => ({ ...prev, uid, name, photoURL }));
@@ -2035,6 +2057,9 @@ function App() {
         )}
         {view === 'admin-library' && (
           <AdminLibraryView onBack={() => goBack()} />
+        )}
+        {view === 'admin-errors' && (
+          <AdminErrorsView onBack={() => goBack()} />
         )}
         {view === 'zen' && (
           <PremiumGate feature="zen" onJoinGym={() => navigateToGym('gym-join')} onBack={() => goBack()}>
@@ -2085,6 +2110,7 @@ function App() {
             onOpenAdminGyms={() => navigateTo('admin-gyms')}
             onOpenAdminUsers={() => navigateTo('admin-users')}
             onOpenAdminLibrary={() => navigateTo('admin-library')}
+            onOpenAdminErrors={() => navigateTo('admin-errors')}
             onOpenProfileUid={openProfile}
             onOpenChat={(uid, name, photoURL) => {
               // The chat id is on the buddy relationship, which is the only

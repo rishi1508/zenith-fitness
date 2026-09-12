@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Clock, Dumbbell, ScanLine, Trash2, Users } from 'lucide-react';
+import { Building2, ChevronDown, Clock, Dumbbell, ScanLine, Trash2, Users } from 'lucide-react';
 import type { Workout, WorkoutTemplate, GymClass, WorkoutSession } from '../../types';
 import type { Theme } from '../../App';
 import * as storage from '../../storage';
@@ -8,7 +8,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { workoutDaySet, localIso, weekStartISO, addDays } from '../../streakService';
 import { AUTO_FINISH_IDLE_MS } from '../../autoFinish';
 import { computeDeloadSuggestion } from '../../deloadDetector';
-import { DeloadSuggestion, WeeklyPlanSelector, Avatar } from '../../components';
+import { DeloadSuggestion, WeeklyPlanSelector, Avatar, HomeInsightsCard } from '../../components';
 import { useGym } from '../../gym/GymContext';
 import { listenToClasses, upcomingSessions } from '../../gymService';
 import { formatTime12h } from '../../gymMemberHelpers';
@@ -34,6 +34,10 @@ interface HomeTabViewProps {
   onOpenGymCheckin: () => void;
   onOpenGymJoin: () => void;
   onOpenBuddies: () => void;
+  /** Weekly-plans screen — swapping the whole split, not just the day. */
+  onOpenWeeklyPlans: () => void;
+  /** Turns the coming seven days into a planned easy week (deload). */
+  onStartDeload: () => void;
   onOpenZen: (prompt?: string) => void;
   onOpenNutrition: () => void;
   /** Opens one buddy's profile. Falls back to the buddies list when absent. */
@@ -54,7 +58,7 @@ function elapsedLabel(startedAt: string): string {
  *  (or "join a gym" prompt), buddies strip. */
 export function HomeTabView({
   theme, workouts, activeWorkout, showBuddies, onStartWorkout, onSessionStart, onResumeWorkout, onDiscardWorkout,
-  onOpenGymCheckin, onOpenGymJoin, onOpenBuddies, onOpenZen,
+  onOpenGymCheckin, onOpenGymJoin, onOpenBuddies, onOpenWeeklyPlans, onStartDeload, onOpenZen,
   onOpenNutrition, onOpenBuddy, onOpenProfile,
 }: HomeTabViewProps) {
   const [hasTargets, setHasTargets] = useState(() => getTargets() != null);
@@ -188,54 +192,61 @@ export function HomeTabView({
         </Card>
       )}
 
-      <DeloadSuggestion data={deload} isDark={isDark} />
+      <HomeInsightsCard onOpenZen={onOpenZen} onJoinGym={onOpenGymJoin} />
+
+      <DeloadSuggestion data={deload} onAskZen={onOpenZen} onStartDeload={onStartDeload} />
 
       {today.plan && today.day && !today.day.isRestDay ? (
         <Card>
-          <div className="flex items-center justify-between mb-1">
-            <span className={CAPTION}>Today · {today.plan.name}</span>
-            <Chip size="md">{today.day.name}</Chip>
-          </div>
-          <h2 className={`${H2} mb-1`}>{today.day.name}</h2>
-          <p className={`${SUB} mb-3 line-clamp-1`}>
+          <span className={CAPTION}>Today · {today.plan.name}</span>
+          {/* The day title IS the day picker — a separate "Change day"
+              link next to an inert heading read as two controls, one of
+              which did nothing. */}
+          <button
+            onClick={() => setDayPickerOpen(true)}
+            aria-label={`Change day (currently ${today.day.name})`}
+            className="flex items-center gap-1.5 mt-1 max-w-full text-left"
+          >
+            <span className={`${H2} truncate`}>{today.day.name}</span>
+            <ChevronDown className="w-4 h-4 shrink-0 text-muted" strokeWidth={2} />
+          </button>
+          <p className={`${SUB} mt-1 line-clamp-1`}>
             {today.day.exercises.map((e) => e.exerciseName).join(' · ')}
+          </p>
+          <p className={`${SUB} mt-1 truncate`}>
+            {today.reason ?? (lastTime ? `Last time ${lastTime}` : 'No sessions logged yet')}
           </p>
           {/* Start alone, or bring someone — the second is one tap, not a
               trip through the Buddies screen. */}
-          <div className="flex gap-2" data-tour="start-workout">
+          <Button
+            variant="primary" size="lg" icon={Dumbbell} full className="mt-3" data-tour="start-workout"
+            onClick={() => onStartWorkout({
+              id: `${today.plan!.id}_day_${today.day!.dayNumber}`,
+              name: `${today.plan!.name} - ${today.day!.name}`,
+              type: 'custom',
+              exercises: today.day!.exercises,
+              weeklyPlanId: today.plan!.id,
+            })}
+          >
+            Start workout
+          </Button>
+          <div className="flex items-center justify-between mt-2 gap-2">
             <Button
-              variant="primary" size="lg" icon={Dumbbell} className="flex-1 min-w-0"
-              onClick={() => onStartWorkout({
-                id: `${today.plan!.id}_day_${today.day!.dayNumber}`,
-                name: `${today.plan!.name} - ${today.day!.name}`,
-                type: 'custom',
-                exercises: today.day!.exercises,
-                weeklyPlanId: today.plan!.id,
-              })}
+              variant="secondary" size="md" icon={Users} data-tour="together"
+              className="shrink-0 whitespace-nowrap" onClick={() => setTogetherOpen(true)}
             >
-              Start workout
+              With a buddy
             </Button>
-            <button
-              onClick={() => setTogetherOpen(true)}
-              aria-label="Work out together"
-              data-tour="together"
-              title="Work out together"
-              className="w-[52px] shrink-0 rounded-control border border-border text-accent flex items-center justify-center hover:border-accent/50 transition-colors"
-            >
-              <Users className="w-5 h-5" strokeWidth={1.75} />
+            <button onClick={onOpenWeeklyPlans} className="shrink-0 whitespace-nowrap text-[13px] font-bold text-accent px-1">
+              Change plan
             </button>
-          </div>
-          <div className="flex items-center justify-between mt-3 gap-2">
-            <span className={`${SUB} min-w-0 truncate`}>
-              {today.reason ?? (lastTime ? `Last time ${lastTime}` : 'No sessions logged yet')}
-            </span>
-            <button onClick={() => setDayPickerOpen(true)} className="shrink-0 whitespace-nowrap text-[13px] font-bold text-accent">Change day</button>
           </div>
         </Card>
       ) : (
         <Card className="flex flex-col items-center text-center gap-2 py-6">
           <p className={H2}>No active plan</p>
           <p className={SUB}>Create a weekly plan to get a "Start workout" card here.</p>
+          <Button variant="secondary" size="md" className="mt-1" onClick={onOpenWeeklyPlans}>Set up a plan</Button>
         </Card>
       )}
 

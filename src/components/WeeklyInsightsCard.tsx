@@ -4,6 +4,7 @@ import type { Workout } from '../types';
 import { formatVolume } from '../utils';
 import * as storage from '../storage';
 import { computeStreakSummary } from '../streakService';
+import { excludeDeloadWorkouts } from '../deloadDetector';
 
 interface WeeklyInsightsCardProps {
   workouts: Workout[];
@@ -34,11 +35,18 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
     total + w.exercises.reduce((et, e) =>
       et + e.sets.reduce((st, s) => st + (s.completed ? s.weight * s.reps : 0), 0), 0), 0);
 
+  // Volume shown is what you actually lifted, deload weeks included — it's
+  // a total, not a verdict. The week-on-week change is a trend, so it runs
+  // on normal weeks only, and goes null when either side has nothing left
+  // to compare (a full deload week would otherwise read as "-100%").
   const { thisWeekVolume, volumeChange } = useMemo(() => {
     const twv = calculateVolume(thisWeekWorkouts);
-    const lwv = calculateVolume(lastWeekWorkouts);
-    const vc = lwv > 0 ? ((twv - lwv) / lwv * 100) : 0;
-    return { thisWeekVolume: twv, lastWeekVolume: lwv, volumeChange: vc };
+    const normalThis = excludeDeloadWorkouts(thisWeekWorkouts);
+    const normalLast = excludeDeloadWorkouts(lastWeekWorkouts);
+    const nv = calculateVolume(normalThis);
+    const lv = calculateVolume(normalLast);
+    const vc = normalThis.length > 0 && lv > 0 ? ((nv - lv) / lv * 100) : null;
+    return { thisWeekVolume: twv, volumeChange: vc };
   }, [thisWeekWorkouts, lastWeekWorkouts]);
   
   // Weekly N★ streak — same engine as the header pill and the modal.
@@ -53,8 +61,10 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
     let prCount = 0;
     const exerciseMaxes = new Map<string, number>();
 
-    // Build historical maxes (before this week)
-    workouts
+    // Build historical maxes (before this week). Deload weeks are skipped on
+    // both sides — a planned-light set is never a personal record, and it
+    // must not lower the bar a real one has to clear either.
+    excludeDeloadWorkouts(workouts)
       .filter(w => w.completed && new Date(w.date) < new Date(weekStartMs))
       .forEach(w => {
         w.exercises.forEach(e => {
@@ -65,7 +75,7 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
       });
 
     // Check this week for PRs
-    thisWeekWorkouts.forEach(w => {
+    excludeDeloadWorkouts(thisWeekWorkouts).forEach(w => {
       w.exercises.forEach(e => {
         const maxWeight = Math.max(...e.sets.filter(s => s.completed).map(s => s.weight), 0);
         const historical = exerciseMaxes.get(e.exerciseName) || 0;
@@ -112,7 +122,7 @@ export function WeeklyInsightsCard({ workouts }: WeeklyInsightsCardProps) {
             <div className="text-2xl font-bold">{formatVolume(thisWeekVolume)}</div>
             <div className="text-sm text-zinc-400 flex items-center gap-1">
               Volume
-              {volumeChange !== 0 && (
+              {volumeChange !== null && volumeChange !== 0 && (
                 <span className={volumeChange > 0 ? 'text-emerald-400' : 'text-red-400'}>
                   {volumeChange > 0 ? '↑' : '↓'}{Math.abs(volumeChange).toFixed(0)}%
                 </span>

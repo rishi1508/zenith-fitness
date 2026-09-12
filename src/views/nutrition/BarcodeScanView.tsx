@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff } from 'lucide-react';
+import { ArrowLeft, CameraOff } from 'lucide-react';
 import type { IScannerControls } from '@zxing/browser';
 import { OFF_ATTRIBUTION } from '../../nutrition';
 import { Button, IconButton, H2 } from '../../ui';
@@ -95,10 +95,10 @@ export function BarcodeScanView({ onResult, onBack, active = true, onEnterCode }
       </div>
 
       <div className="relative w-full aspect-[4/3] max-w-sm mx-auto rounded-card overflow-hidden bg-black">
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" muted playsInline />
+        <video ref={videoRef} className={`absolute inset-0 w-full h-full object-cover ${ready ? 'opacity-100' : 'opacity-0'}`} muted playsInline />
         {!ready && !error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-zinc-300 text-sm">
-            <Camera className="w-8 h-8 animate-pulse" /> Starting camera…
+            Starting camera…
           </div>
         )}
         {error && (

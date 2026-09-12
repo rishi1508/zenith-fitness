@@ -88,6 +88,11 @@ export interface Workout {
   /** True when the app finished this workout itself after the user went
    *  idle, instead of the user tapping Finish. */
   autoCompleted?: boolean;
+  /** Logged during a deliberate deload week (see src/deloadDetector.ts).
+   *  Still a real workout for streaks, totals, history and the calendar,
+   *  but left out of trends, personal bests and "vs last time" comparisons
+   *  so a planned easy week never reads as a slump. */
+  deload?: boolean;
 }
 
 export type WorkoutType = 

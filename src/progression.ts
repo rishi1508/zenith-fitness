@@ -20,9 +20,11 @@ import type { ExerciseEquipment, Workout } from './types';
  *   - Any working set fell short → hold the same weight until all of them
  *     land. We never suggest going down: a deload is the lifter's call.
  *
- * After a deliberate deload the suggestion builds from the *deloaded*
- * weight — it does not jump back to the old top set. Backing off is a
- * choice, and the app climbing straight back would undo it.
+ * After the lifter backs off on their own the suggestion builds from the
+ * *lighter* weight — it does not jump back to the old top set. Backing off
+ * is a choice, and the app climbing straight back would undo it. A flagged
+ * deload week (`workout.deload`) is the exception: those sessions are
+ * planned-easy, not a new baseline, so they are skipped entirely here.
  */
 
 /** A set as it was actually performed. `weight: 0` = bodyweight. */
@@ -76,7 +78,8 @@ function newestFirst(a: { date: string }, b: { date: string }): number {
 /**
  * Past performances of one exercise, newest first. Matches on id and, for
  * workouts logged in a buddy session (which carry the host's exercise ids),
- * falls back to the name.
+ * falls back to the name. Deload weeks are skipped — they are deliberately
+ * light, so building today's target off them would drag the lifter down.
  */
 export function collectExerciseSessions(
   workouts: readonly Workout[],
@@ -88,7 +91,7 @@ export function collectExerciseSessions(
   const sessions: ExerciseSession[] = [];
 
   for (const workout of [...workouts].sort(newestFirst)) {
-    if (!workout.completed || workout.type === 'rest') continue;
+    if (!workout.completed || workout.type === 'rest' || workout.deload) continue;
     const match = workout.exercises.find((ex) =>
       ex.exerciseId === exerciseId
       || (!!nameKey && ex.exerciseName.trim().toLowerCase() === nameKey));
@@ -198,14 +201,15 @@ export function buildProgression({ sessions, equipment, targetReps }: {
  * The most recent top set for every exercise the user has ever logged, keyed
  * by exercise id AND by lower-cased name (workouts from a buddy session carry
  * the host's ids). One pass over history so a list of 150 exercises can show
- * "last: 80 kg × 5" without 150 scans.
+ * "last: 80 kg × 5" without 150 scans. Deload weeks are skipped for the same
+ * reason as {@link collectExerciseSessions}.
  */
 export function lastTopSetByExercise(workouts: readonly Workout[]): Map<string, LoggedSet> {
   const out = new Map<string, LoggedSet>();
   // Oldest first, so a later workout simply overwrites an earlier one.
   const ordered = [...workouts].sort((a, b) => newestFirst(b, a));
   for (const workout of ordered) {
-    if (!workout.completed || workout.type === 'rest') continue;
+    if (!workout.completed || workout.type === 'rest' || workout.deload) continue;
     for (const ex of workout.exercises) {
       const sets = ex.sets
         .filter((s) => s.completed && s.reps > 0)
