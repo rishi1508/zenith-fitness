@@ -330,3 +330,42 @@ read the collection.
 the home app bar's eyebrow leads with the gym's name, the home gym row shows
 `logoUrl`. Play listing name stays Zenith Fitness; white-label is a paid
 add-on (`docs/PILOT_TSZ.md` §3).
+
+## 15. One person, one account; the desk creates accounts (3.29.0, 2026-09-13)
+
+**Identity key.** `userProfiles/{uid}.phone` (E.164) plus `phoneIndex/{e164} → uid`,
+written only by the server (`api/_profile.ts`: `normalizePhone`, `claimPhone`
+transaction, `completeProfile`). Firebase Auth already keeps one account per
+e-mail; the index does the same for the number. Every path that completes a
+profile goes through `completeProfile`:
+- e-mail sign-up (`api/otp.ts` `complete` — name, phone, dob, sex required/
+  validated; if the number already belongs to an account with no e-mail, the
+  e-mail joins THAT account instead of creating another),
+- the in-app setup screen (`api/account.ts` `complete-profile`, shown by
+  `App.tsx` via `useMyProfile` when the profile has no phone),
+- the front desk (`api/members.ts`).
+
+**Front desk** (`MembersView` → `createMemberAccount` → `api/members.ts create`):
+name + mobile required, e-mail/dob/sex optional, or pick an existing Zenith
+account from search (`uid`). Resolution order: picked uid → phoneIndex →
+Auth by e-mail → new Auth user. Refuses (409) a number on another account or
+a person in another gym. Writes the profile (complete, `createdBy: 'staff'`),
+the member doc under the real uid (+ memberCount when new), and the gym
+pointer. Payments/plans stay client-side as before.
+
+**No self-enrolment.** `joinGymByCode` and `inviteMemberByEmail` are removed;
+the members `create` rule allows staff/admin only (plus finishing a legacy
+e-mail-invite placeholder). `JoinGymView` is now the explainer ("the desk
+adds you by your number") and shows the account's number. Sign-in with Google
+for an account the desk created by e-mail: Firebase's one-account-per-e-mail
+takes the account over with the trusted provider, so it is the same uid.
+SMS sign-in, when built, mints a custom token for `phoneIndex[e164]`.
+
+**Account switching.** `signOut` and a different-uid sign-in clear
+`zenith_*` local storage (device keys excepted), terminate Firestore, clear
+its IndexedDB cache and reload (`resetFirestoreCache` in `src/firebase.ts`).
+
+**Sessions (same release).** `participantUids` on session docs; any joined
+participant may write `currentTemplateExercises` (`syncSessionTemplate`);
+`reconcileWorkoutWithTemplate` removes for everyone and orders by the
+template; `assertNoOpenSession` guards `createSession`/`joinSession`.
