@@ -57,6 +57,7 @@ export const viewToTab: Record<View, Tab> = {
   'admin-gyms': 'you',
   'admin-users': 'you',
   'admin-library': 'you',
+  'admin-errors': 'you',
   'gym-join': 'gym',
   'gym-home': 'gym',
   'gym-checkin': 'gym',
@@ -74,6 +75,7 @@ export const viewToTab: Record<View, Tab> = {
   'gym-create': 'gym',
   'gym-library': 'gym',
   'gym-plans': 'gym',
+  'gym-activity': 'gym',
 };
 
 /** Root view a tab navigates to on tap (also resets the history stack). */

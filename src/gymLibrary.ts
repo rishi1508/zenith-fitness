@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import * as storage from './storage';
+import { recordAudit } from './audit';
 import type { Exercise, GymExercise, GymWorkoutPlan, WeeklyPlan } from './types';
 
 // ----- exercises -------------------------------------------------------------
@@ -132,11 +133,13 @@ export async function saveGymExercise(gymId: string, input: GymExerciseInput, ex
     updatedAt: now,
   });
   await setDoc(doc(db, 'gyms', gymId, 'exercises', id), ge);
+  recordAudit(gymId, { action: 'exercise.save', target: { type: 'exercise', id, name: ge.name }, details: { created: !existing, video: !!ge.videoUrl } });
   return ge;
 }
 
-export async function deleteGymExercise(gymId: string, id: string): Promise<void> {
+export async function deleteGymExercise(gymId: string, id: string, name?: string): Promise<void> {
   await deleteDoc(doc(db, 'gyms', gymId, 'exercises', id));
+  recordAudit(gymId, { action: 'exercise.delete', target: { type: 'exercise', id, name } });
 }
 
 // ----- plans -----------------------------------------------------------------
@@ -174,11 +177,13 @@ export async function publishGymPlan(gymId: string, plan: WeeklyPlan, descriptio
     useCount: existing?.useCount ?? 0,
   });
   await setDoc(ref, gp);
+  recordAudit(gymId, { action: 'plan.publish', target: { type: 'plan', id: gp.id, name: gp.name }, details: { days: gp.days.length, update: !!existing } });
   return gp;
 }
 
-export async function deleteGymPlan(gymId: string, id: string): Promise<void> {
+export async function deleteGymPlan(gymId: string, id: string, name?: string): Promise<void> {
   await deleteDoc(doc(db, 'gyms', gymId, 'plans', id));
+  recordAudit(gymId, { action: 'plan.delete', target: { type: 'plan', id, name } });
 }
 
 /** The member's local copy of a gym plan, if they already adopted it. */
@@ -202,6 +207,7 @@ export function adoptGymPlan(gymId: string, plan: GymWorkoutPlan, gymName: strin
   const rest = storage.getWeeklyPlans().filter((p) => p.id !== local.id);
   storage.saveWeeklyPlans([...rest, local]);
   storage.setActivePlanId(local.id);
+  recordAudit(gymId, { action: 'plan.adopt', target: { type: 'plan', id: plan.id, name: plan.name }, details: { refresh: !!previous } });
   if (!previous) {
     updateDoc(doc(db, 'gyms', gymId, 'plans', plan.id), { useCount: increment(1) })
       .catch((err) => console.warn(`[GymLibrary] useCount bump failed for ${gymName}:`, err));

@@ -360,6 +360,20 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.follower == request.auth.uid;
     }
 
+    // ---------- diagnostics (src/audit.ts) ----------
+    // A phone reports its own uncaught errors; only Zenith admins read them.
+    match /clientErrors/{id} {
+      allow read: if isAdmin();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.message is string && request.resource.data.message.size() <= 500;
+      allow update, delete: if false;
+    }
+    // Server-written events (account deletion, admin console). Admins read.
+    match /auditLogs/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /gymJoinCodes/{code} {
       allow get:    if signedIn();
       // Only the owner of the gym the code points at (getAfter: the gym may
@@ -484,6 +498,18 @@ service cloud.firestore {
       match /ratings/{id} {
         allow read: if isGymManager(gymId) || isAdmin();
         allow write: if false;
+      }
+
+      // ---------- activity log (src/audit.ts) ----------
+      // Written once by whoever acted (their own uid on the entry) or by
+      // the server; never edited or removed; read by managers and owners.
+      match /audit/{id} {
+        allow read: if isGymManager(gymId) || isAdmin();
+        allow create: if (isGymMember(gymId) || isGymStaff(gymId) || isAdmin())
+          && request.resource.data.actorUid == request.auth.uid
+          && request.resource.data.action is string && request.resource.data.action.size() <= 64
+          && request.resource.data.at is string && request.resource.data.ts is int;
+        allow update, delete: if false;
       }
 
       match /announcements/{id} {

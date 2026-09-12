@@ -7,6 +7,10 @@ import { GymProvider } from './gym/GymContext'
 import { ToastProvider, ConfirmProvider } from './ui'
 import { PremiumProvider } from './premium'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { installDiagnostics } from './audit'
+
+// Uncaught errors go to clientErrors (admin-readable), with the last screens visited.
+installDiagnostics()
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {

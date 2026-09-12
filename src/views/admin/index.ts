@@ -2,3 +2,4 @@
 export { AdminGymsView } from './AdminGymsView';
 export { AdminUsersView } from './AdminUsersView';
 export { AdminLibraryView } from './AdminLibraryView';
+export { AdminErrorsView } from './AdminErrorsView';

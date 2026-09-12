@@ -152,6 +152,19 @@ const cases = [
   ['DENY',  'signed-in user writes phoneIndex', req(A, 'create', 'phoneIndex/+919876543210', { uid: A })],
   ['ALLOW', 'invited participant reads a session via participantUids', { ...req(B, 'get', 'workoutSessions/s1'), __existing: { data: { hostUid: A, participants: {}, participantUids: [A, B] } } }],
   ['DENY',  'stranger reads a session', { ...req(C, 'get', 'workoutSessions/s1'), __existing: { data: { hostUid: A, participants: {}, participantUids: [A, B] } } }],
+  // activity log + diagnostics
+  ['ALLOW', 'trainer records their own action', req(TRAINER, 'create', 'gyms/g1/audit/x1', { actorUid: TRAINER, action: 'payment.record', at: 'now', ts: 1 }), gymMocks()],
+  ['ALLOW', 'member records their own check-in', req(A, 'create', 'gyms/g1/audit/x2', { actorUid: A, action: 'checkin.create', at: 'now', ts: 1 }), gymMocks({ member: true })],
+  ['DENY',  'member records an action as somebody else', req(A, 'create', 'gyms/g1/audit/x3', { actorUid: TRAINER, action: 'payment.record', at: 'now', ts: 1 }), gymMocks({ member: true })],
+  ['DENY',  'non-member records an action', req(A, 'create', 'gyms/g1/audit/x4', { actorUid: A, action: 'checkin.create', at: 'now', ts: 1 }), gymMocks()],
+  ['DENY',  'trainer edits an audit entry', upd(TRAINER, 'gyms/g1/audit/x1', { actorUid: TRAINER, action: 'payment.record', at: 'now', ts: 1 }, { actorUid: TRAINER, action: 'checkin.create', at: 'now', ts: 1 }), gymMocks()],
+  ['DENY',  'manager deletes an audit entry', { ...req(MANAGER, 'delete', 'gyms/g1/audit/x1'), __existing: { data: { actorUid: TRAINER } } }, gymMocks()],
+  ['ALLOW', 'manager reads the activity log', req(MANAGER, 'get', 'gyms/g1/audit/x1'), gymMocks()],
+  ['DENY',  'trainer reads the activity log', req(TRAINER, 'get', 'gyms/g1/audit/x1'), gymMocks()],
+  ['ALLOW', 'signed-in user reports their own error', req(A, 'create', 'clientErrors/e1', { uid: A, message: 'boom' })],
+  ['DENY',  'user reports an error as somebody else', req(A, 'create', 'clientErrors/e2', { uid: B, message: 'boom' })],
+  ['DENY',  'non-admin reads errors', req(A, 'get', 'clientErrors/e1')],
+  ['DENY',  'non-admin reads server audit logs', req(A, 'get', 'auditLogs/l1')],
 ];
 
 const body = { source: { files: [{ name: 'firestore.rules', content: source }] }, testSuite: { testCases: cases.map(([expectation, , request, functionMocks]) => { const { __existing, ...rest } = request; return { expectation, request: rest, ...(__existing ? { resource: __existing } : {}), functionMocks: functionMocks ?? [] }; }) } };

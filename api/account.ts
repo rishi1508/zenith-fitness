@@ -19,6 +19,7 @@ import type admin from 'firebase-admin';
 import { GymOwnerError, wipeUserData } from './_accountWipe.js';
 import { getAdmin, replyNotConfigured, setCors } from './_http.js';
 import { consumeLimit, HttpError, MINUTE_MS } from './_limits.js';
+import { auditServer } from './_audit.js';
 import { completeProfile } from './_profile.js';
 
 // A full wipe walks a dozen collections; a member with a long history
@@ -59,7 +60,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
     if (body.action !== 'delete') throw new HttpError(400, 'Unknown action');
-    await wipeUserData(a.auth(), a.firestore(), decoded.uid);
+    const db = a.firestore();
+    const profile = await db.collection('userProfiles').doc(decoded.uid).get();
+    const gymId = profile.exists ? (profile.data() as { gym?: { gymId?: string } | null }).gym?.gymId ?? null : null;
+    const name = profile.exists ? (profile.data() as { displayName?: string }).displayName : undefined;
+    await wipeUserData(a.auth(), db, decoded.uid);
+    // After the wipe, so a refused deletion (gym owner) leaves no trail of a deletion that did not happen.
+    await auditServer(db, { actorUid: decoded.uid, actorName: name, action: 'account.delete', target: { type: 'user', id: decoded.uid }, details: { gymId } });
+    if (gymId) await auditServer(db, { gymId, actorUid: decoded.uid, actorName: name, action: 'member.account-deleted', target: { type: 'member', id: decoded.uid, name } });
     res.status(200).json({ ok: true });
   } catch (err) {
     if (err instanceof HttpError) { res.status(err.status).json({ error: err.message, ...err.extra }); return; }

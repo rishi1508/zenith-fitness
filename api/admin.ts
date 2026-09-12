@@ -23,6 +23,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import { GymOwnerError, wipeUserData } from './_accountWipe.js';
 import { adminUids, getAdmin, replyNotConfigured, setCors } from './_http.js';
+import { auditServer } from './_audit.js';
 
 export const config = { maxDuration: 60 };
 
@@ -128,7 +129,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const body = (req.body || {}) as Record<string, unknown>;
   try {
-    await requireAdmin(a, body.idToken);
+    const adminUid = await requireAdmin(a, body.idToken);
+    // Every admin-console action leaves a server-written trail (auditLogs, admin-readable).
+    if (body.action !== 'list-users') {
+      await auditServer(db, {
+        actorUid: adminUid, actorName: 'Zenith admin', action: `admin.${String(body.action)}`,
+        target: { type: 'user', id: typeof body.uid === 'string' ? body.uid : undefined },
+        details: {
+          ...(typeof body.disabled === 'boolean' ? { disabled: body.disabled } : {}),
+          ...(typeof body.grant === 'boolean' ? { grant: body.grant } : {}),
+        },
+      });
+    }
     switch (body.action) {
       case 'list-users':
         res.status(200).json({ users: await handleListUsers(a, db) }); return;

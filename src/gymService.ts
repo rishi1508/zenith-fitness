@@ -7,6 +7,7 @@ import type { QueryConstraint, DocumentSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { deliverAnnouncementPush } from './pushService';
 import { effectiveProfilePhoto } from './profilePhoto';
+import { recordAudit } from './audit';
 import { membershipStatus, localDateISO, addMonthsISO, addDaysISO } from './gymStats';
 import { applyEquipmentStatus } from './gym/gymOps';
 import type {
@@ -128,6 +129,7 @@ export async function leaveGym(gymId: string): Promise<void> {
   if (!user) throw new Error('Not authenticated');
   const context = await getMyGymContext();
   if (context?.gymId !== gymId) return; // already left, or mismatched gym — nothing to do
+  recordAudit(gymId, { action: 'member.leave', target: { type: 'member', id: user.uid, name: user.displayName || 'Member' } });
   await setDoc(doc(db, 'userProfiles', user.uid), { gym: null }, { merge: true });
 }
 
@@ -188,6 +190,7 @@ export async function updateGym(
   patch: Partial<Pick<Gym, 'name' | 'logoUrl' | 'accentColor' | 'address' | 'phone' | 'location' | 'geofenceM' | 'upiVpa' | 'marketingSpendMonthly' | 'plans' | 'subscriptionStatus' | 'pilotEndsAt' | 'notes'>>,
 ): Promise<void> {
   await updateDoc(doc(db, 'gyms', gymId), stripUndefined({ ...patch }));
+  recordAudit(gymId, { action: 'gym.update', target: { type: 'gym', id: gymId }, details: { fields: Object.keys(stripUndefined({ ...patch })).join(', ') } });
 }
 
 /** Zenith-admin only (firestore.rules' `isAdmin()` OR-clause on
@@ -260,6 +263,7 @@ export async function setStaffRole(gymId: string, uid: string, role: Exclude<Gym
     batch.update(memberRef, { role: 'member' });
   }
   await batch.commit();
+  recordAudit(gymId, { action: 'staff.role', target: { type: 'member', id: uid }, details: { role: role ?? null } });
 }
 
 // ============ MEMBERS ============
@@ -342,21 +346,27 @@ export async function addMember(
     batch.set(doc(db, 'userProfiles', linkedUid), { gym: context }, { merge: true });
   }
   await batch.commit();
+  recordAudit(gymId, { action: 'member.add', target: { type: 'member', id: uid, name: member.name }, details: { planId: input.planId ?? null, linked: !!linkedUid } });
   return member;
 }
 
 /** Generic member-doc patch. Caller is responsible for only sending
  *  fields their role is allowed to write (see firestore.rules). */
 export async function updateMember(gymId: string, uid: string, patch: Partial<GymMember>): Promise<void> {
-  await updateDoc(doc(db, 'gyms', gymId, 'members', uid), stripUndefined({ ...patch }));
+  const clean = stripUndefined({ ...patch });
+  await updateDoc(doc(db, 'gyms', gymId, 'members', uid), clean);
+  // A member's own quiet fields (photo, phone, check-in counters) are not desk actions.
+  const fields = Object.keys(clean).filter((k) => !['photoURL', 'lastCheckinAt', 'checkinCount30d', 'checkinDates', 'lastWorkoutAt'].includes(k));
+  if (fields.length) recordAudit(gymId, { action: 'member.update', target: { type: 'member', id: uid, name: patch.name }, details: { fields: fields.join(', ') } });
 }
 
 /** Manager/owner: removes a member and decrements memberCount. */
-export async function removeMember(gymId: string, uid: string): Promise<void> {
+export async function removeMember(gymId: string, uid: string, name?: string): Promise<void> {
   const batch = writeBatch(db);
   batch.delete(doc(db, 'gyms', gymId, 'members', uid));
   batch.update(doc(db, 'gyms', gymId), { memberCount: increment(-1) });
   await batch.commit();
+  recordAudit(gymId, { action: 'member.remove', target: { type: 'member', id: uid, name } });
 }
 
 /** Extends a member's plan by the chosen plan's duration.
@@ -370,11 +380,16 @@ export async function renewMembership(
   planId: string,
   startFrom: 'today' | 'planEnd' = 'today',
 ): Promise<void> {
+  let applied: Partial<GymMember> = {};
+  let memberName: string | undefined;
   await runTransaction(db, async (tx) => {
     const memberRef = doc(db, 'gyms', gymId, 'members', uid);
     const [gymSnap, memberSnap] = await Promise.all([tx.get(doc(db, 'gyms', gymId)), tx.get(memberRef)]);
-    tx.update(memberRef, renewalPatch(gymSnap, memberSnap, planId, startFrom));
+    applied = renewalPatch(gymSnap, memberSnap, planId, startFrom);
+    memberName = memberSnap.exists() ? (memberSnap.data() as GymMember).name : undefined;
+    tx.update(memberRef, applied);
   });
+  recordAudit(gymId, { action: 'membership.renew', target: { type: 'member', id: uid, name: memberName }, details: { planId, planEnd: applied.planEnd ?? null } });
 }
 
 /** The member-doc patch a renewal writes; pure apart from "today". */
@@ -411,7 +426,7 @@ function renewalPatch(
  *  revenue, not time on the membership. */
 export async function recordPayment(
   gymId: string,
-  input: { uid: string; amount: number; method: PaymentMethod; months: number; planId?: string; category?: RevenueCategory; note?: string; paidAt?: string },
+  input: { uid: string; amount: number; method: PaymentMethod; months: number; planId?: string; category?: RevenueCategory; note?: string; paidAt?: string; memberName?: string },
 ): Promise<GymPayment> {
   const user = auth.currentUser;
   if (!user) throw new Error('Not authenticated');
@@ -440,6 +455,11 @@ export async function recordPayment(
     }
     tx.set(doc(db, 'gyms', gymId, 'payments', paymentId), payment);
     if (patch) tx.update(memberRef, patch);
+  });
+  recordAudit(gymId, {
+    action: 'payment.record',
+    target: { type: 'member', id: input.uid, name: input.memberName },
+    details: { amount: input.amount, method: input.method, category: input.category ?? 'membership', planId: input.planId ?? null, paymentId },
   });
   return payment;
 }
@@ -527,6 +547,7 @@ export async function checkinMember(gymId: string, uid: string, method: CheckinM
     console.warn('[Gym] checkinMember: dailyStats denorm update failed:', err);
   }
 
+  recordAudit(gymId, { action: 'checkin.create', target: { type: 'member', id: uid }, details: { method, self: uid === user.uid } });
   return { created: true, checkin };
 }
 
@@ -542,6 +563,7 @@ export async function rotateDailyCode(gymId: string): Promise<string> {
   await setDoc(doc(db, 'gyms', gymId, 'private', 'dailyCode'), { hash, date, updatedAt: new Date().toISOString() });
   await updateDoc(doc(db, 'gyms', gymId), { dailyCodeHash: deleteField(), dailyCodeDate: deleteField() })
     .catch(() => { /* already clean */ });
+  recordAudit(gymId, { action: 'code.rotate', target: { type: 'gym', id: gymId } });
   return code;
 }
 
@@ -605,11 +627,13 @@ export async function saveClass(gymId: string, cls: Omit<GymClass, 'id'> & { id?
   const id = cls.id ?? doc(collection(db, 'gyms', gymId, 'classes')).id;
   const saved: GymClass = stripUndefined({ ...cls, id });
   await setDoc(doc(db, 'gyms', gymId, 'classes', id), saved);
+  recordAudit(gymId, { action: 'class.save', target: { type: 'class', id, name: saved.name }, details: { created: !cls.id } });
   return saved;
 }
 
-export async function deleteClass(gymId: string, id: string): Promise<void> {
+export async function deleteClass(gymId: string, id: string, name?: string): Promise<void> {
   await deleteDoc(doc(db, 'gyms', gymId, 'classes', id));
+  recordAudit(gymId, { action: 'class.delete', target: { type: 'class', id, name } });
 }
 
 export function listenToSession(
@@ -657,9 +681,10 @@ export async function markAttendance(gymId: string, classId: string, date: strin
   if (!snap.exists()) {
     const session: GymClassSession = { id: `${classId}_${date}`, classId, date, enrolled: attended ? [uid] : [], attended: attended ? [uid] : [] };
     await setDoc(ref, session);
-    return;
+  } else {
+    await updateDoc(ref, { attended: attended ? arrayUnion(uid) : arrayRemove(uid) });
   }
-  await updateDoc(ref, { attended: attended ? arrayUnion(uid) : arrayRemove(uid) });
+  recordAudit(gymId, { action: 'attendance.mark', target: { type: 'member', id: uid }, details: { attended, classId, date } });
 }
 
 // ============ ANNOUNCEMENTS ============
@@ -690,6 +715,7 @@ export async function postAnnouncement(
     ...(imageBase64 ? { hasImage: true } : {}),
   };
   await setDoc(doc(db, 'gyms', gymId, 'announcements', id), announcement);
+  recordAudit(gymId, { action: 'announcement.post', target: { type: 'announcement', id, name: text.slice(0, 60) }, details: { audience: audience === 'all' ? 'all' : audience.classId, image: !!imageBase64 } });
   if (imageBase64) {
     // Same split as the feed: the image lives in a subcollection so listing
     // announcements stays a handful of small documents.
@@ -727,11 +753,12 @@ export async function getAnnouncementImage(gymId: string, id: string): Promise<s
 }
 
 /** Staff remove an announcement (and its image, if any). */
-export async function deleteAnnouncement(gymId: string, id: string, hasImage?: boolean): Promise<void> {
+export async function deleteAnnouncement(gymId: string, id: string, hasImage?: boolean, text?: string): Promise<void> {
   if (hasImage) {
     await deleteDoc(doc(db, 'gyms', gymId, 'announcements', id, 'media', 'image')).catch(() => {});
   }
   await deleteDoc(doc(db, 'gyms', gymId, 'announcements', id));
+  recordAudit(gymId, { action: 'announcement.delete', target: { type: 'announcement', id, name: text?.slice(0, 60) } });
 }
 
 // ============ EQUIPMENT ============
@@ -749,11 +776,13 @@ export async function saveEquipment(gymId: string, input: { id?: string; name: s
   const ref = doc(db, 'gyms', gymId, 'equipment', id);
   if (input.id) {
     await updateDoc(ref, { name: input.name, updatedAt: new Date().toISOString() });
+    recordAudit(gymId, { action: 'equipment.save', target: { type: 'equipment', id, name: input.name }, details: { created: false } });
     const snap = await getDoc(ref);
     return snap.data() as GymEquipment;
   }
   const machine: GymEquipment = { id, name: input.name, status: 'ok', downtimeMin: 0, updatedAt: new Date().toISOString() };
   await setDoc(ref, machine);
+  recordAudit(gymId, { action: 'equipment.save', target: { type: 'equipment', id, name: input.name }, details: { created: true } });
   return machine;
 }
 
@@ -767,9 +796,11 @@ export async function setEquipmentStatus(gymId: string, machine: GymEquipment, s
     updatedAt: patch.updatedAt,
     downSince: patch.downSince ?? deleteField(),
   });
+  recordAudit(gymId, { action: 'equipment.status', target: { type: 'equipment', id: machine.id, name: machine.name }, details: { status } });
   return { ...machine, status: patch.status, downtimeMin: patch.downtimeMin, updatedAt: patch.updatedAt, downSince: patch.downSince ?? undefined };
 }
 
-export async function deleteEquipment(gymId: string, id: string): Promise<void> {
+export async function deleteEquipment(gymId: string, id: string, name?: string): Promise<void> {
   await deleteDoc(doc(db, 'gyms', gymId, 'equipment', id));
+  recordAudit(gymId, { action: 'equipment.delete', target: { type: 'equipment', id, name } });
 }

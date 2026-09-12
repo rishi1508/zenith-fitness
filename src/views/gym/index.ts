@@ -17,4 +17,5 @@ export { GymSettingsView } from './GymSettingsView';
 export { CreateGymView } from './CreateGymView';
 export { GymLibraryView } from './GymLibraryView';
 export { GymPlansView } from './GymPlansView';
+export { GymActivityView } from './GymActivityView';
 export type { GymView, GymNavParams, GymViewProps } from './types';

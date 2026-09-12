@@ -1,0 +1,168 @@
+<title>TSZ Pilot Runbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Manrope:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --paper: #f7f8fa; --paper-2: #eef0f4; --ink: #151a22; --ink-2: #454d5b; --ink-3: #7b8494; --rule: #dde1e8;
+    --accent: #ea6a1c; --accent-ink: #b84f0e; --accent-soft: #fbe9dc; --ok: #2f7d4f; --ok-soft: #e3f2e9; --warn: #a85d00; --warn-soft: #fdf1dd;
+    --card: #ffffff; --shadow: 0 1px 0 rgba(21,26,34,.05), 0 10px 28px -20px rgba(21,26,34,.35);
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --paper: #0f1217; --paper-2: #171b22; --ink: #eef1f5; --ink-2: #c3c9d3; --ink-3: #8891a0; --rule: #2a3140;
+    --accent: #f5813a; --accent-ink: #f8a26e; --accent-soft: #3a2314; --ok: #6ecf93; --ok-soft: #14301f; --warn: #f0b35a; --warn-soft: #3a2a10;
+    --card: #151a22; --shadow: 0 1px 0 rgba(0,0,0,.4), 0 10px 28px -20px rgba(0,0,0,.8);
+  } }
+  :root[data-theme="dark"] {
+    --paper: #0f1217; --paper-2: #171b22; --ink: #eef1f5; --ink-2: #c3c9d3; --ink-3: #8891a0; --rule: #2a3140;
+    --accent: #f5813a; --accent-ink: #f8a26e; --accent-soft: #3a2314; --ok: #6ecf93; --ok-soft: #14301f; --warn: #f0b35a; --warn-soft: #3a2a10;
+    --card: #151a22; --shadow: 0 1px 0 rgba(0,0,0,.4), 0 10px 28px -20px rgba(0,0,0,.8);
+  }
+  body { background: var(--paper); color: var(--ink); font-family: Manrope, "Segoe UI", system-ui, sans-serif; font-size: 16px; line-height: 1.55; padding-block: 36px 72px; padding-inline: 20px; }
+  .page { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 36px; }
+  h1, h2, h3 { font-family: Sora, Manrope, sans-serif; margin: 0; text-wrap: balance; }
+  h1 { font-size: clamp(28px, 5vw, 38px); line-height: 1.1; letter-spacing: -0.01em; }
+  h2 { font-size: 19px; line-height: 1.25; }
+  h3 { font-size: 15px; font-weight: 600; }
+  p { margin: 0; max-width: 64ch; }
+  .muted { color: var(--ink-2); }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-ink); }
+  header { display: flex; flex-direction: column; gap: 12px; padding-bottom: 22px; border-bottom: 2px solid var(--ink); }
+  .progress { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--ink-2); }
+  .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--paper-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .phase { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .phase > .head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+  .phase .head .who { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .phase .head .when { font-size: 13px; color: var(--ink-2); }
+  .steps { list-style: none; margin: 0; padding: 6px 8px 8px; display: flex; flex-direction: column; }
+  .step { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 10px 10px; border-radius: 10px; align-items: start; }
+  .step:hover { background: var(--paper-2); }
+  .step input { width: 20px; height: 20px; margin: 3px 0 0 0; accent-color: var(--accent); cursor: pointer; }
+  .step label { cursor: pointer; }
+  .step .t { font-weight: 600; color: var(--ink); }
+  .step .d { color: var(--ink-2); font-size: 14.5px; margin-top: 2px; }
+  .step .d code { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; background: var(--paper-2); padding: 1px 6px; border-radius: 6px; color: var(--ink); }
+  .step input:checked ~ label .t { text-decoration: line-through; color: var(--ink-3); }
+  .step input:checked ~ label .d { color: var(--ink-3); }
+  .note { border-left: 3px solid var(--warn); background: var(--warn-soft); color: var(--ink); padding: 12px 14px; border-radius: 0 10px 10px 0; font-size: 14.5px; }
+  .note.ok { border-left-color: var(--ok); background: var(--ok-soft); }
+  .note strong { display: block; margin-bottom: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .kpi { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; }
+  .kpi .l { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .kpi .v { font-family: Sora, sans-serif; font-weight: 700; font-size: 20px; margin-top: 2px; }
+  .kpi .s { font-size: 13px; color: var(--ink-2); }
+  a { color: var(--accent-ink); }
+  footer { font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 14px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="page">
+  <header>
+    <p class="eyebrow">Zenith Fitness · Play Store and pilot</p>
+    <h1>From here to a paying gym on the Play Store</h1>
+    <p class="muted">Every step that needs Rishi's hands, in order, with what to click and what to paste. Ticks are remembered on this device. Everything not listed is already done or belongs to the development session.</p>
+    <div class="progress"><span id="done">0 of 0 done</span><div class="bar"><i id="fill"></i></div></div>
+  </header>
+
+  <div class="note ok"><strong>Already prepared</strong>Store listing copy, icon, feature graphic, six screenshots, Data safety answers, Health apps declaration, content-rating answers, privacy policy page, account deletion in-app, AAB build in CI, price list and pilot sheet. Paths are in each step.</div>
+
+  <section class="phase" data-phase>
+    <div class="head"><h2>Today · close the pilot</h2><span class="who">Rishi</span><span class="when">30 minutes</span></div>
+    <ol class="steps">
+      <li class="step"><input type="checkbox" id="s1"><label for="s1"><div class="t">Settle the three numbers on the pricing sheet and send it</div><div class="d">Tier 2 ₹2,499 from 1 October, onboarding and migration free, branding kit free for TSZ. Share the "Zenith for Gyms Pricing" artifact from its share menu, or print it to PDF. Ask him to sign the last block.</div></label></li>
+      <li class="step"><input type="checkbox" id="s2"><label for="s2"><div class="t">Ask the owner two questions</div><div class="d">Which app they use today (for the data export), and where his exercise videos live. Unlisted YouTube links cost nothing; raw files need hosting.</div></label></li>
+      <li class="step"><input type="checkbox" id="s3"><label for="s3"><div class="t">Open a WhatsApp group: owner, trainers, you</div><div class="d">This is the bug channel and the announcement channel for the pilot. Pin the opt-in link there once it exists.</div></label></li>
+      <li class="step"><input type="checkbox" id="s4"><label for="s4"><div class="t">Collect the onboarding material</div><div class="d">Photos of the notice-board plans, the video links, the member list (name, phone, plan, plan end) as a sheet or an export from their current app. You entering these is the ₹4,999 you waived, so batch it into one sitting.</div></label></li>
+    </ol>
+  </section>
+
+  <section class="phase" data-phase>
+    <div class="head"><h2>Today · Play developer account</h2><span class="who">Rishi</span><span class="when">20 minutes, then 1–3 days of waiting</span></div>
+    <ol class="steps">
+      <li class="step"><input type="checkbox" id="p1"><label for="p1"><div class="t">Turn on 2-step verification on the Google account you will use</div><div class="d">Play Console requires it. Use the account that owns the Firebase project so one login runs everything.</div></label></li>
+      <li class="step"><input type="checkbox" id="p2"><label for="p2"><div class="t">Create the developer account at play.google.com/console</div><div class="d">Account type <em>Personal</em> for now (an organisation account needs a D-U-N-S number and weeks). Public developer name: <code>Zenith Fitness</code>. Pay the one-time $25. Apps can be moved to an organisation account later.</div></label></li>
+      <li class="step"><input type="checkbox" id="p3"><label for="p3"><div class="t">Complete identity verification when the email arrives</div><div class="d">Government ID plus an address document. Usually clears in 1–3 days. Nothing in Play Console works until it does, so do this first and prepare the rest while waiting.</div></label></li>
+    </ol>
+    <div class="note" style="margin: 0 18px 16px;"><strong>Why the closed test is not optional</strong>Personal developer accounts created after November 2023 must run a closed test with at least 12 opted-in testers for 14 continuous days before Play allows a production release. Your pilot members are those testers. Start the clock the day verification clears and production lines up with the 1 October invoice.</div>
+  </section>
+
+  <section class="phase" data-phase>
+    <div class="head"><h2>Once verified · create the app</h2><span class="who">Rishi</span><span class="when">45 minutes</span></div>
+    <ol class="steps">
+      <li class="step"><input type="checkbox" id="a1"><label for="a1"><div class="t">All apps → Create app</div><div class="d">Name <code>Zenith Fitness</code>, default language English (India), App, Free. Tick the declarations. Package name is fixed by the first upload: <code>com.zenith.fitness</code>.</div></label></li>
+      <li class="step"><input type="checkbox" id="a2"><label for="a2"><div class="t">Store listing</div><div class="d">Copy from <code>store/play/LISTING.md</code> (app name, short and full description). Graphics: <code>store/play/icon-512.png</code>, <code>feature-graphic-1024x500.png</code>, <code>screenshots/01</code> to <code>06</code> in order. Category Health &amp; Fitness. Contact email rishimishra1508@gmail.com.</div></label></li>
+      <li class="step"><input type="checkbox" id="a3"><label for="a3"><div class="t">App content → Privacy policy and account deletion</div><div class="d">Both URLs: <code>https://zenith-fitness-18e2a.web.app/privacypolicy.html</code>. For deletion, point at the section "Your rights and deleting your account"; the deletion itself is in-app under Settings → Account.</div></label></li>
+      <li class="step"><input type="checkbox" id="a4"><label for="a4"><div class="t">App content → App access</div><div class="d">"All or some functionality is restricted" → add an instruction set: sign in with the QA member account. Ask me for the email and password to paste; Google's reviewers need to get past the login.</div></label></li>
+      <li class="step"><input type="checkbox" id="a5"><label for="a5"><div class="t">App content → the remaining declarations</div><div class="d">Ads: No. Content rating: answer from <code>store/play/CONTENT_RATING.md</code>. Target audience: 18 and over. News app: No. COVID-19: No. Government app: No. Financial features: None. Data safety: section by section from <code>store/play/DATA_SAFETY.md</code>. Health apps: from <code>store/play/HEALTH_DECLARATION.md</code>, every Health Connect permission the manifest requests, no more.</div></label></li>
+      <li class="step"><input type="checkbox" id="a6"><label for="a6"><div class="t">Setup → App signing</div><div class="d">Keep Play App Signing on (default). Our CI keystore becomes the upload key automatically on the first upload. Come back here after that upload for the next step.</div></label></li>
+    </ol>
+  </section>
+
+  <section class="phase" data-phase>
+    <div class="head"><h2>Same day · closed test</h2><span class="who">Rishi</span><span class="when">20 minutes, then 14 days of clock</span></div>
+    <ol class="steps">
+      <li class="step"><input type="checkbox" id="c1"><label for="c1"><div class="t">Testing → Closed testing → Create track "Pilot"</div><div class="d">Testers tab → Create email list "TSZ pilot" → paste 12 or more Gmail addresses collected in the WhatsApp group (Play accounts are Google accounts). Countries: India.</div></label></li>
+      <li class="step"><input type="checkbox" id="c2"><label for="c2"><div class="t">Create release → upload the AAB</div><div class="d">Take <code>zenith-fitness-vX.Y.Z.aab</code> from the newest GitHub release the development session tags (3.29.1 or later). Release name is the version; release notes: "First pilot build for TSZ Gym." Review → Start rollout to Closed testing.</div></label></li>
+      <li class="step"><input type="checkbox" id="c3"><label for="c3"><div class="t">Register the Play signing key with Firebase</div><div class="d">Setup → App signing → copy the <em>App signing key certificate</em> SHA-1 and SHA-256 → Firebase console → Project settings → Your apps → Android → Add fingerprint, both. Without this Google sign-in fails on every Play-installed build.</div></label></li>
+      <li class="step"><input type="checkbox" id="c4"><label for="c4"><div class="t">Copy the opt-in link and pin it in the WhatsApp group</div><div class="d">Testers tab → "Copy link". Members open it, tap "Become a tester", then install from the Play Store like any app. Ask them to keep it installed for the whole fortnight.</div></label></li>
+      <li class="step"><input type="checkbox" id="c5"><label for="c5"><div class="t">Every new build from now on goes to the same track</div><div class="d">Create release → upload the new AAB → roll out. Testers update from Play. The version code rises with the version automatically.</div></label></li>
+      <li class="step"><input type="checkbox" id="c6"><label for="c6"><div class="t">Day 14 → Apply for production access</div><div class="d">Dashboard shows the countdown. Answer the short questionnaire about what you tested and learned. Approval takes up to 7 days; then Production → Create release → the same AAB → rollout to 100%.</div></label></li>
+    </ol>
+    <div class="note" style="margin: 0 18px 16px;"><strong>One sideloading trap</strong>The APK on GitHub is signed with our upload key; the Play build is signed with Google's key. A phone that installed the APK cannot update to the Play build in place — it must uninstall first (data is in the cloud). So: members wait for the Play link, only you and the trainers keep using the APK meanwhile.</div>
+  </section>
+
+  <section class="phase" data-phase>
+    <div class="head"><h2>Monday 14 September · pilot week one</h2><span class="who">Rishi + the desk</span><span class="when">2 hours at the gym</span></div>
+    <ol class="steps">
+      <li class="step"><input type="checkbox" id="w1"><label for="w1"><div class="t">Create the real TSZ gym, separate from the demo</div><div class="d">You → Admin → Gyms → New gym, owner by email. The demo gym with its 250 seeded members stays for demos; real records never mix with seed data, and the tier count on 1 October is honest by construction.</div></label></li>
+      <li class="step"><input type="checkbox" id="w2"><label for="w2"><div class="t">Owner and trainers sign in and get staff roles</div><div class="d">They install (APK for now), sign in with Google or email, complete the phone step. You set roles under My Gym → Manage → Members (owner, manager, trainer).</div></label></li>
+      <li class="step"><input type="checkbox" id="w3"><label for="w3"><div class="t">Enter the gym's content</div><div class="d">Manage → Exercise videos: each movement with its video link and cues. Train → Weekly plans: build each notice-board plan, then Share with gym. Gym settings: name, logo, colour, UPI id, location for the poster QR.</div></label></li>
+      <li class="step"><input type="checkbox" id="w4"><label for="w4"><div class="t">The desk creates member accounts</div><div class="d">Manage → Members → Add: name, phone, plan, plan end. Each member becomes a real Zenith account at that moment. Members sign in with the phone/email the desk entered, land with the profile complete and see only the tour.</div></label></li>
+      <li class="step"><input type="checkbox" id="w5"><label for="w5"><div class="t">Poster QR at the desk, today's code on the console</div><div class="d">Manage → Check-in console → print the gym QR; rotate the code each morning. Both check-in paths work on day one.</div></label></li>
+      <li class="step"><input type="checkbox" id="w6"><label for="w6"><div class="t">Friday: 15-minute review with the owner</div><div class="d">Open Analytics and Activity together. Installs, check-ins per day, plans adopted, ratings, what broke. Bugs go to the WhatsApp group; you forward them to the development session. The Errors screen under Admin shows what phones reported without anyone asking.</div></label></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2 style="margin-bottom: 10px;">What "the pilot worked" means on 30 September</h2>
+    <div class="grid">
+      <div class="kpi"><div class="l">Installs</div><div class="v">≥ 60%</div><div class="s">of active members signed in at least once</div></div>
+      <div class="kpi"><div class="l">Check-ins</div><div class="v">≥ 50%</div><div class="s">of daily visits recorded in the app</div></div>
+      <div class="kpi"><div class="l">Plans</div><div class="v">≥ 30%</div><div class="s">of members on a gym plan</div></div>
+      <div class="kpi"><div class="l">Ratings</div><div class="v">≥ 25</div><div class="s">anonymous session ratings in the month</div></div>
+      <div class="kpi"><div class="l">Desk</div><div class="v">100%</div><div class="s">of payments recorded in the app, none on paper</div></div>
+      <div class="kpi"><div class="l">Bugs</div><div class="v">0 open</div><div class="s">blocking issues on 30 September</div></div>
+    </div>
+  </section>
+
+  <section class="phase" data-phase>
+    <div class="head"><h2>1 October · first invoice</h2><span class="who">Rishi</span><span class="when">15 minutes</span></div>
+    <ol class="steps">
+      <li class="step"><input type="checkbox" id="o1"><label for="o1"><div class="t">Confirm the roster count on the 1st</div><div class="d">Active members plus those lapsed under 7 days, staff excluded. Under 300 is Tier 2 at ₹2,499. The count comes from the real gym, never the demo.</div></label></li>
+      <li class="step"><input type="checkbox" id="o2"><label for="o2"><div class="t">Send the invoice, due in 7 days</div><div class="d">₹2,499 for October, "plus GST as applicable" until you register. UPI or bank transfer. Offer the annual ₹24,999 once more; it locks the price and the referral clock starts.</div></label></li>
+      <li class="step"><input type="checkbox" id="o3"><label for="o3"><div class="t">Tell me to remove the QA admin account</div><div class="d">It lives in <code>firestore.rules</code>, <code>src/admin.ts</code> and <code>api/_http.ts</code>. It exists only so demos work.</div></label></li>
+    </ol>
+  </section>
+
+  <footer>Sources: store/play/*.md, docs/STORE_PUBLISHING.md, docs/LAUNCH_REVIEW_2026-09-13.md, docs/PILOT_TSZ.md, docs/pricing/. Ticks are stored in this browser only.</footer>
+</div>
+
+<script>
+  (function () {
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('.step input[type=checkbox]'));
+    var KEY = 'tsz-runbook-v1';
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+    boxes.forEach(function (b) { if (saved[b.id]) b.checked = true; });
+    function update() {
+      var done = boxes.filter(function (b) { return b.checked; }).length;
+      document.getElementById('done').textContent = done + ' of ' + boxes.length + ' done';
+      document.getElementById('fill').style.width = Math.round(100 * done / boxes.length) + '%';
+      var state = {}; boxes.forEach(function (b) { if (b.checked) state[b.id] = 1; });
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    }
+    boxes.forEach(function (b) { b.addEventListener('change', update); });
+    update();
+  })();
+</script>

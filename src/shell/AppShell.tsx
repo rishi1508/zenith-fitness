@@ -9,6 +9,7 @@ import { useElasticScroll } from '../hooks/useElasticScroll';
 import type { Tab } from './tabs';
 import { GetAppBanner } from './GetAppBanner';
 import { useGym } from '../gym/GymContext';
+import { breadcrumb } from '../audit';
 import type { View } from '../App';
 import type { UserStats } from '../types';
 
@@ -77,6 +78,8 @@ export function AppShell({
   showBuddiesIcon, buddyAlertCount, onOpenBuddies, onOpenSettings, onOpenGymSettings,
   userName, userSub, userAvatar, userPhotoURL, onOpenProfile, banner, children,
 }: AppShellProps) {
+  // The trail an error report carries: the last screens the person saw.
+  useEffect(() => { breadcrumb('view', view); }, [view]);
   const tab = viewToTab[view];
   const { unseenAnnouncements } = useGym();
   const base = hasGym ? TABS : TABS.filter((t) => t.id !== 'gym');

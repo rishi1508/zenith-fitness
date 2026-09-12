@@ -28,7 +28,8 @@ export type GymView =
   | 'gym-settings'
   | 'gym-create'
   | 'gym-library'
-  | 'gym-plans';
+  | 'gym-plans'
+  | 'gym-activity';
 
 export interface GymNavParams {
   classId?: string;

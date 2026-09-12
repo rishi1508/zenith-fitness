@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import { reportError } from '../audit';
 
 interface Props { children: ReactNode }
 interface State { error: Error | null }
@@ -21,6 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('[ErrorBoundary]', error, info.componentStack);
+    reportError(error, 'boundary', info.componentStack ?? undefined);
   }
 
   private reload = () => { window.location.reload(); };

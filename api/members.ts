@@ -27,6 +27,7 @@ import type admin from 'firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminUids, getAdmin, replyNotConfigured, setCors } from './_http.js';
 import { consumeLimit, HttpError, MINUTE_MS } from './_limits.js';
+import { auditServer } from './_audit.js';
 import { completeProfile, normalizeDob, normalizeName, normalizePhone, normalizeSex, uidForPhone } from './_profile.js';
 
 export const config = { maxDuration: 30 };
@@ -50,7 +51,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const idToken = typeof body.idToken === 'string' ? body.idToken : '';
     if (!idToken) throw new HttpError(401, 'Please sign in.');
     let staffUid: string;
-    try { staffUid = (await a.auth().verifyIdToken(idToken)).uid; }
+    let staffName: string | undefined;
+    try {
+      const decoded = await a.auth().verifyIdToken(idToken);
+      staffUid = decoded.uid;
+      staffName = typeof decoded.name === 'string' ? decoded.name : undefined;
+    }
     catch { throw new HttpError(401, 'Your session has expired. Please sign in again.'); }
     if (body.action !== 'create') throw new HttpError(400, 'Unknown action');
 
@@ -145,6 +151,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     batch.set(profileRef, { gym: { gymId, gymRole: member.role, joinedAt: member.joinedAt } }, { merge: true });
     await batch.commit();
 
+    await auditServer(db, {
+      gymId, actorUid: staffUid, actorName: staffName,
+      action: 'member.create',
+      target: { type: 'member', id: uid, name: String(member.name) },
+      details: { existed, planId: planId ?? null, newMemberDoc: !memberSnap.exists },
+    });
     res.status(200).json({ uid, existed, linked: true });
   } catch (err) {
     if (err instanceof HttpError) { res.status(err.status).json({ error: err.message, ...err.extra }); return; }
