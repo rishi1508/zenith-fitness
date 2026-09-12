@@ -465,6 +465,28 @@ service cloud.firestore {
                                        && request.resource.data.enrolled.toSet().difference(resource.data.enrolled.toSet()).hasOnly([request.auth.uid])
                                        && resource.data.enrolled.toSet().difference(request.resource.data.enrolled.toSet()).hasOnly([request.auth.uid]));
                                  allow delete: if false; } }
+      // ---------- the gym's own content (src/gymLibrary.ts) ----------
+      // Exercises with the trainers' videos, and the plans they publish.
+      // Staff write; every member reads. A member adopting a plan may bump
+      // its useCount by one and nothing else.
+      match /exercises/{id} {
+        allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+        allow write: if isGymStaff(gymId) || isAdmin();
+      }
+      match /plans/{id} {
+        allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
+        allow create, delete: if isGymStaff(gymId) || isAdmin();
+        allow update: if isGymStaff(gymId) || isAdmin()
+          || (isGymMember(gymId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['useCount'])
+              && request.resource.data.useCount == resource.data.get('useCount', 0) + 1);
+      }
+      // Anonymous session ratings, written only by api/rate.ts (firebase-admin).
+      // Managers read them for Analytics; trainers do not see them here.
+      match /ratings/{id} {
+        allow read: if isGymManager(gymId) || isAdmin();
+        allow write: if false;
+      }
+
       match /announcements/{id} {
         allow read: if isGymMember(gymId) || isGymStaff(gymId) || isAdmin();
         allow create: if isGymStaff(gymId) || isAdmin();

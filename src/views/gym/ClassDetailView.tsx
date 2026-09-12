@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Clock, Users } from 'lucide-react';
+import { ArrowLeft, Clock, Star, Users } from 'lucide-react';
 import type { GymViewProps } from './types';
 import type { GymClass, GymClassSession, GymMember } from '../../types';
 import { useGym } from '../../gym/GymContext';
@@ -7,8 +7,8 @@ import { useAuth } from '../../auth/AuthContext';
 import { listClasses, listMembers, listenToSession, enrol, unenrol } from '../../gymService';
 import { localDateISO } from '../../gymStats';
 import { trainerName, memberName, dayLabel, formatTime12h, endTime12h } from '../../gymMemberHelpers';
-import {  } from '../../components';
-import { useToast } from '../../ui';
+import { hasRated, submitSessionRating } from '../../gymRatings';
+import { Button, useToast } from '../../ui';
 
 /** `classId` prop arrives as `${classId}|${date}` (ClassesView encodes
  *  the date into the nav param since sessions aren't their own route). */
@@ -22,6 +22,24 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
   const [session, setSession] = useState<GymClassSession | null>(null);
   const [busy, setBusy] = useState(false);
   const { showToast } = useToast();
+  const [stars, setStars] = useState(0);
+  const [comment, setComment] = useState('');
+  const [rated, setRated] = useState(() => (gym?.id && classId && date ? hasRated(gym.id, classId, date) : false));
+  const [rating, setRating] = useState(false);
+
+  const submitRating = async () => {
+    if (!gym || !classId || !date || stars === 0 || rating) return;
+    setRating(true);
+    try {
+      await submitSessionRating({ gymId: gym.id, classId, date, stars, comment });
+      setRated(true);
+      showToast('Thanks. Your rating is in, and it is anonymous.');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not save your rating.', 'error');
+    } finally {
+      setRating(false);
+    }
+  };
 
   const cardBg = isDark ? 'bg-[#1a1a1a]' : 'bg-white';
   const cardBorder = isDark ? 'border-[#2e2e2e]' : 'border-gray-200';
@@ -158,6 +176,48 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
             <p className={`text-xs font-medium ${attended.includes(user.uid) ? 'text-emerald-500' : subtle}`}>
               {attended.includes(user.uid) ? 'You were marked attended.' : "You haven't been marked attended yet."}
             </p>
+          )}
+        </div>
+      )}
+
+      {/* Anonymous rating — members only, once the session has happened.
+          The server checks they were in it and stores no name (api/rate.ts). */}
+      {!isStaffViewer && user && (enrolled.includes(user.uid) || attended.includes(user.uid)) && date <= localDateISO(new Date()) && (
+        <div className={`rounded-xl border p-4 space-y-3 ${cardBg} ${cardBorder}`}>
+          <div>
+            <h2 className="text-sm font-semibold">How was the session?</h2>
+            <p className={`text-xs mt-0.5 ${subtle}`}>Anonymous. The gym sees the rating, never who gave it.</p>
+          </div>
+          {rated ? (
+            <p className="text-sm text-emerald-500 font-medium">Thanks, your rating is in.</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-1" role="radiogroup" aria-label="Stars">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={stars === n}
+                    aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                    onClick={() => setStars(n)}
+                    className="w-11 h-11 flex items-center justify-center rounded-lg"
+                  >
+                    <Star className={`w-7 h-7 ${n <= stars ? 'text-amber-400 fill-amber-400' : subtle}`} strokeWidth={1.75} />
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={comment}
+                onChange={(e) => setComment(e.target.value.slice(0, 300))}
+                placeholder="What worked, what to improve (optional)"
+                rows={2}
+                className={`w-full rounded-lg border px-3 py-2 text-sm outline-none ${isDark ? 'bg-[#111] border-[#2e2e2e] text-white placeholder:text-zinc-600' : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400'}`}
+              />
+              <Button variant="primary" size="md" full disabled={stars === 0} loading={rating} onClick={() => { void submitRating(); }}>
+                Send rating
+              </Button>
+            </>
           )}
         </div>
       )}

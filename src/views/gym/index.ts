@@ -15,4 +15,6 @@ export { CheckinConsoleView } from './CheckinConsoleView';
 export { ClassesManageView } from './ClassesManageView';
 export { GymSettingsView } from './GymSettingsView';
 export { CreateGymView } from './CreateGymView';
+export { GymLibraryView } from './GymLibraryView';
+export { GymPlansView } from './GymPlansView';
 export type { GymView, GymNavParams, GymViewProps } from './types';

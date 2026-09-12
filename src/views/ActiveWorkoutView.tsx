@@ -11,6 +11,8 @@ import { defaultRestSecondsFor } from '../restTimer';
 import { labelize } from '../exerciseUtils';
 import { ExercisePickerSheet } from './exercises/ExercisePickerSheet';
 import { buildProgression, collectExerciseSessions, formatSet } from '../progression';
+import { findExercise, withGymExercises } from '../gymLibrary';
+import { VideoModal } from '../components';
 
 import { useToast, useConfirm } from '../ui';
 
@@ -112,7 +114,7 @@ export function ActiveWorkoutView({
   
   // Add exercise to current workout
   const [showAddExercise, setShowAddExercise] = useState(false);
-  const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
+  const [allExercises, setAllExercises] = useState<Exercise[]>(() => withGymExercises(storage.getExercises()));
 
   const refreshExercises = () => setAllExercises(storage.getExercises());
 
@@ -572,7 +574,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   const completedCount = exercise.sets.filter(s => s.completed).length;
   
   // Get all exercises for the selector
-  const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
+  const [allExercises, setAllExercises] = useState<Exercise[]>(() => withGymExercises(storage.getExercises()));
   
   // Get last session data for progressive overload tracking
   const lastSession = useMemo(() => 
@@ -581,6 +583,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
   );
   
   const [showInfo, setShowInfo] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
   // Re-fetched each time the info modal opens so newly-edited notes in the
   // Exercise Library show without requiring a full remount. Previously this
   // was useMemo'd with stale deps, which is why saved notes sometimes
@@ -590,10 +593,9 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
     muscleGroup?: Exercise['muscleGroup']; isCompound?: boolean;
     equipment?: Exercise['equipment'];
   }>(() => {
-    const exercises = storage.getExercises();
-    const nameKey = exercise.exerciseName.trim().toLowerCase();
-    const ex = exercises.find(e => e.id === exercise.exerciseId)
-      || exercises.find(e => e.name.trim().toLowerCase() === nameKey);
+    // The member's own library first, then the gym's (a gym exercise is
+    // never copied into the member's data — see src/gymLibrary.ts).
+    const ex = findExercise(exercise.exerciseId, exercise.exerciseName);
     return {
       notes: ex?.notes,
       sharedNotes: ex?.sharedNotes,
@@ -790,14 +792,13 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                 <p className="text-xs text-zinc-500 italic">No notes yet — add cues or form reminders from the Exercise Library.</p>
               )}
               {exerciseData.videoUrl && (
-                <a
-                  href={exerciseData.videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setVideoOpen(true)}
                   className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-medium text-sm transition-colors"
                 >
                   <Play className="w-4 h-4" /> Watch form video
-                </a>
+                </button>
               )}
             </div>
           </div>
@@ -844,17 +845,19 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                 </div>
               )}
               {exerciseData.videoUrl && (
-                <a
-                  href={exerciseData.videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setVideoOpen(true)}
                   className="inline-flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300 transition-colors"
                 >
                   <Play className="w-4 h-4" />
-                  <span>Watch Form Video</span>
-                </a>
+                  <span>Watch form video</span>
+                </button>
               )}
             </div>
+          )}
+          {videoOpen && exerciseData.videoUrl && (
+            <VideoModal url={exerciseData.videoUrl} title={exercise.exerciseName} onClose={() => setVideoOpen(false)} />
           )}
           
           {/* Header */}

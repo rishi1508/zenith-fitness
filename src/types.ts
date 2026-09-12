@@ -26,6 +26,10 @@ export interface Exercise {
    *  user had already created their own copy), the shared doc's id.
    *  Absent when the local id IS the shared id. */
   sharedId?: string;
+  /** Set on an exercise that comes from a gym's own library
+   *  (gyms/{gymId}/exercises, see src/gymLibrary.ts). Read-only for
+   *  members; never written to the user's own storage. */
+  gymId?: string;
 }
 
 export type ExerciseCategory = 'compound' | 'isolation' | 'cardio' | 'core' | 'other';
@@ -124,6 +128,9 @@ export interface WeeklyPlan {
    *  source id so the Common Templates view can show "Remove" instead of
    *  "Add" and support one-click removal. */
   sourceTemplateId?: string;
+  /** If this plan was adopted from a gym's own plans (gyms/{gymId}/plans),
+   *  the gym plan id — so "Use this plan" can show as already added. */
+  sourceGymPlanId?: string;
 }
 
 // Legacy - kept for backward compatibility, represents a single day workout
@@ -520,6 +527,56 @@ export interface GymCheckin { id: string; uid: string; at: string; date: string 
 export interface GymDailyStat { date: string; count: number; hours: Record<string, number> }
 export interface GymClass { id: string; name: string; weekday: number /* 0=Sun..6 */; startTime: string /* HH:mm */; durationMin: number; trainerUid?: string; capacity?: number /* undefined = uncapped */; active: boolean }
 export interface GymClassSession { id: string /* `${classId}_${YYYY-MM-DD}` */; classId: string; date: string; enrolled: string[]; attended: string[] }
+
+/** An exercise the gym curates for its members — gyms/{gymId}/exercises/{id}.
+ *  Staff write it; every member reads it. The video is the trainer's own
+ *  demonstration, played inside the app during a set. */
+export interface GymExercise {
+  id: string;
+  name: string;
+  nameKey: string;               // exerciseNameKey(name)
+  muscleGroup: MuscleGroup;
+  category: ExerciseCategory;
+  isCompound: boolean;
+  equipment?: ExerciseEquipment;
+  /** YouTube (unlisted is fine) or a direct video file URL. */
+  videoUrl?: string;
+  /** The trainer's cues, shown under the exercise during a workout. */
+  notes?: string;
+  met?: number;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A weekly plan the gym publishes for members to adopt — gyms/{gymId}/plans/{id}.
+ *  The id is the author's local plan id, so publishing again updates it.
+ *  (`GymPlan` is the membership price plan; this is training content.) */
+export interface GymWorkoutPlan {
+  id: string;
+  name: string;
+  description?: string;
+  days: DayPlan[];
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Members who tapped "Use this plan" (bumped by one per adoption). */
+  useCount: number;
+}
+
+/** One anonymous rating of a class session — gyms/{gymId}/ratings/{voterHash}.
+ *  Written only by api/rate.ts: the doc id is a keyed hash of who voted, so
+ *  one vote per person per session without a name anywhere in Firestore. */
+export interface GymSessionRating {
+  classId: string;
+  date: string;                  // YYYY-MM-DD of the session
+  trainerUid?: string;
+  stars: 1 | 2 | 3 | 4 | 5;
+  comment?: string;
+  at: string;                    // ISO, rounded to the hour
+}
 /**
  * One post in a gym's feed (docs/GYM_TIER_A_SPEC.md §9).
  *

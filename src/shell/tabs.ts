@@ -72,6 +72,8 @@ export const viewToTab: Record<View, Tab> = {
   'gym-classes-manage': 'gym',
   'gym-settings': 'gym',
   'gym-create': 'gym',
+  'gym-library': 'gym',
+  'gym-plans': 'gym',
 };
 
 /** Root view a tab navigates to on tap (also resets the history stack). */

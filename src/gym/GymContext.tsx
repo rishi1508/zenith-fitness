@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 import type { Gym, GymMember, GymRole } from '../types';
 import { useAuth } from '../auth/AuthContext';
 import { getMyGymContext, listenToGym, listenToMyMembership } from '../gymService';
+import { startGymLibrarySync } from '../gymLibrary';
+import { readHint, writeHint, type GymHint } from './gymHint';
 
 /**
  * Gym OS lite (Tier A) membership context. Loads the cached
@@ -24,35 +26,6 @@ interface GymContextValue {
   hasGymHint: boolean;
   /** Re-reads the profile's gym pointer — call after joining/leaving/creating a gym. */
   refresh: () => void;
-}
-
-/**
- * What this device last knew about the user's gym. Loading it takes a profile
- * read and a listener, and until those land the tab bar was one item short —
- * so the whole bar, centre button included, jumped ~300 ms after launch.
- */
-interface GymHint { uid: string; gymId: string; accentColor?: string }
-
-/** One key, holding the uid too, so the very first render can read it —
- *  before `useAuth` has resolved who is signed in. A hint for a different
- *  account is discarded the moment auth says so. */
-const HINT_KEY = 'zenith_gym_hint';
-
-function readHint(): GymHint | null {
-  try {
-    const raw = localStorage.getItem(HINT_KEY);
-    const parsed = raw ? (JSON.parse(raw) as GymHint) : null;
-    return parsed?.uid && parsed.gymId ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeHint(hint: GymHint | null): void {
-  try {
-    if (hint) localStorage.setItem(HINT_KEY, JSON.stringify(hint));
-    else localStorage.removeItem(HINT_KEY);
-  } catch { /* private mode */ }
 }
 
 const GymCtx = createContext<GymContextValue | null>(null);
@@ -147,14 +120,17 @@ export function GymProvider({ children }: { children: ReactNode }) {
     }
     const unsubGym = listenToGym(gymId, setGym);
     const unsubMembership = listenToMyMembership(gymId, setMembership);
-    return () => { unsubGym(); unsubMembership(); };
+    // The gym's exercise library feeds the pickers and the workout screen
+    // (src/gymLibrary.ts) — one small listener, cleared on leaving.
+    const unsubLibrary = startGymLibrarySync(gymId);
+    return () => { unsubGym(); unsubMembership(); unsubLibrary(); };
   }, [gymId, user, isGuest]);
 
   // Remember the gym for the next launch, so the shell never has to guess.
   useEffect(() => {
     if (!user || isGuest) return;
     if (gym) {
-      const next: GymHint = { uid: user.uid, gymId: gym.id, ...(gym.accentColor ? { accentColor: gym.accentColor } : {}) };
+      const next: GymHint = { uid: user.uid, gymId: gym.id, gymName: gym.name, ...(gym.accentColor ? { accentColor: gym.accentColor } : {}) };
       writeHint(next);
       setHint(next);
     }

@@ -38,3 +38,4 @@ export { WelcomeTour } from './WelcomeTour';
 export { BadgeArt } from './BadgeArt';
 export { BadgeUnlockModal } from './BadgeUnlockModal';
 export { AvatarPeek } from './AvatarPeek';
+export { VideoModal } from './VideoModal';

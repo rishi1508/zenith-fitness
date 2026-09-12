@@ -22,8 +22,10 @@ function barContent(view: View, gymName: string | undefined, firstName: string):
   switch (view) {
     case 'home': {
       const today = new Date();
+      const date = today.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase();
+      // The gym's name rides on the eyebrow: the member opens their gym's app.
       return {
-        eyebrow: today.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase(),
+        eyebrow: gymName ? `${gymName.toUpperCase()} · ${date}` : date,
         title: `Hey ${firstName}!`,
       };
     }

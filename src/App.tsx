@@ -57,6 +57,8 @@ const GymOpsView = lazyNamed(() => import('./views/gym'), 'GymOpsView');
 const MembersView = lazyNamed(() => import('./views/gym'), 'MembersView');
 const MemberDetailView = lazyNamed(() => import('./views/gym'), 'MemberDetailView');
 const CheckinConsoleView = lazyNamed(() => import('./views/gym'), 'CheckinConsoleView');
+const GymLibraryView = lazyNamed(() => import('./views/gym'), 'GymLibraryView');
+const GymPlansView = lazyNamed(() => import('./views/gym'), 'GymPlansView');
 const ClassesManageView = lazyNamed(() => import('./views/gym'), 'ClassesManageView');
 const GymSettingsView = lazyNamed(() => import('./views/gym'), 'GymSettingsView');
 const CreateGymView = lazyNamed(() => import('./views/gym'), 'CreateGymView');
@@ -1760,6 +1762,7 @@ function App() {
             onOpenWeeklyPlans={() => navigateTo('templates')}
             onOpenExercises={() => navigateTo('exercises')}
             onOpenCommonTemplates={() => navigateTo('common-templates')}
+            onOpenGymPlans={() => navigateToGym('gym-plans')}
             onOpenHistory={() => navigateTo('history')}
             onOpenProgress={() => navigateTo('progress')}
           />
@@ -1925,6 +1928,12 @@ function App() {
         )}
         {view === 'gym-console' && (
           <CheckinConsoleView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
+        )}
+        {view === 'gym-library' && (
+          <GymLibraryView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
+        )}
+        {view === 'gym-plans' && (
+          <GymPlansView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />
         )}
         {view === 'gym-classes-manage' && (
           <ClassesManageView isDark={isDark} onBack={() => goBack()} onNavigate={navigateToGym} onOpenProfile={openProfile} gymId={gym?.id} />

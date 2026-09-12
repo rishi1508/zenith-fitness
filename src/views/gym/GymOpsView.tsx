@@ -22,8 +22,11 @@ import { AcquisitionChurnChart } from '../../components/gym/ops/AcquisitionChurn
 import { RevenueDonut } from '../../components/gym/ops/RevenueDonut';
 import { FacilityList } from '../../components/gym/ops/FacilityList';
 import { EquipmentSection } from '../../components/gym/ops/EquipmentSection';
+import { RatingsCard } from '../../components/gym/ops/RatingsCard';
+import { summarizeRatings } from '../../gymRatings';
+import { trainerName } from '../../gymMemberHelpers';
 
-type Metric = 'mrr' | 'clv' | 'slipping' | 'acquisition' | 'revenue' | FacilityMetric;
+type Metric = 'mrr' | 'clv' | 'slipping' | 'acquisition' | 'revenue' | 'ratings' | FacilityMetric;
 
 /**
  * Plain-language cards for every number on the screen. Written for an owner
@@ -60,6 +63,12 @@ const EXPLAINERS: Record<Metric, Omit<MetricExplainer, 'value'>> = {
     meaning: 'Where the money actually came from over the last 90 days: memberships, personal training, and everything else (merchandise, supplements, day passes).',
     method: 'Every payment recorded in the window, grouped by its category. Payments recorded before categories existed count as membership. Advance renewals dated in the future are left out until they fall due.',
     good: 'Most gyms live on memberships; growing the other two slices is how revenue grows without adding members. Set the category when you record a payment to see it here.',
+  },
+  ratings: {
+    title: 'Session ratings',
+    meaning: 'How members rated the classes they attended, out of five, over the last 30 days. Ratings are anonymous: the app records the score and the comment, never who gave it, so people say what they actually felt.',
+    method: 'After a session, a member who was enrolled can rate it once from the class page. The server checks they were there and stores the rating without their name; one rating per person per session, and a repeat overwrites. Staff cannot rate their own gym.',
+    good: 'Above 4.2 on average. A class or trainer sitting well under the gym average is worth a conversation — read the comments first, they usually say why.',
   },
   trainers: {
     title: 'Trainer class utilisation',
@@ -145,6 +154,7 @@ export function GymOpsView({ onBack, onNavigate }: GymViewProps) {
   }, [gym, data]);
 
   const health = useMemo(() => equipmentHealth(equipment), [equipment]);
+  const ratings = useMemo(() => (data ? summarizeRatings(data.ratings, data.classes) : null), [data]);
 
   /** Which explainer is open. */
   const [openMetric, setOpenMetric] = useState<Metric | null>(null);
@@ -238,6 +248,14 @@ export function GymOpsView({ onBack, onNavigate }: GymViewProps) {
 
           <FacilityList trainers={metrics.trainers} classFill={metrics.classFill} equipment={health} onInfo={setOpenMetric} />
 
+          {ratings && (
+            <RatingsCard
+              summary={ratings}
+              trainerLabel={(uid) => (uid ? trainerName(uid, data?.members ?? []) : 'No trainer set')}
+              onInfo={() => setOpenMetric('ratings')}
+            />
+          )}
+
           <EquipmentSection gymId={gym.id} equipment={equipment} canEdit={canView} onChange={setEquipment} />
 
           {openMetric && history && (
@@ -253,9 +271,42 @@ export function GymOpsView({ onBack, onNavigate }: GymViewProps) {
                   : openMetric === 'trainers' && metrics.trainers.scheduled > 0 ? `${Math.round(metrics.trainers.utilisation * 100)}%`
                   : openMetric === 'classFill' && classFillRate != null ? `${Math.round(classFillRate * 100)}%`
                   : openMetric === 'equipment' && health.machines > 0 ? `${Math.round(health.health * 100)}%`
+                  : openMetric === 'ratings' && ratings?.avg != null ? `${ratings.avg.toFixed(1)} / 5`
                   : undefined,
               }}
             >
+              {openMetric === 'ratings' && ratings && (
+                <div className="space-y-3">
+                  <HistoryBars
+                    caption="How the stars fell"
+                    points={[1, 2, 3, 4, 5].map((n) => ({ label: `${n}★`, value: ratings.histogram[n as 1 | 2 | 3 | 4 | 5] }))}
+                    format={(v) => `${v} rating${v === 1 ? '' : 's'}`}
+                    tone="ok"
+                  />
+                  {ratings.byClass.length > 0 && (
+                    <div className="rounded-card border border-border bg-surface-2 p-3 space-y-2">
+                      {ratings.byClass.map((c) => (
+                        <Factor key={c.classId} label={`${c.name} · ${c.count} rating${c.count === 1 ? '' : 's'}`} value={`${c.avg.toFixed(1)} / 5`} />
+                      ))}
+                    </div>
+                  )}
+                  {ratings.comments.length > 0 && (
+                    <div className="space-y-2">
+                      <p className={CAPTION}>What members wrote</p>
+                      {ratings.comments.slice(0, 12).map((c, i) => (
+                        <div key={i} className="rounded-card border border-border bg-surface p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-text">{c.className}</span>
+                            <span className="text-xs text-amber-400">{'★'.repeat(c.stars)}<span className="text-subtle">{'★'.repeat(5 - c.stars)}</span></span>
+                          </div>
+                          <p className="text-sm text-muted mt-1">{c.comment}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {openMetric === 'mrr' && (
                 <HistoryBars caption="Month by month" points={history.mrr.map((p) => ({ label: p.month, value: p.value }))} format={formatInr} />
               )}

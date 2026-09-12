@@ -132,6 +132,20 @@ const cases = [
   ['DENY',  'trainer deletes a colleague\'s announcement', { ...req(TRAINER, 'delete', 'gyms/g1/announcements/a1'), __existing: { data: { byUid: MANAGER } } }, gymMocks()],
   ['ALLOW', 'manager deletes any announcement', { ...req(MANAGER, 'delete', 'gyms/g1/announcements/a1'), __existing: { data: { byUid: TRAINER } } }, gymMocks()],
   ['DENY',  'member deletes an announcement', { ...req(A, 'delete', 'gyms/g1/announcements/a1'), __existing: { data: { byUid: TRAINER } } }, gymMocks({ member: true })],
+
+  // the gym's own exercises, plans and anonymous ratings
+  ['ALLOW', 'member reads a gym exercise', req(A, 'get', 'gyms/g1/exercises/e1'), gymMocks({ member: true })],
+  ['DENY',  'non-member reads a gym exercise', req(A, 'get', 'gyms/g1/exercises/e1'), gymMocks()],
+  ['ALLOW', 'trainer writes a gym exercise', req(TRAINER, 'create', 'gyms/g1/exercises/e1', { id: 'e1', name: 'Row', videoUrl: 'https://youtu.be/x' }), gymMocks()],
+  ['DENY',  'member writes a gym exercise', req(A, 'create', 'gyms/g1/exercises/e1', { id: 'e1', name: 'Row' }), gymMocks({ member: true })],
+  ['ALLOW', 'trainer publishes a gym plan', req(TRAINER, 'create', 'gyms/g1/plans/p1', { id: 'p1', name: 'PPL', days: [], useCount: 0 }), gymMocks()],
+  ['ALLOW', 'member adopting a plan bumps useCount by one', upd(A, 'gyms/g1/plans/p1', { id: 'p1', name: 'PPL', useCount: 3 }, { id: 'p1', name: 'PPL', useCount: 4 }), gymMocks({ member: true })],
+  ['DENY',  'member renames a gym plan', upd(A, 'gyms/g1/plans/p1', { id: 'p1', name: 'PPL', useCount: 3 }, { id: 'p1', name: 'Mine', useCount: 3 }), gymMocks({ member: true })],
+  ['DENY',  'member deletes a gym plan', req(A, 'delete', 'gyms/g1/plans/p1'), gymMocks({ member: true })],
+  ['ALLOW', 'manager reads ratings', req(MANAGER, 'get', 'gyms/g1/ratings/r1'), gymMocks()],
+  ['DENY',  'trainer reads ratings', req(TRAINER, 'get', 'gyms/g1/ratings/r1'), gymMocks()],
+  ['DENY',  'member reads ratings', req(A, 'get', 'gyms/g1/ratings/r1'), gymMocks({ member: true })],
+  ['DENY',  'manager writes a rating directly', req(MANAGER, 'create', 'gyms/g1/ratings/r1', { stars: 5 }), gymMocks()],
 ];
 
 const body = { source: { files: [{ name: 'firestore.rules', content: source }] }, testSuite: { testCases: cases.map(([expectation, , request, functionMocks]) => { const { __existing, ...rest } = request; return { expectation, request: rest, ...(__existing ? { resource: __existing } : {}), functionMocks: functionMocks ?? [] }; }) } };

@@ -262,7 +262,9 @@ export function HomeTabView({
 
       {gym ? (
         <ListRow
-          icon={<Building2 className="w-[18px] h-[18px]" strokeWidth={1.75} />}
+          icon={gym.logoUrl
+            ? <img src={gym.logoUrl} alt="" className="w-full h-full object-cover rounded-[inherit]" />
+            : <Building2 className="w-[18px] h-[18px]" strokeWidth={1.75} />}
           iconTone="accent"
           title={gym.name}
           subtitle={nextClass ? `${nextClass.cls.name} ${formatTime12h(nextClass.cls.startTime)}` : 'No classes today'}

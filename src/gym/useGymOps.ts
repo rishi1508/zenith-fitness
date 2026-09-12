@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import type { GymCheckin, GymClass, GymClassSession, GymEquipment, GymMember, GymPayment } from '../types';
+import type { GymCheckin, GymClass, GymClassSession, GymEquipment, GymMember, GymPayment, GymSessionRating } from '../types';
 import { listMembers, listPayments, listCheckins, listClasses, listEquipment } from '../gymService';
 import { listSessions } from '../gymStaffHelpers';
+import { listRatings } from '../gymRatings';
 import { localDateISO, addDaysISO } from '../gymStats';
 
 export interface GymOpsData {
@@ -15,6 +16,8 @@ export interface GymOpsData {
   /** 28 days, matching the four-week trainer window. */
   sessions: GymClassSession[];
   equipment: GymEquipment[];
+  /** 30 days of anonymous session ratings (managers only; empty for anyone else). */
+  ratings: GymSessionRating[];
   loadedAt: number;
 }
 
@@ -45,7 +48,7 @@ const cache = new Map<string, GymOpsData>();
 async function loadGymOps(gymId: string): Promise<GymOpsData> {
   const now = new Date();
   const today = localDateISO(now);
-  const [members, payments, checkins, classes, equipment] = await Promise.all([
+  const [members, payments, checkins, classes, equipment, ratings] = await Promise.all([
     listMembers(gymId, { limit: 600 }),
     listPayments(gymId, { sinceISO: new Date(now.getTime() - 365 * 86_400_000).toISOString(), limit: PAYMENT_LIMIT }),
     listCheckins(gymId, { sinceISO: new Date(now.getTime() - 60 * 86_400_000).toISOString(), limit: CHECKIN_LIMIT }),
@@ -53,10 +56,11 @@ async function loadGymOps(gymId: string): Promise<GymOpsData> {
     // Rules ship separately from code, so a gym whose project has not
     // picked up the equipment rule yet loses that one row, not the screen.
     listEquipment(gymId).catch(() => [] as GymEquipment[]),
+    listRatings(gymId, addDaysISO(today, -29)).catch(() => [] as GymSessionRating[]),
   ]);
   // Sessions hang off each class, so this one waits on the class list.
   const sessions = await listSessions(gymId, classes, addDaysISO(today, -27));
-  return { gymId, members, payments, checkins, classes, sessions, equipment, loadedAt: Date.now() };
+  return { gymId, members, payments, checkins, classes, sessions, equipment, ratings, loadedAt: Date.now() };
 }
 
 export function useGymOps(gymId: string | undefined, enabled: boolean): GymOpsState {

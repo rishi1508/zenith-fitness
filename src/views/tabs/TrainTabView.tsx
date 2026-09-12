@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Calculator, CalendarDays, Clock, Dumbbell, Layers, Pencil, Trophy, Wrench } from 'lucide-react';
+import { Building2, Calculator, CalendarDays, Clock, Dumbbell, Layers, Pencil, Trophy, Wrench } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { WorkoutTemplate } from '../../types';
 import type { Theme } from '../../App';
 import * as storage from '../../storage';
 import { PlateCalculator, OneRMCalculator } from '../../components';
+import { useGym } from '../../gym/GymContext';
 import { Card, Button, Chip, IconButton, ListRow, Sheet, SectionHeader, StatTile, EmptyState, CAPTION } from '../../ui';
 
 interface TrainTabViewProps {
@@ -13,6 +14,8 @@ interface TrainTabViewProps {
   onOpenWeeklyPlans: () => void;
   onOpenExercises: () => void;
   onOpenCommonTemplates: () => void;
+  /** The plans the member's gym publishes (My Gym → Workout plans). */
+  onOpenGymPlans: () => void;
   onOpenHistory: () => void;
   onOpenProgress: () => void;
 }
@@ -21,9 +24,10 @@ interface TrainTabViewProps {
  *  chips, quick rows to the plan/library/history screens, recent PRs,
  *  and a Tools sheet for the plate/1RM calculators. */
 export function TrainTabView({
-  theme, onStartWorkout, onOpenWeeklyPlans, onOpenExercises, onOpenCommonTemplates, onOpenHistory, onOpenProgress,
+  theme, onStartWorkout, onOpenWeeklyPlans, onOpenExercises, onOpenCommonTemplates, onOpenGymPlans, onOpenHistory, onOpenProgress,
 }: TrainTabViewProps) {
   const isDark = theme === 'dark';
+  const { gym } = useGym();
   const [plans] = useState(() => storage.getWeeklyPlans());
   const [activePlanId] = useState(() => storage.getActivePlanId() || plans[0]?.id);
   const [selectedDayNum, setSelectedDayNum] = useState(() => storage.getLastUsedDay() || 1);
@@ -57,6 +61,7 @@ export function TrainTabView({
   const rows: Array<{ label: string; sub: string; icon: LucideIcon; onClick: () => void }> = [
     { label: 'Weekly plans', sub: `${plans.length} plan${plans.length === 1 ? '' : 's'}`, icon: CalendarDays, onClick: onOpenWeeklyPlans },
     { label: 'Exercise library', sub: 'Browse and edit all exercises', icon: Dumbbell, onClick: onOpenExercises },
+    ...(gym ? [{ label: `Plans from ${gym.name}`, sub: 'Your gym\'s programmes, ready to start', icon: Building2, onClick: onOpenGymPlans }] : []),
     { label: 'Community templates', sub: 'Import a shared plan', icon: Layers, onClick: onOpenCommonTemplates },
     { label: 'Workout history', sub: 'Every logged session', icon: Clock, onClick: onOpenHistory },
   ];

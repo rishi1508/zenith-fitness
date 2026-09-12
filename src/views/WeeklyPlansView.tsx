@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { 
   Calendar, ChevronLeft, Trash2, 
-  ClipboardList, Plus, Edit3, Search, Dumbbell
+  ClipboardList, Plus, Edit3, Search, Dumbbell, Share2
 } from 'lucide-react';
 import type { WeeklyPlan, DayPlan, Exercise } from '../types';
 import * as storage from '../storage';
 import { ExerciseForm } from '../components/ExerciseForm';
 import { createAndPublishExercise } from '../sharedExercises';
+import { publishGymPlan, withGymExercises } from '../gymLibrary';
+import { useGym } from '../gym/GymContext';
 
 import { useToast, useConfirm } from '../ui';
 // Day Exercise Editor - Edit exercises for a single day (internal component)
@@ -20,7 +22,7 @@ function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
   const [exercises, setExercises] = useState(day.exercises);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [allExercises, setAllExercises] = useState<Exercise[]>(() => storage.getExercises());
+  const [allExercises, setAllExercises] = useState<Exercise[]>(() => withGymExercises(storage.getExercises()));
   const [showCreate, setShowCreate] = useState(false);
 
   const filteredExercises = allExercises.filter(ex =>
@@ -514,6 +516,23 @@ export function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
   
   const { showToast } = useToast();
   const { confirm: confirmDialog } = useConfirm();
+  const { gym, role } = useGym();
+  const canShareWithGym = !!gym && (role === 'trainer' || role === 'manager' || role === 'owner');
+  const shareWithGym = async (plan: WeeklyPlan) => {
+    if (!gym) return;
+    const ok = await confirmDialog({
+      title: `Share ${plan.name} with ${gym.name}?`,
+      message: 'Every member can adopt it from My Gym → Workout plans. Sharing it again after an edit updates it for everyone.',
+      confirmLabel: 'Share',
+    });
+    if (!ok) return;
+    try {
+      await publishGymPlan(gym.id, plan);
+      showToast(`Shared with ${gym.name}.`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Could not share the plan.', 'error');
+    }
+  };
   const handleDelete = async (plan: WeeklyPlan) => {
     if (plan.id === 'default_plan') {
       showToast('The default plan cannot be deleted', 'error');
@@ -651,6 +670,20 @@ export function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
                   <Edit3 className="w-4 h-4" />
                   Edit
                 </button>
+                {canShareWithGym && (
+                  <>
+                    <div className={`w-px ${isDark ? 'bg-[#2e2e2e]' : 'bg-gray-200'}`} />
+                    <button
+                      onClick={() => { void shareWithGym(plan); }}
+                      className={`flex-1 py-2 text-sm flex items-center justify-center gap-1 transition-colors ${
+                        isDark ? 'text-zinc-400 hover:text-white hover:bg-[#252525]' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Share2 className="w-4 h-4" />
+                      Share with gym
+                    </button>
+                  </>
+                )}
                 {plan.id !== 'default_plan' && (
                   <>
                     <div className={`w-px ${isDark ? 'bg-[#2e2e2e]' : 'bg-gray-200'}`} />

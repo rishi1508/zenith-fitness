@@ -26,7 +26,9 @@ export type GymView =
   | 'gym-console'
   | 'gym-classes-manage'
   | 'gym-settings'
-  | 'gym-create';
+  | 'gym-create'
+  | 'gym-library'
+  | 'gym-plans';
 
 export interface GymNavParams {
   classId?: string;

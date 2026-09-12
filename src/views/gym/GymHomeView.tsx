@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ScanLine, CalendarDays, Megaphone, CreditCard, MonitorSmartphone, Users, ListChecks,
-  IndianRupee, AlertTriangle, BarChart3,
+  IndianRupee, AlertTriangle, BarChart3, ClipboardList, PlaySquare,
 } from 'lucide-react';
 import type { GymViewProps } from './types';
 import type { GymClass } from '../../types';
@@ -112,6 +112,8 @@ export function GymHomeView(props: GymViewProps) {
 
           <Card padding="list">
             <ListRow icon={CalendarDays} title="Classes" onClick={() => onNavigate('gym-classes')} />
+            <ListRow icon={ClipboardList} title="Workout plans" subtitle={`Programmes from ${gym.name}`} onClick={() => onNavigate('gym-plans')} />
+            <ListRow icon={PlaySquare} title="Exercise videos" subtitle="How your trainers want each movement done" onClick={() => onNavigate('gym-library')} />
             <ListRow icon={CreditCard} title="Membership" onClick={() => onNavigate('gym-membership')} />
           </Card>
         </>
@@ -139,6 +141,8 @@ function ManageSection({ gym, isDark, isManagerPlus, onNavigate }: ManageSection
         <ListRow icon={MonitorSmartphone} title="Check-in console" onClick={() => onNavigate('gym-console')} />
         <ListRow icon={CalendarDays} title="Classes" subtitle="Attendance" onClick={() => onNavigate('gym-classes-manage')} />
         <ListRow icon={Megaphone} title="Announcements" subtitle="Post to every member" onClick={() => onNavigate('gym-announcements')} />
+        <ListRow icon={PlaySquare} title="Exercise videos" subtitle="Your movements, your videos" onClick={() => onNavigate('gym-library')} />
+        <ListRow icon={ClipboardList} title="Workout plans" subtitle="Publish from Train → Weekly plans" onClick={() => onNavigate('gym-plans')} />
         <ListRow icon={Users} title="Members" subtitle="Read-only" onClick={() => onNavigate('gym-members')} />
       </Card>
     );
@@ -166,6 +170,8 @@ function ManageSection({ gym, isDark, isManagerPlus, onNavigate }: ManageSection
             <ListRow icon={MonitorSmartphone} title="Check-in console" subtitle="Today's code · scan · manual" onClick={() => onNavigate('gym-console')} />
             <ListRow icon={ListChecks} title="Classes" onClick={() => onNavigate('gym-classes-manage')} />
             <ListRow icon={Megaphone} title="Announcements" subtitle="Post to every member" onClick={() => onNavigate('gym-announcements')} />
+            <ListRow icon={PlaySquare} title="Exercise videos" subtitle="Your movements, your videos" onClick={() => onNavigate('gym-library')} />
+            <ListRow icon={ClipboardList} title="Workout plans" subtitle="Publish from Train → Weekly plans" onClick={() => onNavigate('gym-plans')} />
             <ListRow
               icon={IndianRupee}
               title="Payments"
