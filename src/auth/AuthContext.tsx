@@ -140,7 +140,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Auth persists across the reload, so the new account lands clean.
             clearLocalUserData();
             localStorage.setItem(LAST_UID_KEY, firebaseUser.uid);
-            void resetFirestoreCache().finally(() => window.location.reload());
+            // Effects still running for the old account can re-save a key or
+            // two between here and the reload — sweep once more right before it.
+            void resetFirestoreCache().finally(() => { clearLocalUserData(); window.location.reload(); });
             return;
           }
           localStorage.setItem(LAST_UID_KEY, firebaseUser.uid);
@@ -274,6 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // next person to sign in on this phone must not inherit them. Clearing
     // it needs the client terminated, so the app restarts on the login screen.
     await resetFirestoreCache();
+    clearLocalUserData();
     window.location.reload();
   }, []);
 

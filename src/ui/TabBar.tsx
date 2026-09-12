@@ -40,10 +40,11 @@ export function TabBar<T extends string>({ items, active, onChange }: TabBarProp
     >
       {items.map(({ id, label, icon: Icon, center, render, badge }) => {
         const on = id === active;
+        // The count is spoken as part of the tab's name, not as its own label.
         const pill = badge && badge > 0 ? (
           <span
             className={`absolute -top-1 ${center ? 'right-0' : '-right-2'} min-w-[18px] h-[18px] px-1 rounded-full bg-accent text-white text-[11px] font-bold leading-[18px] text-center border-2 border-bg`}
-            aria-label={`${badge} new`}
+            aria-hidden
           >
             {badge > 9 ? '9+' : badge}
           </span>
@@ -54,6 +55,7 @@ export function TabBar<T extends string>({ items, active, onChange }: TabBarProp
             data-tour={`tab-${id}`}
             onClick={() => onChange(id)}
             aria-current={on ? 'page' : undefined}
+            aria-label={badge && badge > 0 ? `${label}, ${badge} new` : label}
             className={`flex flex-col items-center gap-1 text-[11px] font-bold transition-colors ${
               on ? 'text-accent' : 'text-subtle hover:text-muted'
             } ${center ? '-mt-[30px]' : ''}`}

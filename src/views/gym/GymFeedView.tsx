@@ -141,6 +141,12 @@ export function GymFeedView({ onOpenProfile }: { onOpenProfile?: (uid: string) =
     }
   };
 
+  // Sitting on the tab while notices arrive (or landing on it directly)
+  // counts as seeing them — the badge must never outlive the open tab.
+  useEffect(() => {
+    if (tab === 'announcements' && unseenAnnouncements > 0) markAnnouncementsSeen();
+  }, [tab, unseenAnnouncements, markAnnouncementsSeen]);
+
   if (!gym) return null;
 
   const unseenNotice = tab !== 'announcements' && !!newestNotice && newestNotice > seenNotice;
