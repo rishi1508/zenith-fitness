@@ -6,6 +6,7 @@ import { useGym } from '../../gym/GymContext';
 import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { adoptedCopy, adoptGymPlan, deleteGymPlan, listenToGymPlans } from '../../gymLibrary';
+import { friendlyError } from '../../friendlyError';
 import { Button, Card, EmptyState, IconButton, useConfirm, useToast, H1, SUB, CAPTION } from '../../ui';
 
 /**
@@ -116,7 +117,7 @@ function StaffPlans({ gym, plans, onBack }: { gym: Gym; plans: GymWorkoutPlan[] 
     const ok = await confirm({ title: `Remove ${plan.name}?`, message: 'Members who already adopted it keep their copy.', confirmLabel: 'Remove', tone: 'danger' });
     if (!ok) return;
     try { await deleteGymPlan(gym.id, plan.id); showToast('Removed.'); }
-    catch (err) { showToast(err instanceof Error ? err.message : 'Could not remove.', 'error'); }
+    catch (err) { showToast(friendlyError(err, 'Could not remove.'), 'error'); }
   };
 
   return (

@@ -9,6 +9,7 @@ import * as sharedTemplates from '../sharedTemplatesService';
 import type { SharedTemplate } from '../sharedTemplatesService';
 
 import { useToast, useConfirm } from '../ui';
+import { friendlyError } from '../friendlyError';
 interface CommonTemplatesViewProps {
   isDark: boolean;
   onBack: () => void;
@@ -83,7 +84,7 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
       refreshImportedMap();
       sharedTemplates.bumpUseCount(tpl.id);
     } catch (err) {
-      showToast('Import failed: ' + (err instanceof Error ? err.message : 'unknown'), 'error');
+      showToast(friendlyError(err, 'Import failed.'), 'error');
     } finally {
       setBusyId(null);
     }
@@ -117,7 +118,7 @@ export function CommonTemplatesView({ isDark, onBack }: CommonTemplatesViewProps
       setShowPublish(false);
       setSelectedPlanId('');
     } catch (err) {
-      showToast('Publish failed: ' + (err instanceof Error ? err.message : 'unknown'), 'error');
+      showToast(friendlyError(err, 'Publish failed.'), 'error');
     } finally {
       setPublishing(false);
     }

@@ -13,10 +13,11 @@ import { updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
 import * as buddyService from '../buddyService';
 import { manualCheckForUpdates } from '../updateCheck';
-import { enablePushNotifications, pushSupported, pushPermissionState } from '../pushService';
+import { enablePushNotifications, pushSupported, pushPermissionState, PushTokenSaveError } from '../pushService';
 import { canWriteHealthData, isHealthSyncEnabled, setHealthSyncEnabled } from '../healthSync';
 import { deleteMyAccount } from '../accountService';
 import { Capacitor } from '@capacitor/core';
+import { friendlyError } from '../friendlyError';
 import { Sheet, Button, useToast, useConfirm } from '../ui';
 import { registerBackHandler } from '../backHandlerRegistry';
 import { playCue } from '../sound';
@@ -30,6 +31,7 @@ function EditProfileSection({ isDark }: { isDark: boolean }) {
   const [name, setName] = useState(auth.currentUser?.displayName || '');
   const [photoURL, setPhotoURL] = useState(auth.currentUser?.photoURL || '');
   const [saving, setSaving] = useState(false);
+  const { showToast } = useToast();
 
   const handleSave = async () => {
     if (!name.trim() || !auth.currentUser) return;
@@ -43,6 +45,7 @@ function EditProfileSection({ isDark }: { isDark: boolean }) {
       setEditing(false);
     } catch (err) {
       console.error('[Settings] Failed to update profile:', err);
+      showToast(friendlyError(err, 'Could not save your profile. Try again.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -120,7 +123,7 @@ function DeleteAccountSection({ isDark }: { isDark: boolean }) {
       await deleteMyAccount();
       await signOut();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not delete your account.', 'error');
+      showToast(friendlyError(err, 'Could not delete your account.'), 'error');
       setDeleting(false);
     }
   };
@@ -403,7 +406,7 @@ function DataBackupSection({ isDark, onDataChange }: { isDark: boolean; onDataCh
       showToast('Import successful — data merged.');
       onDataChange();
     } catch (err) {
-      showToast(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`, 'error');
+      showToast(`Import failed: ${friendlyError(err, 'Unknown error')}`, 'error');
     } finally {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1004,6 +1007,12 @@ function PushNotificationsSection({ isDark }: { isDark: boolean }) {
       const state = await pushPermissionState();
       setPerm(state);
       if (!token) {
+        showToast('Push notifications could not be enabled. Check device settings and try again.', 'error');
+      }
+    } catch (err) {
+      if (err instanceof PushTokenSaveError) {
+        showToast('Notifications could not be turned on. Try again.', 'error');
+      } else {
         showToast('Push notifications could not be enabled. Check device settings and try again.', 'error');
       }
     } finally {

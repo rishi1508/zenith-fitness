@@ -157,7 +157,7 @@ function ManageSection({ gym, isDark, isManagerPlus, onNavigate }: ManageSection
           <div className="grid grid-cols-3 gap-2">
             <StatTile eyebrow="Active" value={stats.activeMembers} compact />
             <StatTile eyebrow="In today" value={stats.checkinsToday} compact tone="ok" />
-            <StatTile eyebrow="Dues" value={stats.duesOutstanding.length} compact tone={stats.duesOutstanding.length > 0 ? 'danger' : 'default'} />
+            <StatTile eyebrow="Dues" value={stats.duesOutstanding.length} unit="members" compact tone={stats.duesOutstanding.length > 0 ? 'danger' : 'default'} />
           </div>
 
           {/* The same scrubbable chart the dashboard uses — this copy was a

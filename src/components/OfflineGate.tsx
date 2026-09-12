@@ -42,12 +42,12 @@ export function OfflineGate({ state, onProceedOffline, onRetry }: OfflineGatePro
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6">
-      <div className="w-full max-w-sm bg-[#1a1a1a] border border-[#2e2e2e] rounded-2xl p-6 text-center">
+      <div className="w-full max-w-sm bg-surface border border-border rounded-2xl p-6 text-center">
         <div className="w-12 h-12 rounded-full bg-amber-500/15 text-amber-400 flex items-center justify-center mx-auto mb-3">
           <WifiOff className="w-6 h-6" />
         </div>
-        <h2 className="text-lg font-bold mb-1">You look offline</h2>
-        <p className="text-sm text-zinc-400 mb-5">
+        <h2 className="text-lg font-bold mb-1 text-text">You look offline</h2>
+        <p className="text-sm text-muted mb-5">
           {label} Buddy features, chat, and live sessions need a
           connection — other features will still work.
         </p>
@@ -55,7 +55,7 @@ export function OfflineGate({ state, onProceedOffline, onRetry }: OfflineGatePro
           <RetryButton onRetry={onRetry} />
           <button
             onClick={onProceedOffline}
-            className="w-full py-2.5 rounded-lg text-sm font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+            className="w-full py-2.5 rounded-lg text-sm font-medium bg-surface-2 hover:opacity-80 text-text transition-opacity"
           >
             Proceed offline
           </button>

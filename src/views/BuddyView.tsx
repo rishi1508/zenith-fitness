@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, Search, UserPlus, Users, Bell, Check, X,
   Dumbbell, Flame, MessageCircle, ChevronRight, Loader2, UserCheck, Clock, MessagesSquare,
@@ -11,6 +11,7 @@ import { StartSessionModal } from '../components';
 import { buddyStreakFromProfile, formatStreak } from '../streakService';
 
 import { usePremium, UpgradeSheet, FREE_BUDDY_LIMIT } from '../premium';
+import { friendlyError } from '../friendlyError';
 import { useToast } from '../ui';
 interface BuddyViewProps {
   /** Gym join screen, offered when the free buddy limit is reached. */
@@ -37,9 +38,33 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
   const [outgoingRequests, setOutgoingRequests] = useState<BuddyRequest[]>([]);
   const [notifications, setNotifications] = useState<BuddyNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
   const [sessionModalBuddy, setSessionModalBuddy] = useState<{ uid: string; name: string; photoURL: string | null } | null>(null);
+  const { showToast } = useToast();
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const [incoming, outgoing, notifs] = await Promise.all([
+        buddyService.getIncomingRequests(),
+        buddyService.getOutgoingRequests(),
+        buddyService.getNotifications(),
+      ]);
+      setIncomingRequests(incoming);
+      setOutgoingRequests(outgoing);
+      setNotifications(notifs);
+      setSentRequests(new Set(outgoing.map((r) => r.toUid)));
+    } catch (err) {
+      console.error('[Buddy] Failed to load data:', err);
+      setLoadError(true);
+      showToast(friendlyError(err, 'Could not load your buddies.'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
 
   // Load data on mount
   useEffect(() => {
@@ -47,24 +72,6 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
 
     // Ensure user profile exists
     buddyService.upsertUserProfile();
-
-    const loadData = async () => {
-      try {
-        const [incoming, outgoing, notifs] = await Promise.all([
-          buddyService.getIncomingRequests(),
-          buddyService.getOutgoingRequests(),
-          buddyService.getNotifications(),
-        ]);
-        setIncomingRequests(incoming);
-        setOutgoingRequests(outgoing);
-        setNotifications(notifs);
-        setSentRequests(new Set(outgoing.map((r) => r.toUid)));
-      } catch (err) {
-        console.error('[Buddy] Failed to load data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
 
     loadData();
 
@@ -96,7 +103,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       unsubRequests();
       unsubNotifs();
     };
-  }, [user]);
+  }, [user, loadData]);
 
   // Load all users when search panel opens; filter with debounce on type
   useEffect(() => {
@@ -112,15 +119,15 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
         setSearchResults(results);
       } catch (err) {
         console.error('[Buddy] Search failed:', err);
+        showToast('Search is unavailable right now.', 'error');
       } finally {
         setSearching(false);
       }
     }, searchQuery.trim().length > 0 ? 400 : 0);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, showSearch]);
+  }, [searchQuery, showSearch, showToast]);
 
-  const { showToast } = useToast();
   const { can } = usePremium();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const handleSendRequest = async (profile: UserProfile) => {
@@ -132,7 +139,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       setSentRequests((prev) => new Set(prev).add(profile.uid));
     } catch (err: unknown) {
       console.error('[Buddy] sendBuddyRequest failed:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to send request';
+      const msg = friendlyError(err, 'Failed to send request');
       // If request already exists, just mark as sent instead of showing error
       if (msg.includes('already sent') || msg.includes('Already')) {
         setSentRequests((prev) => new Set(prev).add(profile.uid));
@@ -151,7 +158,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
     } catch (err) {
       console.error('[Buddy] acceptBuddyRequest failed:', err);
-      showToast(err instanceof Error && err.message ? err.message : 'Failed to accept request', 'error');
+      showToast(friendlyError(err, 'Failed to accept request'), 'error');
     } finally {
       setActionLoading(null);
     }
@@ -164,7 +171,7 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       setIncomingRequests((prev) => prev.filter((r) => r.id !== request.id));
     } catch (err) {
       console.error('[Buddy] declineBuddyRequest failed:', err);
-      showToast(err instanceof Error && err.message ? err.message : 'Failed to decline request', 'error');
+      showToast(friendlyError(err, 'Failed to decline request'), 'error');
     } finally {
       setActionLoading(null);
     }
@@ -325,6 +332,12 @@ export function BuddyView({ isDark, onBack, onViewProfile, onOpenChat, onOpenSes
       </div>
 
       {/* Tab Content */}
+      {loadError && !loading && (
+        <div className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
+          <span>Could not load your buddies.</span>
+          <button onClick={loadData} className="font-medium underline underline-offset-2">Try again</button>
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="w-6 h-6 animate-spin text-orange-400" />

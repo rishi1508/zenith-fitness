@@ -10,6 +10,7 @@ import { buildRenewalMessage, localDateISO, needsRenewal, upiPayUri, whatsAppUrl
 import { clearMemberTrainer } from '../../gymStaffHelpers';
 import { StatusChip } from '../../components/gym/StaffMemberRow';
 import { StaffPaymentSheet } from '../../components/gym/StaffPaymentSheet';
+import { friendlyError } from '../../friendlyError';
 import { useToast, useConfirm } from '../../ui';
 
 function formatDate(iso: string): string {
@@ -122,7 +123,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
       showToast('Plan updated');
       setEditingPlan(false);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to update plan', 'error');
+      showToast(friendlyError(err, 'Failed to update plan'), 'error');
     } finally {
       setSaving(false);
     }
@@ -134,7 +135,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
       await updateMember(gym.id, member.uid, { frozen: !member.frozen });
       showToast(member.frozen ? 'Membership unfrozen' : 'Membership frozen');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to update', 'error');
+      showToast(friendlyError(err, 'Failed to update'), 'error');
     } finally {
       setSaving(false);
     }
@@ -147,7 +148,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
       else await clearMemberTrainer(gym.id, member.uid);
       showToast('Trainer updated');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to update trainer', 'error');
+      showToast(friendlyError(err, 'Failed to update trainer'), 'error');
     } finally {
       setSaving(false);
     }
@@ -161,7 +162,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
       showToast('Notes saved');
       setEditingNotes(false);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to save notes', 'error');
+      showToast(friendlyError(err, 'Failed to save notes'), 'error');
     } finally {
       setSaving(false);
     }
@@ -174,7 +175,7 @@ export function MemberDetailView({ isDark, onBack, memberUid }: GymViewProps) {
       await removeMember(gym.id, member.uid);
       onBack();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to remove member', 'error');
+      showToast(friendlyError(err, 'Failed to remove member'), 'error');
       setSaving(false);
     }
   };

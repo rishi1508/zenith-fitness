@@ -10,6 +10,7 @@ import * as sessionService from '../workoutSessionService';
 import * as buddyService from '../buddyService';
 
 import { useToast } from '../ui';
+import { friendlyError } from '../friendlyError';
 interface SessionLobbyViewProps {
   sessionId: string;
   isDark: boolean;
@@ -84,7 +85,7 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
     try {
       await sessionService.inviteToSession(sessionId, buddyUid, buddyName, buddyPhotoURL);
     } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Failed to invite', 'error');
+      showToast(friendlyError(err, 'Could not send the invite.'), 'error');
     } finally {
       setInviting(null);
     }
@@ -95,7 +96,7 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
     try {
       await sessionService.startSession(sessionId);
     } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Failed to start', 'error');
+      showToast(friendlyError(err, 'Could not start the session.'), 'error');
       setStarting(false);
     }
   };
@@ -104,7 +105,7 @@ export function SessionLobbyView({ sessionId, isDark, onBack, onSessionStart }: 
     try {
       await sessionService.joinSession(sessionId);
     } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Failed to join', 'error');
+      showToast(friendlyError(err, 'Could not join the session.'), 'error');
     }
   };
 

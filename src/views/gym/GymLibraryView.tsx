@@ -10,6 +10,7 @@ import { deleteGymExercise, listenToGymExercises, saveGymExercise } from '../../
 import { labelize } from '../../exerciseUtils';
 import { ExerciseForm } from '../../components/ExerciseForm';
 import { VideoModal } from '../../components';
+import { friendlyError } from '../../friendlyError';
 import { Card, EmptyState, IconButton, SectionHeader, Sheet, useConfirm, useToast, H1, SUB, CAPTION } from '../../ui';
 
 /**
@@ -137,7 +138,7 @@ function StaffLibrary({ gym, isDark, items, onBack }: { gym: Gym; isDark: boolea
     const ok = await confirm({ title: `Remove ${e.name}?`, message: 'Members keep the sets they logged; the video and cues stop showing.', confirmLabel: 'Remove', tone: 'danger' });
     if (!ok) return;
     try { await deleteGymExercise(gym.id, e.id); showToast('Removed.'); }
-    catch (err) { showToast(err instanceof Error ? err.message : 'Could not remove.', 'error'); }
+    catch (err) { showToast(friendlyError(err, 'Could not remove.'), 'error'); }
   };
 
   return (
@@ -233,7 +234,7 @@ function StaffLibrary({ gym, isDark, items, onBack }: { gym: Gym; isDark: boolea
                   showToast(editing === 'new' ? 'Added to the gym library.' : 'Saved.');
                   setEditing(null);
                 } catch (err) {
-                  showToast(err instanceof Error ? err.message : 'Could not save.', 'error');
+                  showToast(friendlyError(err, 'Could not save.'), 'error');
                 }
               }}
             />

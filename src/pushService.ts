@@ -28,6 +28,14 @@ import { db, auth } from './firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FCM_VAPID_KEY as string | undefined;
 
+/** Thrown by {@link enablePushNotifications} when a token was acquired but
+ *  could not be persisted to Firestore — distinct from returning `null`
+ *  (permission denied / unsupported), so the Settings toggle can tell the
+ *  user their notifications specifically failed to turn on. */
+export class PushTokenSaveError extends Error {
+  constructor() { super('push-token-save-failed'); this.name = 'PushTokenSaveError'; }
+}
+
 // Firebase Messaging reuses the default app initialized in firebase.ts.
 
 /** True if this runtime can receive push — either the native Capacitor
@@ -96,7 +104,8 @@ export async function enablePushNotifications(): Promise<string | null> {
       console.info('[Push] native requestPermissions →', perm.receive);
       if (perm.receive !== 'granted') return null;
 
-      return await new Promise<string | null>((resolve) => {
+      let saveFailed = false;
+      const token = await new Promise<string | null>((resolve) => {
         let resolved = false;
         const settle = (v: string | null) => { if (!resolved) { resolved = true; resolve(v); } };
 
@@ -110,7 +119,10 @@ export async function enablePushNotifications(): Promise<string | null> {
               { token: t.value, createdAt: new Date().toISOString(), platform: Capacitor.getPlatform() },
             );
             console.info('[Push] native token saved to Firestore');
-          } catch (err) { console.error('[Push] token save FAILED — check Firestore rules for userProfiles/{uid}/fcmTokens:', err); }
+          } catch (err) {
+            console.error('[Push] token save FAILED — check Firestore rules for userProfiles/{uid}/fcmTokens:', err);
+            saveFailed = true;
+          }
           settle(t.value);
         });
         PushNotifications.addListener('registrationError', (err) => {
@@ -125,7 +137,10 @@ export async function enablePushNotifications(): Promise<string | null> {
         // Safety timeout — Firebase usually emits within a couple of seconds.
         setTimeout(() => settle(null), 15_000);
       });
+      if (saveFailed) throw new PushTokenSaveError();
+      return token;
     } catch (err) {
+      if (err instanceof PushTokenSaveError) throw err;
       console.warn('[Push] native enable failed:', err);
       return null;
     }
@@ -185,7 +200,7 @@ export async function enablePushNotifications(): Promise<string | null> {
       console.info('[Push] web token saved to Firestore');
     } catch (err) {
       console.error('[Push] token save FAILED — check Firestore rules for userProfiles/{uid}/fcmTokens:', err);
-      throw err;
+      throw new PushTokenSaveError();
     }
 
     // Foreground messages — route through the existing in-app toast.
@@ -197,6 +212,7 @@ export async function enablePushNotifications(): Promise<string | null> {
 
     return token;
   } catch (err) {
+    if (err instanceof PushTokenSaveError) throw err;
     console.warn('[Push] enable failed:', err);
     return null;
   }

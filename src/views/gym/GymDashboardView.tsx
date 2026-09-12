@@ -98,7 +98,7 @@ export function GymDashboardView({ isDark, onBack, onNavigate }: GymViewProps) {
             <DashboardStatTile icon={Users} label="Active members" value={stats.activeMembers} isDark={isDark} />
             <DashboardStatTile icon={CalendarCheck} label="Checked in today" value={stats.checkinsToday} isDark={isDark} tone="success" />
             <DashboardStatTile icon={Clock3} label="Expiring in 7d" value={stats.expiringIn7} isDark={isDark} tone="warning" />
-            <DashboardStatTile icon={AlertTriangle} label="Dues outstanding" value={stats.duesOutstanding.length} isDark={isDark} tone="danger" />
+            <DashboardStatTile icon={AlertTriangle} label="Dues outstanding · members" value={stats.duesOutstanding.length} isDark={isDark} tone="danger" />
             <DashboardStatTile icon={UserPlus} label="New members (30d)" value={stats.newMembers30d} isDark={isDark} />
             <DashboardStatTile icon={IndianRupee} label="Revenue (30d)" value={`₹${stats.revenue30d.toLocaleString('en-IN')}`} isDark={isDark} tone="success" />
           </div>

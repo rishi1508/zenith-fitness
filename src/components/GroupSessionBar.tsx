@@ -6,6 +6,7 @@ import type { WorkoutSession, SessionParticipant, SessionReaction } from '../typ
 import * as sessionService from '../workoutSessionService';
 
 import { useToast, useConfirm } from '../ui';
+import { friendlyError } from '../friendlyError';
 const { REACTION_EMOJIS } = sessionService;
 
 interface GroupSessionBarProps {
@@ -67,7 +68,7 @@ export function GroupSessionBar({ sessionId, showContinue, isDark = true, onCont
     try {
       await sessionService.finishSessionForAll(sessionId);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to end session', 'error');
+      showToast(friendlyError(err, 'Could not end the session.'), 'error');
     }
   };
 

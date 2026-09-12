@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { GymMember, GymPayment, GymPlan, PaymentMethod, RevenueCategory } from '../../types';
 import { recordPayment } from '../../gymService';
 import { localDateISO } from '../../gymStats';
+import { friendlyError } from '../../friendlyError';
 
 const METHODS: Array<{ id: PaymentMethod; label: string }> = [
   { id: 'upi', label: 'UPI' },
@@ -87,7 +88,7 @@ export function StaffPaymentSheet({ isDark, gymId, member, plans, onClose, onSuc
       });
       onSuccess(payment);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record payment');
+      setError(friendlyError(err, 'Could not record the payment.'));
     } finally {
       setSaving(false);
     }

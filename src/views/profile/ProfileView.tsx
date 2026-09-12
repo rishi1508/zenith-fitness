@@ -27,6 +27,7 @@ import { getLocalBadges } from '../../badgeSync';
 import * as storage from '../../storage';
 import { ownStats, ownWorkouts, photosBy, postsBy, statsFromProfile, workoutSummaryLine } from './profileData';
 import { PhotoViewer } from './PhotoViewer';
+import { friendlyError } from '../../friendlyError';
 
 const TIER_LABEL: Record<Tier, string> = { admin: 'Admin', premium: 'Premium', gym: 'Gym premium', free: 'Free' };
 const TIER_TONE: Record<Tier, PillTone> = { admin: 'info', premium: 'accent', gym: 'accent', free: 'neutral' };
@@ -193,7 +194,7 @@ export function ProfileView({
       setPhotoURL(dataUri);
       showToast('Photo updated');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Photo upload failed', 'error');
+      showToast(friendlyError(err, 'The photo could not be uploaded.'), 'error');
     } finally {
       setUploading(false);
     }
@@ -321,7 +322,7 @@ export function ProfileView({
                   setBuddyState('requested');
                   void buddyService.sendBuddyRequest(targetUid, name, avatar ?? undefined)
                     .then(() => showToast(`Buddy request sent to ${name}`))
-                    .catch((err) => { setBuddyState('none'); showToast(err instanceof Error ? err.message : 'Could not send that request.', 'error'); });
+                    .catch((err) => { setBuddyState('none'); showToast(friendlyError(err, 'Could not send that request.'), 'error'); });
                 });
                 return;
               }
@@ -330,7 +331,7 @@ export function ProfileView({
                 .then(() => showToast(`Buddy request sent to ${name}`))
                 .catch((err) => {
                   setBuddyState('none');
-                  showToast(err instanceof Error ? err.message : 'Could not send that request.', 'error');
+                  showToast(friendlyError(err, 'Could not send that request.'), 'error');
                 });
             }}
             disabled={buddyState === 'requested' || buddyState === 'unknown'}

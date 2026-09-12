@@ -468,12 +468,12 @@ export function ActiveWorkoutView({
           a long plan name used to wrap into the back arrow and the Finish
           button, which is what made the top of this screen look crowded. */}
       <div className="flex items-center gap-2">
-        <button onClick={onPause} className="p-2 -ml-2 shrink-0 text-zinc-400" title="Pause workout">
+        <button onClick={onPause} className="p-2 -ml-2 shrink-0 text-muted" title="Pause workout">
           <ChevronLeft className="w-6 h-6" />
         </button>
         <div className="min-w-0 flex-1 text-center">
           <h1 className="text-base font-bold truncate" title={workout.name}>{workout.name}</h1>
-          <div className="text-xs text-orange-400 font-mono flex items-center justify-center gap-1">
+          <div className="text-xs text-accent font-mono flex items-center justify-center gap-1">
             <Clock className="w-3 h-3" />
             {formatDuration(elapsedSeconds)}
           </div>
@@ -486,14 +486,14 @@ export function ActiveWorkoutView({
           {sessionMode !== 'participant' && (
             <button
               onClick={onDiscard}
-              className="p-2 text-zinc-500 hover:text-red-400 transition-colors"
+              className="p-2 text-subtle hover:text-danger transition-colors"
               title={sessionMode === 'host' ? 'Cancel session for all' : 'Discard workout'}
             >
               <Trash2 className="w-5 h-5" />
             </button>
           )}
           {sessionMode === 'participant' ? (
-            <div className="px-3 py-2 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-400">
+            <div className="px-3 py-2 rounded-lg text-xs font-medium bg-surface-2 text-muted">
               Waiting for host…
             </div>
           ) : (
@@ -552,10 +552,10 @@ export function ActiveWorkoutView({
       {/* Progress Bar */}
       <div className="space-y-1">
         <div className="flex justify-between text-sm">
-          <span className="text-zinc-400">Progress</span>
-          <span className="text-orange-400">{completedSets}/{totalSets} sets</span>
+          <span className="text-muted">Progress</span>
+          <span className="text-accent">{completedSets}/{totalSets} sets</span>
         </div>
-        <div className="h-2 bg-[#2e2e2e] rounded-full overflow-hidden">
+        <div className="h-2 bg-border rounded-full overflow-hidden">
           <div 
             className="h-full bg-gradient-to-r from-orange-500 to-red-500 transition-all"
             style={{ width: `${progress}%` }}
@@ -566,12 +566,12 @@ export function ActiveWorkoutView({
       {/* Quick Rest Timer Buttons (when no timer running) */}
       {restTimer === null && (
         <div className="flex gap-2">
-          <span className="text-sm text-zinc-500 self-center">Rest:</span>
+          <span className="text-sm text-subtle self-center">Rest:</span>
           {storage.getRestTimerPresets().map(seconds => (
             <button
               key={seconds}
               onClick={() => { feedback('restStart'); startRestTimer(seconds); }}
-              className="flex-1 py-2 bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg text-sm text-zinc-400 hover:border-orange-500/50 transition-colors"
+              className="flex-1 py-2 bg-surface border border-border rounded-lg text-sm text-muted hover:border-accent/50 transition-colors"
             >
               {seconds >= 60 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : `${seconds}s`}
             </button>
@@ -581,30 +581,30 @@ export function ActiveWorkoutView({
       
       {/* STICKY Rest Timer - Fixed at bottom when running */}
       {restTimer !== null && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 p-4 bg-[#0f0f0f] border-t border-orange-500/30">
-          <div className="bg-orange-500/20 border border-orange-500/30 rounded-xl p-4 flex items-center justify-between max-w-lg mx-auto">
+        <div className="fixed bottom-0 left-0 right-0 z-40 p-4 bg-bg border-t border-accent/30">
+          <div className="bg-accent-soft border border-accent/30 rounded-xl p-4 flex items-center justify-between max-w-lg mx-auto">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <Clock className="w-8 h-8 text-orange-400" />
+                <Clock className="w-8 h-8 text-accent" />
                 <div className="absolute inset-0 animate-ping opacity-30">
-                  <Clock className="w-8 h-8 text-orange-400" />
+                  <Clock className="w-8 h-8 text-accent" />
                 </div>
               </div>
               <div>
-                <div className="text-sm text-orange-400">Rest Timer</div>
+                <div className="text-sm text-accent">Rest Timer</div>
                 <div className="text-3xl font-bold font-mono">{restTimeLeft}s</div>
               </div>
             </div>
             <div className="flex gap-2">
               <button 
                 onClick={() => setRestTimeLeft(t => t + 30)}
-                className="px-3 py-2 bg-orange-500/30 rounded-lg text-sm font-medium"
+                className="px-3 py-2 bg-accent/30 rounded-lg text-sm font-medium"
               >
                 +30s
               </button>
               <button 
                 onClick={() => setRestTimer(null)}
-                className="px-3 py-2 bg-zinc-700 rounded-lg text-sm font-medium"
+                className="px-3 py-2 bg-surface-2 rounded-lg text-sm font-medium"
               >
                 Skip
               </button>
@@ -662,7 +662,7 @@ export function ActiveWorkoutView({
         {/* Add Exercise Button */}
         <button
           onClick={() => setShowAddExercise(true)}
-          className="w-full py-3 border-2 border-dashed border-[#3e3e3e] rounded-xl text-zinc-400 hover:border-orange-500/50 hover:text-orange-400 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-3 border-2 border-dashed border-border rounded-xl text-muted hover:border-accent/50 hover:text-accent transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-5 h-5" />
           Add Exercise
@@ -788,7 +788,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
         && Math.abs(currentWeight - deloadTarget.weight) <= Math.max(deloadTarget.weight * 0.1, 1.25);
       return {
         icon: 'right' as const,
-        color: onTarget ? 'text-info' : 'text-zinc-400',
+        color: onTarget ? 'text-info' : 'text-muted',
         label: onTarget ? 'On target' : 'Deload set',
       };
     }
@@ -805,14 +805,14 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
     }
     // Same
     if (weightDiff === 0 && repsDiff === 0) {
-      return { icon: 'right', color: 'text-zinc-400', label: 'Same as last' };
+      return { icon: 'right', color: 'text-muted', label: 'Same as last' };
     }
     // Decreased
     return { icon: 'down', color: 'text-red-400', label: 'Lower' };
   };
 
   return (
-    <div className="bg-[#1a1a1a] border border-[#2e2e2e] rounded-xl overflow-hidden">
+    <div className="bg-surface border border-border rounded-xl overflow-hidden">
       <ExercisePickerSheet
         open={showExerciseSelector}
         title="Swap exercise"
@@ -829,8 +829,8 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-3 flex-1"
         >
-          <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center relative">
-            <Dumbbell className="w-5 h-5 text-orange-400" />
+          <div className="w-10 h-10 rounded-lg bg-accent-soft flex items-center justify-center relative">
+            <Dumbbell className="w-5 h-5 text-accent" />
             {/* Superset Badge */}
             {exercise.supersetGroup && (
               <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-purple-500 text-[10px] font-bold flex items-center justify-center text-white">
@@ -847,7 +847,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                 </span>
               )}
             </div>
-            <div className="text-sm text-zinc-500 flex items-center gap-2 flex-wrap">
+            <div className="text-sm text-subtle flex items-center gap-2 flex-wrap">
               <span>{completedCount}/{exercise.sets.length} sets</span>
               {/* Deload week: what to lift here, worked out from this
                   exercise's own last three normal sessions. */}
@@ -858,14 +858,14 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowInfo(true)}
-            className="p-2 text-zinc-500 hover:text-blue-400 transition-colors"
+            className="p-2 text-subtle hover:text-blue-400 transition-colors"
             title="Exercise info"
           >
             <Info className="w-5 h-5" />
           </button>
           <button
             onClick={() => setShowExerciseSelector(true)}
-            className="p-2 text-zinc-500 hover:text-orange-400 transition-colors"
+            className="p-2 text-subtle hover:text-accent transition-colors"
             title="Swap exercise"
           >
             <Edit3 className="w-5 h-5" />
@@ -873,14 +873,14 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
           {canDelete && (
             <button
               onClick={onDelete}
-              className="p-2 text-zinc-500 hover:text-red-400 transition-colors"
+              className="p-2 text-subtle hover:text-danger transition-colors"
               title="Remove exercise"
             >
               <Trash2 className="w-5 h-5" />
             </button>
           )}
           <button onClick={() => setExpanded(!expanded)}>
-            <ChevronRight className={`w-5 h-5 text-zinc-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+            <ChevronRight className={`w-5 h-5 text-subtle transition-transform ${expanded ? 'rotate-90' : ''}`} />
           </button>
         </div>
       </div>
@@ -892,14 +892,14 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
           onClick={() => setShowInfo(false)}
         >
           <div
-            className="bg-[#1a1a1a] w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto"
+            className="bg-surface w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-[#1a1a1a] p-4 border-b border-[#2e2e2e] flex items-center justify-between">
+            <div className="sticky top-0 bg-surface p-4 border-b border-border flex items-center justify-between">
               <h3 className="font-bold">{exercise.exerciseName}</h3>
               <button
                 onClick={() => setShowInfo(false)}
-                className="p-1.5 text-zinc-500 hover:text-white rounded-lg hover:bg-[#252525]"
+                className="p-1.5 text-subtle hover:text-text rounded-lg hover:bg-surface-2"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -907,56 +907,56 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
             <div className="p-4 space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 {exerciseData.muscleGroup && (
-                  <div className="bg-[#252525] rounded-lg p-3">
-                    <div className="text-[10px] uppercase text-zinc-500 font-semibold">Muscle group</div>
+                  <div className="bg-surface-2 rounded-lg p-3">
+                    <div className="text-[10px] uppercase text-subtle font-semibold">Muscle group</div>
                     <div className="font-medium mt-0.5 capitalize">{exerciseData.muscleGroup.replace('_', ' ')}</div>
                   </div>
                 )}
-                <div className="bg-[#252525] rounded-lg p-3">
-                  <div className="text-[10px] uppercase text-zinc-500 font-semibold">Sets planned</div>
+                <div className="bg-surface-2 rounded-lg p-3">
+                  <div className="text-[10px] uppercase text-subtle font-semibold">Sets planned</div>
                   <div className="font-medium mt-0.5">{exercise.sets.length}</div>
                 </div>
                 {exerciseData.isCompound !== undefined && (
-                  <div className="bg-[#252525] rounded-lg p-3">
-                    <div className="text-[10px] uppercase text-zinc-500 font-semibold">Type</div>
+                  <div className="bg-surface-2 rounded-lg p-3">
+                    <div className="text-[10px] uppercase text-subtle font-semibold">Type</div>
                     <div className="font-medium mt-0.5">{exerciseData.isCompound ? 'Compound' : 'Isolation'}</div>
                   </div>
                 )}
                 {exerciseData.equipment && (
-                  <div className="bg-[#252525] rounded-lg p-3">
-                    <div className="text-[10px] uppercase text-zinc-500 font-semibold">Equipment</div>
+                  <div className="bg-surface-2 rounded-lg p-3">
+                    <div className="text-[10px] uppercase text-subtle font-semibold">Equipment</div>
                     <div className="font-medium mt-0.5">{labelize(exerciseData.equipment)}</div>
                   </div>
                 )}
               </div>
               {exerciseData.sharedNotes && (
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-subtle mb-1.5 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5" /> Exercise notes
                   </div>
-                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-zinc-300 whitespace-pre-wrap">
+                  <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-text whitespace-pre-wrap">
                     {exerciseData.sharedNotes}
                   </div>
                 </div>
               )}
               {exerciseData.notes && (
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-subtle mb-1.5 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5" /> My notes
                   </div>
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-zinc-300 whitespace-pre-wrap">
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-text whitespace-pre-wrap">
                     {exerciseData.notes}
                   </div>
                 </div>
               )}
               {!exerciseData.sharedNotes && !exerciseData.notes && (
-                <p className="text-xs text-zinc-500 italic">No notes yet — add cues or form reminders from the Exercise Library.</p>
+                <p className="text-xs text-subtle italic">No notes yet — add cues or form reminders from the Exercise Library.</p>
               )}
               {exerciseData.videoUrl && (
                 <button
                   type="button"
                   onClick={() => setVideoOpen(true)}
-                  className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-medium text-sm transition-colors"
+                  className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-lg bg-accent text-white hover:brightness-110 font-medium text-sm transition-colors"
                 >
                   <Play className="w-4 h-4" /> Watch form video
                 </button>
@@ -978,27 +978,27 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                   {deloadTargetLabel(deloadTarget)}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-1">
+              <p className="text-xs text-muted mt-1">
                 About 60 % of your recent best on this lift, for the same reps. It should
                 feel easy — leave the last couple of reps in the tank.
               </p>
             </div>
           ) : progression.suggestion && (
-            <div className="rounded-lg border border-orange-500/25 bg-orange-500/10 p-3">
+            <div className="rounded-lg border border-accent/25 bg-accent-soft p-3">
               <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-orange-400 shrink-0" />
+                <TrendingUp className="w-4 h-4 text-accent shrink-0" />
                 <span className="text-sm font-semibold">
                   {progression.suggestion.kind === 'hold' ? 'Hold at' : 'Try'}{' '}
                   {progression.suggestion.weight > 0 ? `${progression.suggestion.weight} kg × ` : ''}
                   {progression.suggestion.reps} reps
                 </span>
                 {progression.last && (
-                  <span className="text-xs text-zinc-500 ml-auto shrink-0">
+                  <span className="text-xs text-subtle ml-auto shrink-0">
                     Last: {formatSet(progression.last)}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-zinc-400 mt-1">{progression.suggestion.why}</p>
+              <p className="text-xs text-muted mt-1">{progression.suggestion.why}</p>
             </div>
           )}
 
@@ -1010,20 +1010,20 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                   <div className="text-xs font-medium text-blue-400 mb-1 flex items-center gap-1">
                     <FileText className="w-3 h-3" /> Exercise notes
                   </div>
-                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">{exerciseData.sharedNotes}</div>
+                  <div className="text-sm text-text whitespace-pre-wrap">{exerciseData.sharedNotes}</div>
                 </div>
               )}
               {exerciseData.notes && (
                 <div className="mb-2">
                   <div className="text-xs font-medium text-emerald-400 mb-1 flex items-center gap-1"><FileText className="w-3 h-3" /> My notes</div>
-                  <div className="text-sm text-zinc-300 whitespace-pre-wrap">{exerciseData.notes}</div>
+                  <div className="text-sm text-text whitespace-pre-wrap">{exerciseData.notes}</div>
                 </div>
               )}
               {exerciseData.videoUrl && (
                 <button
                   type="button"
                   onClick={() => setVideoOpen(true)}
-                  className="inline-flex items-center gap-2 text-sm text-orange-400 hover:text-orange-300 transition-colors"
+                  className="inline-flex items-center gap-2 text-sm text-accent hover:brightness-110 transition-colors"
                 >
                   <Play className="w-4 h-4" />
                   <span>Watch form video</span>
@@ -1036,7 +1036,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
           )}
           
           {/* Header */}
-          <div className="grid grid-cols-12 gap-2 text-xs text-zinc-500 px-2">
+          <div className="grid grid-cols-12 gap-2 text-xs text-subtle px-2">
             <div className="col-span-2">SET</div>
             <div className="col-span-4">WEIGHT (kg)</div>
             <div className="col-span-4">REPS</div>
@@ -1052,7 +1052,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
               <div key={set.id} className="space-y-1">
                 <div 
                   className={`grid grid-cols-12 gap-2 items-center p-2 rounded-lg ${
-                    set.completed ? 'bg-emerald-500/10' : 'bg-[#252525]'
+                    set.completed ? 'bg-emerald-500/10' : 'bg-surface-2'
                   }`}
                 >
                   <div className="col-span-2 text-center font-medium">{setIndex + 1}</div>
@@ -1062,7 +1062,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                       value={set.weight || ''}
                       onChange={(e) => onUpdateSet(setIndex, { weight: parseFloat(e.target.value) || 0 })}
                       placeholder="0"
-                      className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-3 py-2 text-center focus:outline-none focus:border-orange-500"
+                      className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-center focus:outline-none focus:border-accent"
                     />
                   </div>
                   <div className="col-span-4">
@@ -1071,7 +1071,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                       value={set.reps || ''}
                       onChange={(e) => onUpdateSet(setIndex, { reps: parseInt(e.target.value) || 0 })}
                       placeholder="0"
-                      className="w-full bg-[#1a1a1a] border border-[#2e2e2e] rounded-lg px-3 py-2 text-center focus:outline-none focus:border-orange-500"
+                      className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-center focus:outline-none focus:border-accent"
                     />
                   </div>
                   <div className="col-span-2 flex items-center justify-center gap-1">
@@ -1080,7 +1080,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                       className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
                         set.completed
                           ? 'bg-emerald-500 text-white'
-                          : 'bg-[#2e2e2e] text-zinc-400 hover:bg-[#3e3e3e]'
+                          : 'bg-border text-muted hover:brightness-110'
                       }`}
                       title={set.completed ? 'Uncheck set' : 'Mark set complete'}
                     >
@@ -1091,7 +1091,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                     {exercise.sets.length > 1 && (
                       <button
                         onClick={() => onRemoveSet(setIndex)}
-                        className="w-6 h-6 rounded-md flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        className="w-6 h-6 rounded-md flex items-center justify-center text-subtle hover:text-danger hover:bg-red-500/10 transition-colors"
                         title="Remove this set"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -1105,7 +1105,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
                     session at all for an exercise added mid-week. */}
                 {(lastSet || indicator) && (
                   <div className="flex items-center justify-between px-2 text-xs">
-                    <span className="text-zinc-500">
+                    <span className="text-subtle">
                       {lastSet ? `Last: ${lastSet.weight}kg × ${lastSet.reps} reps` : ''}
                     </span>
                     {indicator && (
@@ -1143,7 +1143,7 @@ function ExerciseCard({ exercise, onUpdateSet, onAddSet, onRemoveSet, onSwapExer
           {/* Add set button */}
           <button
             onClick={onAddSet}
-            className="w-full mt-2 py-2 rounded-lg text-xs font-medium border border-dashed border-zinc-700 text-zinc-400 hover:border-orange-500/50 hover:text-orange-400 transition-colors flex items-center justify-center gap-1.5"
+            className="w-full mt-2 py-2 rounded-lg text-xs font-medium border border-dashed border-border text-muted hover:border-accent/50 hover:text-accent transition-colors flex items-center justify-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" /> Add set
           </button>

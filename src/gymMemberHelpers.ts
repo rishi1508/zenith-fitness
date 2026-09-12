@@ -31,10 +31,13 @@ export function parseGymJoinQr(text: string): { gymId: string } | null {
 /** Looks up a member's display name from an already-fetched member list.
  *  Members can't list the whole directory (see firestore.rules), so
  *  callers on member screens should fetch best-effort and fall back
- *  gracefully when the list comes back empty. */
+ *  gracefully when the list comes back empty. `fallback` covers the "no
+ *  uid at all" case (e.g. no trainer assigned); a uid that doesn't match
+ *  anyone in the list — someone who left the gym, or a list that hasn't
+ *  loaded yet — reads as "Unknown member" rather than the raw uid. */
 export function memberName(uid: string | undefined, members: GymMember[], fallback = 'Member'): string {
   if (!uid) return fallback;
-  return members.find((m) => m.uid === uid)?.name || fallback;
+  return members.find((m) => m.uid === uid)?.name || 'Unknown member';
 }
 
 export function trainerName(trainerUid: string | undefined, members: GymMember[]): string {

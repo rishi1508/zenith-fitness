@@ -12,6 +12,7 @@ import { capturePhoto, nativePhotoCapture, PhotoCancelled } from '../../nativeCa
 import { consumeRestoredPhoto, hasRestoredPhoto } from '../../captureRestore';
 import { Avatar } from '../../components';
 import { formatDateTime } from '../../gymMemberHelpers';
+import { friendlyError } from '../../friendlyError';
 import { Button, Card, Chip, EmptyState, Sheet, Skeleton, useConfirm, useToast, CAPTION, SUB } from '../../ui';
 
 const EVERYONE = 'all';
@@ -83,7 +84,7 @@ export function AnnouncementsPanel({ onOpenProfile }: { onOpenProfile?: (uid: st
     try {
       await deleteAnnouncement(gym.id, announcement.id, announcement.hasImage);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not delete that.', 'error');
+      showToast(friendlyError(err, 'Could not delete that.'), 'error');
     }
   };
 
@@ -238,7 +239,7 @@ function ComposerSheet({ gymId, onClose, onPosted }: {
       const { base64, preview } = await prepareScanImage(blob, PHOTO_PX);
       setPhoto({ base64, preview: URL.createObjectURL(preview) });
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'That photo could not be used.', 'error');
+      showToast(friendlyError(err, 'That photo could not be used.'), 'error');
     }
   };
 
@@ -258,7 +259,7 @@ function ComposerSheet({ gymId, onClose, onPosted }: {
       await attach(await capturePhoto(source, 'gym-announcement', { gymId }));
     } catch (err) {
       if (err instanceof PhotoCancelled) return;
-      showToast(err instanceof Error ? err.message : 'The camera could not be opened.', 'error');
+      showToast(friendlyError(err, 'The camera could not be opened.'), 'error');
     }
   };
 
@@ -271,7 +272,7 @@ function ComposerSheet({ gymId, onClose, onPosted }: {
       showToast('Announcement posted.');
       onPosted();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not post announcement.', 'error');
+      showToast(friendlyError(err, 'Could not post announcement.'), 'error');
     } finally {
       setBusy(false);
     }

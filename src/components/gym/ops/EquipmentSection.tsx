@@ -4,6 +4,7 @@ import type { GymEquipment } from '../../../types';
 import { deleteEquipment, saveEquipment, setEquipmentStatus } from '../../../gymService';
 import { Button, Card, Sheet, useConfirm, useToast } from '../../../ui';
 import { H2, SUB } from '../../../ui/styles';
+import { friendlyError } from '../../../friendlyError';
 
 /** "2h 30m" / "45m" / "none" — downtime an owner can read at a glance. */
 function downtimeLabel(min: number): string {
@@ -50,7 +51,7 @@ export function EquipmentSection({
       setAdding(false);
       showToast(`${machine.name} added`);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not add the machine', 'error');
+      showToast(friendlyError(err, 'Could not add the machine.'), 'error');
     } finally {
       setSaving(false);
     }
@@ -63,7 +64,7 @@ export function EquipmentSection({
       const next = await setEquipmentStatus(gymId, machine, status);
       onChange(equipment.map((e) => (e.id === next.id ? next : e)));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not update the machine', 'error');
+      showToast(friendlyError(err, 'Could not update the machine.'), 'error');
     } finally {
       setBusyId(null);
     }
@@ -81,7 +82,7 @@ export function EquipmentSection({
       await deleteEquipment(gymId, machine.id);
       onChange(equipment.filter((e) => e.id !== machine.id));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not remove the machine', 'error');
+      showToast(friendlyError(err, 'Could not remove the machine.'), 'error');
     }
   };
 

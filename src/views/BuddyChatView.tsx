@@ -111,6 +111,7 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
     } catch (err) {
       console.error('[Chat] Send failed:', err);
       setInput(text); // Restore on failure
+      showToast('Message not sent. Check your connection and try again.', 'error');
     } finally {
       setSending(false);
       inputRef.current?.focus();
@@ -133,6 +134,7 @@ export function BuddyChatView({ chatId, buddyUid, buddyName, buddyPhotoURL, isDa
       await buddyService.sendWorkoutInvite(chatId, workoutName, exerciseCount, buddyUid);
     } catch (err) {
       console.error('[Chat] Invite failed:', err);
+      showToast('Invite not sent. Try again.', 'error');
     } finally {
       setSending(false);
     }

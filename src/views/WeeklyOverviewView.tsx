@@ -105,7 +105,7 @@ export function WeeklyOverviewView({ isDark, onBack, onStartDay }: {
             <div>
               <div className="font-medium flex items-center gap-2">
                 Deload Week
-                {isDeload && <span className="text-xs bg-teal-500 text-white px-1.5 py-0.5 rounded">ACTIVE</span>}
+                {isDeload && <span className="text-xs bg-teal-500 text-white px-1.5 py-0.5 rounded">Active</span>}
               </div>
               <div className={`text-xs ${isDark ? 'text-zinc-500' : 'text-gray-500'}`}>
                 {isDeload 

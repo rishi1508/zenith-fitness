@@ -11,6 +11,7 @@ import { publishGymPlan, withGymExercises } from '../gymLibrary';
 import { useGym } from '../gym/GymContext';
 
 import { useToast, useConfirm } from '../ui';
+import { friendlyError } from '../friendlyError';
 // Day Exercise Editor - Edit exercises for a single day (internal component)
 function DayExerciseEditor({ day, isDark, onSave, onCancel }: {
   day: DayPlan;
@@ -530,7 +531,7 @@ export function WeeklyPlansView({ isDark, onBack, onPlansChange }: {
       await publishGymPlan(gym.id, plan);
       showToast(`Shared with ${gym.name}.`);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not share the plan.', 'error');
+      showToast(friendlyError(err, 'Could not share the plan.'), 'error');
     }
   };
   const handleDelete = async (plan: WeeklyPlan) => {

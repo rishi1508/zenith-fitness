@@ -48,6 +48,8 @@ export function PushPermissionPrompt({ userUid, isDark }: Props) {
     setBusy(true);
     try {
       await enablePushNotifications();
+    } catch {
+      // Best-effort prompt — Settings has the retry affordance if this fails.
     } finally {
       dismiss();
       setBusy(false);

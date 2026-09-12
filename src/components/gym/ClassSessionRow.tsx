@@ -3,6 +3,7 @@ import { Clock, Users } from 'lucide-react';
 import type { GymClass, GymClassSession } from '../../types';
 import { listenToSession, enrol, unenrol } from '../../gymService';
 import { formatTime12h, endTime12h } from '../../gymMemberHelpers';
+import { friendlyError } from '../../friendlyError';
 
 interface Props {
   gymId: string;
@@ -42,7 +43,7 @@ export function ClassSessionRow({ gymId, cls, date, trainerName, myUid, isDark, 
       if (isEnrolled) await unenrol(gymId, cls.id, date, myUid);
       else await enrol(gymId, cls.id, date, myUid);
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : 'Could not update enrolment.');
+      onError?.(friendlyError(err, 'Could not update enrolment.'));
     } finally {
       setBusy(false);
     }

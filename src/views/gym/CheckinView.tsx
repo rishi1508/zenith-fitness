@@ -10,6 +10,7 @@ import { startOfWeekISO } from '../../gymMemberHelpers';
 import { hapticNotification } from '../../haptics';
 import { DEFAULT_GEOFENCE_M, formatDistance, positionFailureMessage, requestPosition, withinGeofence } from '../../geo';
 import { QrCode, QrScanner, MemberCodeInput } from '../../components';
+import { friendlyError } from '../../friendlyError';
 import { useToast } from '../../ui';
 
 type Tab = 'scan' | 'code' | 'myqr';
@@ -92,7 +93,7 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
       await checkinMember(gym.id, user.uid, 'member-qr', distanceM !== undefined ? { distanceM } : undefined);
       await afterSuccess();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Check-in failed.', 'error');
+      showToast(friendlyError(err, 'Check-in failed.'), 'error');
     } finally {
       setLocating(false);
       setBusy(false);
@@ -111,7 +112,7 @@ export function CheckinView({ isDark, onBack }: GymViewProps) {
       setDigits(Array(6).fill(''));
     } catch (err) {
       const denied = (err as { code?: string }).code === 'permission-denied';
-      showToast(denied ? 'Wrong code, or it has expired. Ask the desk for today\'s code.' : (err instanceof Error ? err.message : 'Check-in failed.'), 'error');
+      showToast(denied ? 'Wrong code, or it has expired. Ask the desk for today\'s code.' : (friendlyError(err, 'Check-in failed.')), 'error');
       if (denied) setDigits(Array(6).fill(''));
     } finally {
       setBusy(false);

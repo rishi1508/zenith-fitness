@@ -8,6 +8,7 @@ import { rankByAffinity } from '../../buddyAffinity';
 import * as storage from '../../storage';
 import { Avatar } from '../../components';
 import { Button, Chip, EmptyState, Sheet, Skeleton, useToast, CAPTION, SUB } from '../../ui';
+import { friendlyError } from '../../friendlyError';
 
 /** A session holds three people: the host and two guests. */
 const MAX_GUESTS = 2;
@@ -86,7 +87,7 @@ export function WorkoutTogetherSheet({ plan, initialDay, onClose, onStart }: Wor
       }
       showToast(`Invited ${picked.length === 1 ? b0(buddies, picked[0]) : `${picked.length} buddies`}`);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not send that invite.', 'error');
+      showToast(friendlyError(err, 'Could not send that invite.'), 'error');
     } finally {
       setBusy(false);
     }
@@ -109,7 +110,7 @@ export function WorkoutTogetherSheet({ plan, initialDay, onClose, onStart }: Wor
       const fresh = await sessionService.getSession(sessionId);
       if (fresh) onStart(fresh);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not start the session.', 'error');
+      showToast(friendlyError(err, 'Could not start the session.'), 'error');
       setBusy(false);
     }
   };

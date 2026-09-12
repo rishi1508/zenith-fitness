@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { completeMyProfile } from '../accountService';
 import { ProfileFields } from './ProfileFields';
 import { EMPTY_DRAFT, draftToDetails, validateDraft, type ProfileDraft } from './profileDraft';
+import { friendlyError } from '../friendlyError';
 
 /**
  * Shown once to a signed-in account whose profile has no phone number yet —
@@ -30,7 +31,7 @@ export function ProfileSetupView({ isDark, currentName, onDone }: { isDark: bool
       await completeMyProfile(draftToDetails(draft, { includeName: !hasName || draft.firstName.trim() !== currentName.trim().split(/\s+/)[0] }));
       onDone();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your details.');
+      setError(friendlyError(err, 'Could not save your details.'));
     } finally {
       setSaving(false);
     }

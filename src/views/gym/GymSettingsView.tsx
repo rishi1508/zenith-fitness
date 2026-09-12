@@ -9,6 +9,7 @@ import { updateGym, setStaffRole, listenToMembers } from '../../gymService';
 import { DEFAULT_GEOFENCE_M, positionFailureMessage, requestPosition } from '../../geo';
 import { addStaffByEmail, clearGymAccentColor, clearGymLocation, regenerateJoinCode } from '../../gymStaffHelpers';
 import { QrCode } from '../../components';
+import { friendlyError } from '../../friendlyError';
 import { useToast, useConfirm } from '../../ui';
 
 const ACCENT_PRESETS = [
@@ -106,7 +107,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       });
       showToast('Gym profile saved');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to save', 'error');
+      showToast(friendlyError(err, 'Failed to save'), 'error');
     } finally {
       setSavingProfile(false);
     }
@@ -135,7 +136,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       setGeofenceM(String(radius));
       showToast(location ? 'Check-in area saved' : 'Check-in area cleared');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to save', 'error');
+      showToast(friendlyError(err, 'Failed to save'), 'error');
     } finally {
       setSavingLocation(false);
     }
@@ -152,7 +153,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       await updateGym(gym.id, { plans });
       showToast('Plans saved');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to save plans', 'error');
+      showToast(friendlyError(err, 'Failed to save plans'), 'error');
     } finally {
       setSavingPlans(false);
     }
@@ -163,7 +164,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       await setStaffRole(gym.id, uid, newRole);
       showToast('Role updated');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to update role', 'error');
+      showToast(friendlyError(err, 'Failed to update role'), 'error');
     }
   };
   const { confirm: confirmDialog } = useConfirm();
@@ -173,7 +174,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       await setStaffRole(gym.id, uid, null);
       showToast('Staff removed');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to remove staff', 'error');
+      showToast(friendlyError(err, 'Failed to remove staff'), 'error');
     }
   };
   const handleAddStaff = async () => {
@@ -184,7 +185,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       showToast(`${addedName} added as ${staffRoleInput}`);
       setStaffEmail('');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to add staff', 'error');
+      showToast(friendlyError(err, 'Failed to add staff'), 'error');
     } finally {
       setAddingStaff(false);
     }
@@ -205,7 +206,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
       await regenerateJoinCode(gym.id, gym.joinCode);
       showToast('Join code regenerated');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to regenerate code', 'error');
+      showToast(friendlyError(err, 'Failed to regenerate code'), 'error');
     } finally {
       setRegenerating(false);
     }
@@ -392,7 +393,7 @@ function GymSettingsForm({ isDark, header, gym }: { isDark: boolean; header: Rea
         <div className="space-y-2 mb-3">
           {Object.entries(gym.staff).map(([uid, staffRole]) => (
             <div key={uid} className="flex items-center justify-between gap-2">
-              <span className="text-sm truncate">{nameByUid.get(uid) ?? uid}</span>
+              <span className="text-sm truncate">{nameByUid.get(uid) ?? 'Unknown member'}</span>
               <div className="flex items-center gap-2 shrink-0">
                 <select
                   value={staffRole}

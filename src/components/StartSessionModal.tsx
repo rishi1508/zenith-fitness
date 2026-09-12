@@ -4,6 +4,7 @@ import type { WeeklyPlan, DayPlan, WorkoutSession } from '../types';
 import * as storage from '../storage';
 import * as sessionService from '../workoutSessionService';
 import * as buddyService from '../buddyService';
+import { friendlyError } from '../friendlyError';
 
 interface StartSessionModalProps {
   buddyUid: string;
@@ -86,7 +87,7 @@ export function StartSessionModal({
       );
     } catch (err) {
       console.error('[StartSession] createSession failed', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(friendlyError(err, 'Could not start the session.'));
       setStarting(false);
       return;
     }
@@ -116,7 +117,7 @@ export function StartSessionModal({
       await sessionService.cancelSession(existingSession.id);
       setExistingSession(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to cancel existing session');
+      setError(friendlyError(err, 'Could not cancel the existing session.'));
     }
   };
   const pendingSidRef = useRef<string | null>(null);

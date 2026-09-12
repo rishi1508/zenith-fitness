@@ -10,6 +10,7 @@ import { searchUserProfiles } from '../../gymStaffHelpers';
 import { createMemberAccount } from '../../memberAdmin';
 import { localDateISO } from '../../gymStats';
 import { StaffMemberRow } from '../../components/gym/StaffMemberRow';
+import { friendlyError } from '../../friendlyError';
 import { useToast } from '../../ui';
 
 const FILTERS: Array<{ id: MembershipStatus | 'all'; label: string }> = [
@@ -246,7 +247,7 @@ function AddMemberSheet({ isDark, gymId, plans, trainers, onClose, onSuccess }: 
       }
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add member');
+      setError(friendlyError(err, 'Failed to add member'));
     } finally {
       setSaving(false);
     }

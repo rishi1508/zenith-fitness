@@ -9,6 +9,7 @@ import {
 import { localDateISO } from '../../gymStats';
 import { QrCode, QrScanner } from '../../components';
 import { StatusChip } from '../../components/gym/StaffMemberRow';
+import { friendlyError } from '../../friendlyError';
 import { useToast } from '../../ui';
 
 /** Staff check-in console — see docs/GYM_TIER_A_SPEC.md §6.3. Available
@@ -59,7 +60,7 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
       setCode(plain);
       setCodeDate(localDateISO(new Date()));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to generate code', 'error');
+      showToast(friendlyError(err, 'Failed to generate code'), 'error');
     } finally {
       setRotating(false);
     }
@@ -74,7 +75,7 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
       else showToast('Checked in');
       setCheckinsToday((prev) => (prev.some((c) => c.id === checkin.id) ? prev : [checkin, ...prev]));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Check-in failed', 'error');
+      showToast(friendlyError(err, 'Check-in failed'), 'error');
     }
   };
 
@@ -128,7 +129,7 @@ export function CheckinConsoleView({ isDark, onBack }: GymViewProps) {
           <div className={`mt-3 pt-3 border-t divide-y ${isDark ? 'border-[#2e2e2e] divide-[#2e2e2e]' : 'border-gray-100 divide-gray-100'}`}>
             {checkinsToday.slice(0, 10).map((c) => (
               <div key={c.id} className="py-1.5 text-sm flex items-center justify-between">
-                <span>{memberByUid.get(c.uid)?.name ?? c.uid}</span>
+                <span>{memberByUid.get(c.uid)?.name ?? 'Unknown member'}</span>
                 <span className={`text-xs ${subtle}`}>{new Date(c.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             ))}

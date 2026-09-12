@@ -55,6 +55,7 @@ which are quoted separately.
 | Desk-created accounts (3.29.0) | Adding a member by name + mobile creates their Zenith account; they sign in by e-mail code or Google and land in it with the profile filled | Built 2026-09-13 |
 | Anonymous ratings, session sharing fixes, announcement badge (3.29.0) | See docs/RELEASE_3.29.0.md | Built 2026-09-13 |
 | Owner's 15-point walkthrough (3.30.0): in-app plate camera, deload in plain words, insights on Home, rebuilt Analysis, one-tap Log food, member vs staff gym screens | See docs/RELEASE_3.30.0.md | Built 2026-09-13 |
+| Readable errors, no silent failures, no raw ids (3.30.1) | See docs/RELEASE_3.30.1.md | Built 2026-09-13 |
 
 Testing starts Monday 2026-09-14 with real members. Full rollout in a month.
 

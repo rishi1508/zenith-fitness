@@ -7,6 +7,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { isAdmin } from '../../admin';
 import { listenToClasses, listenToMembers, saveClass, deleteClass, listenToSession, markAttendance } from '../../gymService';
 import { localDateISO } from '../../gymStats';
+import { friendlyError } from '../../friendlyError';
 import { useToast, useConfirm } from '../../ui';
 
 const WEEKDAYS = [
@@ -63,7 +64,7 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
       await deleteClass(gym.id, cls.id);
       showToast('Class deleted');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to delete class', 'error');
+      showToast(friendlyError(err, 'Failed to delete class'), 'error');
     }
   };
 
@@ -72,7 +73,7 @@ export function ClassesManageView({ isDark, onBack }: GymViewProps) {
     try {
       await saveClass(gym.id, { ...cls, active: !cls.active });
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to update class', 'error');
+      showToast(friendlyError(err, 'Failed to update class'), 'error');
     }
   };
 
@@ -222,7 +223,7 @@ function ClassFormSheet({ isDark, gymId, trainers, editingClass, onClose, onSucc
       );
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save class');
+      setError(friendlyError(err, 'Failed to save class'));
     } finally {
       setSaving(false);
     }
@@ -380,7 +381,7 @@ function AttendanceSheet({ isDark, gymId, cls, memberByUid, onClose }: Attendanc
                     disabled={toggling === uid}
                     className="w-full flex items-center justify-between py-2.5 text-left"
                   >
-                    <span className="text-sm">{memberByUid.get(uid)?.name ?? uid}</span>
+                    <span className="text-sm">{memberByUid.get(uid)?.name ?? 'Unknown member'}</span>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${attended ? 'bg-emerald-500/15 text-emerald-500' : `${isDark ? 'bg-[#252525] text-zinc-500' : 'bg-gray-100 text-gray-500'}`}`}>
                       {attended ? 'Attended' : 'Mark attended'}
                     </span>

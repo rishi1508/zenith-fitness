@@ -7,6 +7,7 @@ import { isAdmin } from '../../admin';
 import { createGym } from '../../gymService';
 import {  } from '../../components';
 import { useToast } from '../../ui';
+import { friendlyError } from '../../friendlyError';
 
 /** Zenith-admin only: creates a new gym (the caller becomes its owner). */
 export function CreateGymView({ isDark, onBack, onNavigate }: GymViewProps) {
@@ -55,7 +56,7 @@ export function CreateGymView({ isDark, onBack, onNavigate }: GymViewProps) {
       showToast('Gym created.');
       onNavigate('gym-home');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not create the gym.', 'error');
+      showToast(friendlyError(err, 'Could not create the gym.'), 'error');
     } finally {
       setCreating(false);
     }

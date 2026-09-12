@@ -9,6 +9,7 @@ import { localDateISO } from '../../gymStats';
 import { trainerName, memberName, dayLabel, formatTime12h, endTime12h } from '../../gymMemberHelpers';
 import { hasRated, submitSessionRating } from '../../gymRatings';
 import { Button, useToast } from '../../ui';
+import { friendlyError } from '../../friendlyError';
 
 /** `classId` prop arrives as `${classId}|${date}` (ClassesView encodes
  *  the date into the nav param since sessions aren't their own route). */
@@ -35,7 +36,7 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
       setRated(true);
       showToast('Thanks. Your rating is in, and it is anonymous.');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not save your rating.', 'error');
+      showToast(friendlyError(err, 'Could not save your rating.'), 'error');
     } finally {
       setRating(false);
     }
@@ -110,7 +111,7 @@ export function ClassDetailView({ isDark, onBack, classId: encoded }: GymViewPro
       if (isEnrolled) await unenrol(gym.id, cls.id, date, user.uid);
       else await enrol(gym.id, cls.id, date, user.uid);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Could not update enrolment.', 'error');
+      showToast(friendlyError(err, 'Could not update enrolment.'), 'error');
     } finally {
       setBusy(false);
     }
